@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+mobile/node_modules/
+
+# Build outputs
+build/
+dist/
+mobile/dist/
+coverage/
+
+# Expo generated
+mobile/.expo/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+# Keep the example file as a template
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

@@ -1,0 +1,7 @@
+{
+  "name": "CookMate",
+  "description": "A smart cooking and meal planning app powered by AI. Features recipe recommendations, meal planning, and an AI cooking assistant.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
