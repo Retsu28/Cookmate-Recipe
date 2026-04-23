@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function NotificationCard({ notification, onDelete }) {
   return (
-    <View className={`bg-white p-4 rounded-3xl border border-gray-50 shadow-sm flex-row space-x-4 mb-4 ${notification.read ? 'opacity-60' : ''}`}>
+    <View className={`bg-white p-4 rounded-3xl border border-stone-100 shadow-sm flex-row space-x-4 mb-4 ${notification.read ? 'opacity-60' : ''}`}>
       <View className={`w-12 h-12 rounded-2xl items-center justify-center ${notification.color}`}>
         <Ionicons name={notification.icon} size={24} color={notification.iconColor} />
       </View>
@@ -12,9 +12,9 @@ export default function NotificationCard({ notification, onDelete }) {
       <View className="flex-1 space-y-1">
         <View className="flex-row justify-between items-center">
           <Text className="text-sm font-bold text-dark">{notification.title}</Text>
-          <Text className="text-[8px] font-bold text-gray-400 uppercase">{notification.time}</Text>
+          <Text className="text-[8px] font-bold text-stone-400 uppercase">{notification.time}</Text>
         </View>
-        <Text className="text-xs text-gray-500 leading-relaxed" numberOfLines={2}>
+        <Text className="text-xs text-stone-500 leading-relaxed" numberOfLines={2}>
           {notification.message}
         </Text>
       </View>

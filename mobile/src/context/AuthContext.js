@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import { tokenStorage } from '../lib/tokenStorage';
 
 const AuthContext = createContext();
 
@@ -11,7 +11,7 @@ export const AuthProvider = ({ children }) => {
     // Check for token on app load
     const loadToken = async () => {
       try {
-        const token = await SecureStore.getItemAsync('userToken');
+        const token = await tokenStorage.getItem('userToken');
         if (token) {
           setUserToken(token);
         }
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (token) => {
     try {
-      await SecureStore.setItemAsync('userToken', token);
+      await tokenStorage.setItem('userToken', token);
       setUserToken(token);
     } catch (e) {
       console.error('Failed to save token', e);
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await SecureStore.deleteItemAsync('userToken');
+      await tokenStorage.deleteItem('userToken');
       setUserToken(null);
     } catch (e) {
       console.error('Failed to delete token', e);

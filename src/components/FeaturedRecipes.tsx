@@ -1,6 +1,8 @@
 import React from 'react';
 import { Clock, Star, Bookmark } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 const featured = [
   {
@@ -34,55 +36,59 @@ const featured = [
 
 export function FeaturedRecipes() {
   return (
-    <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {featured.map((recipe) => (
-        <div 
-          key={recipe.id} 
-          className="min-w-[320px] bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+        <Link
+          to={`/recipe/${recipe.id}`}
+          key={recipe.id}
+          className="bg-white rounded-[2rem] overflow-hidden border border-stone-100 shadow-sm hover:shadow-xl hover:border-orange-200 hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col"
         >
-          <div className="relative h-48">
-            <img 
-              src={recipe.image} 
-              alt={recipe.title} 
+          <div className="relative h-56 w-full">
+            <img
+              src={recipe.image}
+              alt={recipe.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               referrerPolicy="no-referrer"
             />
             <div className="absolute top-4 left-4">
-              <Badge className="bg-white/90 text-stone-900 backdrop-blur-sm border-none font-bold">
+              <Badge className="bg-white/95 text-stone-900 backdrop-blur-md border-none font-bold shadow-sm">
                 {recipe.category}
               </Badge>
             </div>
-            <button className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm rounded-full text-stone-400 hover:text-orange-500 transition-colors shadow-sm">
+            <button
+              onClick={(e) => { e.preventDefault(); /* Handle Save */ }}
+              className="absolute top-4 right-4 p-2.5 bg-white/95 backdrop-blur-md rounded-full text-stone-400 hover:text-orange-500 transition-colors shadow-sm"
+            >
               <Bookmark size={18} />
             </button>
           </div>
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-bold text-lg text-stone-900">{recipe.title}</h3>
-              <div className="flex items-center gap-1 text-orange-500">
-                <Star size={14} fill="currentColor" />
-                <span className="text-xs font-bold">{recipe.rating}</span>
+          <div className="p-6 flex-1 flex flex-col justify-between">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-bold text-xl text-stone-900 group-hover:text-orange-600 transition-colors leading-tight pr-2">{recipe.title}</h3>
+                <div className="flex items-center gap-1 text-orange-500 bg-orange-50 px-2 py-1 rounded-lg shrink-0">
+                  <Star size={14} fill="currentColor" />
+                  <span className="text-xs font-bold">{recipe.rating}</span>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-stone-400">
+            <div className="flex items-center gap-5 text-stone-500">
               <div className="flex items-center gap-1.5">
-                <Clock size={14} />
-                <span className="text-xs font-medium">{recipe.time}</span>
+                <Clock size={16} className="text-stone-400" />
+                <span className="text-sm font-medium">{recipe.time}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <span className={cn(
-                  "w-2 h-2 rounded-full",
-                  recipe.difficulty === 'Easy' ? 'bg-green-400' : 
-                  recipe.difficulty === 'Medium' ? 'bg-orange-400' : 'bg-red-400'
+                  "w-2.5 h-2.5 rounded-full",
+                  recipe.difficulty === 'Easy' ? 'bg-green-400' :
+                    recipe.difficulty === 'Medium' ? 'bg-orange-400' : 'bg-red-400'
                 )} />
-                <span className="text-xs font-medium">{recipe.difficulty}</span>
+                <span className="text-sm font-medium">{recipe.difficulty}</span>
               </div>
             </div>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );
 }
-
-import { cn } from '@/lib/utils';

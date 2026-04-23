@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  FlatList, 
-  ScrollView,
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
   ActivityIndicator,
-  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,18 +45,19 @@ export default function SearchScreen({ navigation }) {
   };
 
   const renderHeader = () => (
-    <View className="p-6 space-y-6">
+    <View className="px-4 pt-3 pb-5 space-y-5">
       <View className="space-y-2">
-        <Text className="text-2xl font-bold text-dark">What's in your kitchen?</Text>
-        <Text className="text-gray-400 text-sm">Enter ingredients you have to find recipes.</Text>
+        <Text className="text-lg font-bold text-dark">What's in your kitchen?</Text>
+        <Text className="text-stone-400 text-xs">Enter ingredients you have to find recipes.</Text>
       </View>
 
       <View className="space-y-4">
-        <View className="flex-row items-center bg-white px-4 py-3 rounded-2xl border border-gray-100 shadow-sm space-x-3">
-          <Ionicons name="add-circle-outline" size={24} color="#22C55E" />
-          <TextInput 
-            className="flex-1 text-dark"
+        <View className="h-12 flex-row items-center bg-white px-4 rounded-xl shadow-sm space-x-3">
+          <Ionicons name="add-circle-outline" size={20} color="#f97316" />
+          <TextInput
+            className="flex-1 text-dark text-xs"
             placeholder="Type ingredient (e.g. Chicken, Garlic)"
+            placeholderTextColor="#a8a29e"
             value={ingredient}
             onChangeText={setIngredient}
             onSubmitEditing={addIngredient}
@@ -66,7 +65,7 @@ export default function SearchScreen({ navigation }) {
           />
           {ingredient.length > 0 && (
             <TouchableOpacity onPress={addIngredient}>
-              <Ionicons name="arrow-forward-circle" size={28} color="#22C55E" />
+              <Ionicons name="arrow-forward-circle" size={24} color="#f97316" />
             </TouchableOpacity>
           )}
         </View>
@@ -74,26 +73,26 @@ export default function SearchScreen({ navigation }) {
         {ingredients.length > 0 && (
           <View className="flex-row flex-wrap">
             {ingredients.map((tag) => (
-              <IngredientTag 
-                key={tag} 
-                name={tag} 
-                onRemove={() => removeIngredient(tag)} 
+              <IngredientTag
+                key={tag}
+                name={tag}
+                onRemove={() => removeIngredient(tag)}
               />
             ))}
           </View>
         )}
 
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={handleSearch}
           disabled={ingredients.length === 0 || loading}
-          className={`h-14 rounded-2xl items-center justify-center flex-row space-x-2 ${ingredients.length === 0 ? 'bg-gray-200' : 'bg-primary shadow-lg shadow-green-200'}`}
+          className={`h-12 rounded-xl items-center justify-center flex-row space-x-2 ${ingredients.length === 0 ? 'bg-stone-200' : 'bg-primary shadow-lg shadow-orange-200'}`}
         >
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
             <>
-              <Ionicons name="sparkles" size={20} color="white" />
-              <Text className="text-white font-bold text-lg">Find Recipes</Text>
+              <Ionicons name="sparkles" size={17} color="white" />
+              <Text className="text-white font-bold text-sm">Find Recipes</Text>
             </>
           )}
         </TouchableOpacity>
@@ -101,15 +100,15 @@ export default function SearchScreen({ navigation }) {
 
       {results.length > 0 && (
         <View className="flex-row items-center justify-between">
-          <Text className="text-lg font-bold text-dark">{results.length} Matches Found</Text>
-          <View className="flex-row bg-gray-100 p-1 rounded-xl">
+          <Text className="text-base font-bold text-dark">{results.length} Matches Found</Text>
+          <View className="flex-row bg-stone-100 p-1 rounded-xl">
             {['Best Match', 'Fastest'].map((f) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={f}
                 onPress={() => setFilter(f)}
                 className={`px-3 py-1.5 rounded-lg ${filter === f ? 'bg-white shadow-sm' : ''}`}
               >
-                <Text className={`text-[10px] font-bold ${filter === f ? 'text-primary' : 'text-gray-400'}`}>{f}</Text>
+                <Text className={`text-[10px] font-bold ${filter === f ? 'text-primary' : 'text-stone-400'}`}>{f}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -118,33 +117,35 @@ export default function SearchScreen({ navigation }) {
     </View>
   );
 
-  const renderEmpty = () => (
-    <View className="flex-1 items-center justify-center p-12 space-y-4">
-      <View className="w-20 h-20 bg-gray-50 rounded-full items-center justify-center">
-        <Ionicons name="restaurant-outline" size={40} color="#d1d5db" />
+  const renderEmpty = () => {
+    if (loading || ingredients.length > 0) return null;
+
+    return (
+      <View className="flex-1 items-center justify-center px-8 pt-20">
+        <Ionicons name="restaurant-outline" size={52} color="#d6d3d1" />
+        <Text className="text-stone-400 text-center text-xs font-medium mt-8">
+          No ingredients added yet. Try adding "Chicken", "Garlic", or "Pasta".
+        </Text>
       </View>
-      <Text className="text-gray-400 text-center font-medium">
-        No ingredients added yet. Try adding "Chicken", "Garlic", or "Pasta".
-      </Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <FlatList 
+      <FlatList
         data={results}
         keyExtractor={(item, index) => index.toString()}
         ListHeaderComponent={renderHeader}
-        ListEmptyComponent={!loading && ingredients.length === 0 ? renderEmpty : null}
+        ListEmptyComponent={renderEmpty}
         numColumns={2}
-        columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 24 }}
+        columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
         renderItem={({ item }) => (
-          <RecipeCard 
-            recipe={item.recipe} 
+          <RecipeCard
+            recipe={item.recipe}
             onPress={() => navigation.navigate('RecipeDetail', { id: item.recipe.id })}
           />
         )}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 86 }}
       />
     </SafeAreaView>
   );

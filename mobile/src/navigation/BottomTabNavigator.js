@@ -32,17 +32,25 @@ export default function BottomTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#22C55E',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: '#f97316',
+        tabBarInactiveTintColor: '#a8a29e',
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          marginTop: 0,
+        },
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
-          borderTopColor: '#f3f4f6',
-          elevation: 5,
+          borderTopColor: '#eeeae4',
+          elevation: 0,
+          height: 58,
+          paddingTop: 4,
+          paddingBottom: 4,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 3,
+          shadowOpacity: 0,
+          shadowRadius: 0,
         },
         headerShown: false,
       })}

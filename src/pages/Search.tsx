@@ -1,175 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { Sidebar } from '../components/Sidebar';
-import { TopBar } from '../components/TopBar';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
+import React, { useState } from 'react';
+import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { X, Search as SearchIcon, Filter, Clock, ChefHat, Sparkles } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
+import { Link } from 'react-router-dom';
 
 export default function SearchPage() {
-  const [ingredients, setIngredients] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const addIngredient = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && inputValue.trim()) {
-      if (!ingredients.includes(inputValue.trim())) {
-        setIngredients([...ingredients, inputValue.trim()]);
-      }
-      setInputValue('');
-    }
-  };
+  const suggestedCombinations = [
+    { title: 'Mediterranean Pantry', items: 'Olives, Feta, Tomatoes, Cucumber', icon: '🍴' },
+    { title: 'Quick Stir-Fry Set', items: 'Ginger, Soy Sauce, Broccoli, Tofu', icon: '🍳' },
+    { title: "Baker's Base", items: 'Flour, Yeast, Salt', icon: '🥐' },
+  ];
 
-  const removeIngredient = (tag: string) => {
-    setIngredients(ingredients.filter(i => i !== tag));
-  };
+  const results = [
+    { id: 1, title: 'Herbed Lemon Chicken Roast', match: '92%', time: '45 MIN' },
+    { id: 2, title: 'Garlic Butter Pasta Strings', match: '85%', time: '20 MIN' },
+    { id: 3, title: 'Slow Simmered Tomato Ragu', match: '78%', time: '60 MIN' },
+    { id: 4, title: 'Crispy Garlic Smashed Taters', match: '74%', time: '15 MIN' },
+  ];
 
-  const handleSearch = async () => {
-    if (ingredients.length === 0) return;
+  const handleProcess = () => {
+    if (!inputValue) return;
     setLoading(true);
-    try {
-      const response = await fetch('/api/ml/recommend/by-ingredients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ingredients }),
-      });
-      const data = await response.json();
-      setResults(data.recommendations || []);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
+    setTimeout(() => setLoading(false), 1000);
   };
 
   return (
-    <div className="flex h-screen bg-stone-50 font-sans text-stone-900">
-      <Sidebar />
-      
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
-        
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto space-y-12">
-            {/* Search Header */}
-            <div className="text-center space-y-4">
-              <h1 className="text-4xl font-serif italic">What's in your kitchen?</h1>
-              <p className="text-stone-500">Enter the ingredients you have, and our AI will find the perfect recipe.</p>
-            </div>
+    <Layout>
+      <div className="w-full max-w-5xl mx-auto py-8">
 
-            {/* Ingredient Input */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 space-y-4">
-              <div className="flex flex-wrap gap-2 min-h-[44px] p-2 border border-stone-200 rounded-2xl focus-within:ring-2 focus-within:ring-orange-500 transition-all">
-                <AnimatePresence>
-                  {ingredients.map((tag) => (
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      key={tag}
-                    >
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-none px-3 py-1 flex items-center gap-1.5">
-                        {tag}
-                        <X 
-                          size={14} 
-                          className="cursor-pointer hover:text-orange-900" 
-                          onClick={() => removeIngredient(tag)}
-                        />
-                      </Badge>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-                <input 
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={addIngredient}
-                  placeholder={ingredients.length === 0 ? "Type ingredient and press Enter..." : ""}
-                  className="flex-1 min-w-[120px] outline-none bg-transparent text-sm"
-                />
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <div className="flex gap-2">
-                  <Button variant="outline" className="rounded-xl gap-2 text-stone-500">
-                    <Filter size={16} /> Filters
-                  </Button>
-                </div>
-                <Button 
-                  onClick={handleSearch}
-                  disabled={ingredients.length === 0 || loading}
-                  className="bg-orange-500 hover:bg-orange-600 rounded-xl px-8 gap-2"
-                >
-                  <SearchIcon size={18} /> {loading ? 'Finding Recipes...' : 'Search Recipes'}
-                </Button>
-              </div>
-            </div>
+        {/* Header & Input */}
+        <div className="mb-12 space-y-6">
+          <h1 className="text-5xl md:text-6xl font-extrabold text-stone-900 tracking-tight">Search by Ingredients</h1>
+          <p className="text-lg text-stone-500 max-w-2xl">
+            Enter the items currently in your pantry and we'll engineer the perfect culinary blueprint for your next meal.
+          </p>
 
-            {/* Results */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold">
-                  {results.length > 0 ? `${results.length} Matches Found` : 'Recommended for You'}
-                </h2>
-                <div className="flex gap-2">
-                  <Badge variant="outline" className="rounded-full px-4 py-1 cursor-pointer hover:bg-stone-100">Best Match</Badge>
-                  <Badge variant="outline" className="rounded-full px-4 py-1 cursor-pointer hover:bg-stone-100">Fastest</Badge>
+          <div className="space-y-2 pt-4">
+            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Ingredient Input Stack</p>
+            <div className="flex flex-col sm:flex-row shadow-sm">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Chicken, Garlic, Rosemary, Lemon..."
+                className="flex-1 p-6 bg-white border border-stone-200 outline-none text-stone-900 placeholder:text-stone-400 text-lg sm:rounded-l-none"
+              />
+              <Button
+                onClick={handleProcess}
+                className="bg-stone-900 hover:bg-orange-600 text-white rounded-none px-12 py-6 h-auto font-bold tracking-widest uppercase transition-colors"
+              >
+                {loading ? 'Processing...' : 'Process'}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Suggested Combinations */}
+        <div className="mb-16">
+          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-6 border-b border-stone-200 pb-2">Suggested Combinations</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            {suggestedCombinations.map((combo, i) => (
+              <div key={i} className="bg-stone-100 p-8 flex flex-col justify-between min-h-[240px] hover:bg-stone-200 transition-colors cursor-pointer group">
+                <span className="text-3xl grayscale opacity-40 group-hover:grayscale-0 group-hover:opacity-100 transition-all">{combo.icon}</span>
+                <div>
+                  <h4 className="text-xl font-bold text-stone-900 mb-2">{combo.title}</h4>
+                  <p className="text-stone-500 text-sm">{combo.items}</p>
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {results.length > 0 ? (
-                  results.map((res, i) => (
-                    <RecipeCard key={i} recipe={res.recipe} match={res.matchPercentage} />
-                  ))
-                ) : (
-                  <div className="col-span-full py-20 text-center space-y-4">
-                    <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto text-stone-300">
-                      <ChefHat size={32} />
-                    </div>
-                    <p className="text-stone-400 font-medium">No ingredients added yet. Try adding "Chicken", "Garlic", or "Pasta".</p>
+        {/* Results */}
+        <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 pb-2 border-b border-stone-200 gap-4">
+            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Recipe Blueprints (128 Results)</p>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" className="rounded-none border-stone-900 text-stone-900 font-bold text-[10px] uppercase tracking-widest h-8 px-4">
+                Sort: Relevance
+              </Button>
+              <Button variant="outline" className="rounded-none border-stone-300 text-stone-500 hover:text-stone-900 font-bold text-[10px] uppercase tracking-widest h-8 px-4">
+                Filter: Time
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10">
+            {results.map((recipe, i) => (
+              <Link to={`/recipe/${recipe.id}`} key={i} className="group cursor-pointer flex flex-col">
+                <div className="w-full aspect-square bg-stone-200 mb-4 relative overflow-hidden">
+                  {/* Placeholder lines to mimic the wireframe design */}
+                  <svg className="absolute inset-0 w-full h-full text-stone-300" preserveAspectRatio="none" viewBox="0 0 100 100">
+                    <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" strokeWidth="1" />
+                    <line x1="100" y1="0" x2="0" y2="100" stroke="currentColor" strokeWidth="1" />
+                  </svg>
+                  <div className="absolute bottom-4 left-4 bg-white px-3 py-1 text-[10px] font-bold text-stone-900 uppercase tracking-widest shadow-sm">
+                    {recipe.time}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+                <h4 className="font-bold text-lg text-stone-900 leading-tight mb-2 group-hover:text-orange-600 transition-colors uppercase pr-4">
+                  {recipe.title}
+                </h4>
+                <p className="text-sm text-stone-500">{recipe.match} Match with your ingredients</p>
+              </Link>
+            ))}
           </div>
         </div>
-      </main>
-    </div>
-  );
-}
 
-function RecipeCard({ recipe, match }: { recipe: any, match: number }) {
-  return (
-    <Card className="overflow-hidden rounded-3xl border-stone-100 hover:shadow-lg transition-all cursor-pointer group">
-      <div className="relative h-48">
-        <img 
-          src={recipe.image} 
-          alt={recipe.title} 
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute top-4 right-4">
-          <Badge className="bg-orange-500 text-white border-none font-bold gap-1">
-            <Sparkles size={12} fill="currentColor" /> {match}% Match
-          </Badge>
-        </div>
       </div>
-      <CardContent className="p-5">
-        <h3 className="font-bold text-lg mb-3 group-hover:text-orange-600 transition-colors">{recipe.title}</h3>
-        <div className="flex items-center gap-4 text-stone-400">
-          <div className="flex items-center gap-1.5">
-            <Clock size={14} />
-            <span className="text-xs font-medium">{recipe.time}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <ChefHat size={14} />
-            <span className="text-xs font-medium">{recipe.difficulty}</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    </Layout>
   );
 }

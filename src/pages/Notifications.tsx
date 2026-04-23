@@ -1,21 +1,20 @@
 import React, { useState } from 'react';
-import { Sidebar } from '../components/Sidebar';
-import { TopBar } from '../components/TopBar';
+import { Layout } from '../components/Layout';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { 
-  Bell, Clock, AlertTriangle, ShoppingBag, 
+import {
+  Bell, Clock, AlertTriangle, ShoppingBag,
   Target, Sparkles, Check, Trash2, MoreVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const initialNotifications = [
-  { id: 1, type: 'Reminder', title: 'Lunch in 30 minutes', message: 'Time to prep your Quinoa Salad for lunch.', time: '10 mins ago', read: false, icon: Clock, color: 'text-blue-500 bg-blue-50' },
-  { id: 2, type: 'Expiring', title: 'Ingredient Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 hours ago', read: false, icon: AlertTriangle, color: 'text-red-500 bg-red-50' },
-  { id: 3, type: 'Shopping', title: 'Shopping List Update', message: '3 new items added to your list based on next week\'s plan.', time: '5 hours ago', read: true, icon: ShoppingBag, color: 'text-orange-500 bg-orange-50' },
-  { id: 4, type: 'Goal', title: 'Goal Progress', message: 'You\'ve cooked 5 healthy meals this week! Keep it up.', time: 'Yesterday', read: true, icon: Target, color: 'text-green-500 bg-green-50' },
-  { id: 5, type: 'Recommendation', title: 'New Recipe Match', message: 'A new "Creamy Tuscan Chicken" recipe matches your taste.', time: 'Yesterday', read: true, icon: Sparkles, color: 'text-purple-500 bg-purple-50' },
+  { id: 1, type: 'Reminder', title: 'Lunch in 30 minutes', message: 'Time to prep your Quinoa Salad for lunch.', time: '10 mins ago', read: false, icon: Clock, color: 'text-blue-500 bg-blue-100/50' },
+  { id: 2, type: 'Expiring', title: 'Ingredient Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 hours ago', read: false, icon: AlertTriangle, color: 'text-red-500 bg-red-100/50' },
+  { id: 3, type: 'Shopping', title: 'Shopping List Update', message: '3 new items added to your list based on next week\'s plan.', time: '5 hours ago', read: true, icon: ShoppingBag, color: 'text-orange-500 bg-orange-100/50' },
+  { id: 4, type: 'Goal', title: 'Goal Progress', message: 'You\'ve cooked 5 healthy meals this week! Keep it up.', time: 'Yesterday', read: true, icon: Target, color: 'text-green-500 bg-green-100/50' },
+  { id: 5, type: 'Recommendation', title: 'New Recipe Match', message: 'A new "Creamy Tuscan Chicken" recipe matches your taste.', time: 'Yesterday', read: true, icon: Sparkles, color: 'text-purple-500 bg-purple-100/50' },
 ];
 
 export default function NotificationsPage() {
@@ -24,8 +23,8 @@ export default function NotificationsPage() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const filtered = filter === 'all' 
-    ? notifications 
+  const filtered = filter === 'all'
+    ? notifications
     : notifications.filter(n => n.type.toLowerCase() === filter.toLowerCase());
 
   const markAllRead = () => {
@@ -37,100 +36,96 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-stone-50 font-sans text-stone-900">
-      <Sidebar />
-      
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
-        
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-3xl mx-auto space-y-8">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <h1 className="text-3xl font-serif italic">Notifications</h1>
-                {unreadCount > 0 && (
-                  <Badge className="bg-orange-500 text-white border-none px-3 py-1">
-                    {unreadCount} New
-                  </Badge>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={markAllRead} className="text-xs font-bold text-stone-500 hover:text-stone-900 gap-2">
-                  <Check size={14} /> Mark all as read
-                </Button>
-                <Button variant="ghost" className="text-xs font-bold text-red-500 hover:text-red-600 gap-2">
-                  <Trash2 size={14} /> Clear all
-                </Button>
-              </div>
-            </div>
-
-            <Tabs defaultValue="all" onValueChange={setFilter} className="space-y-6">
-              <TabsList className="bg-white p-1 rounded-2xl border border-stone-100 shadow-sm overflow-x-auto flex w-full">
-                {['All', 'Reminders', 'Expiring', 'Shopping', 'Goals', 'Recommendations'].map((t) => (
-                  <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-xl px-6 flex-1">
-                    {t}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              <div className="space-y-4">
-                {filtered.map((n) => (
-                  <div 
-                    key={n.id} 
-                    className={cn(
-                      "bg-white p-5 rounded-3xl border transition-all group flex gap-5",
-                      n.read ? "border-stone-100 opacity-70" : "border-orange-100 shadow-sm shadow-orange-50"
-                    )}
-                  >
-                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", n.color)}>
-                      <n.icon size={24} />
-                    </div>
-                    
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-stone-900">{n.title}</h3>
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{n.time}</span>
-                      </div>
-                      <p className="text-sm text-stone-600 leading-relaxed">{n.message}</p>
-                      <div className="flex gap-4 pt-2">
-                        {!n.read && (
-                          <button className="text-[10px] font-bold text-orange-600 uppercase tracking-widest hover:underline">
-                            Mark as read
-                          </button>
-                        )}
-                        <button className="text-[10px] font-bold text-stone-400 uppercase tracking-widest hover:text-stone-900">
-                          View Details
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between items-end">
-                      <button className="p-1 text-stone-300 hover:text-stone-600">
-                        <MoreVertical size={16} />
-                      </button>
-                      <button 
-                        onClick={() => deleteNotification(n.id)}
-                        className="p-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {filtered.length === 0 && (
-                  <div className="py-20 text-center space-y-4">
-                    <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto text-stone-300">
-                      <Bell size={32} />
-                    </div>
-                    <p className="text-stone-400 font-medium">No notifications in this category.</p>
-                  </div>
-                )}
-              </div>
-            </Tabs>
+    <Layout>
+      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight">Updates</h1>
+            {unreadCount > 0 && (
+              <Badge className="bg-orange-500 text-white border-none px-4 py-1.5 font-bold text-sm shadow-md shadow-orange-500/20">
+                {unreadCount} New
+              </Badge>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={markAllRead} className="rounded-full text-stone-500 hover:text-stone-900 font-bold gap-2 bg-stone-100 hover:bg-stone-200">
+              <Check size={16} /> Mark all read
+            </Button>
+            <Button variant="ghost" className="rounded-full text-red-500 hover:text-red-600 font-bold gap-2 bg-red-50 hover:bg-red-100">
+              <Trash2 size={16} /> Clear all
+            </Button>
           </div>
         </div>
-      </main>
-    </div>
+
+        <Tabs defaultValue="all" onValueChange={setFilter} className="space-y-8">
+          <TabsList className="bg-white p-1.5 rounded-full border border-stone-100 shadow-sm w-full overflow-x-auto justify-start sm:justify-center scrollbar-hide flex">
+            {['All', 'Reminders', 'Expiring', 'Shopping', 'Goals', 'Recommendations'].map((t) => (
+              <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-full px-6 py-2.5 data-[state=active]:bg-stone-900 data-[state=active]:text-white transition-all whitespace-nowrap">
+                {t}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <div className="space-y-4">
+            {filtered.map((n) => (
+              <div
+                key={n.id}
+                className={cn(
+                  "bg-white p-6 rounded-[2rem] border transition-all duration-300 group flex flex-col sm:flex-row gap-6",
+                  n.read ? "border-stone-100 opacity-75 hover:opacity-100" : "border-orange-200 shadow-lg shadow-orange-500/5 bg-gradient-to-r from-orange-50/30 to-white"
+                )}
+              >
+                <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner", n.color)}>
+                  <n.icon size={28} />
+                </div>
+
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className={cn("text-lg font-bold", n.read ? "text-stone-700" : "text-stone-900")}>{n.title}</h3>
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{n.time}</span>
+                  </div>
+                  <p className="text-base text-stone-500 leading-relaxed">{n.message}</p>
+
+                  <div className="flex gap-6 pt-3">
+                    {!n.read && (
+                      <button className="text-sm font-bold text-orange-600 hover:text-orange-700 transition-colors">
+                        Mark as read
+                      </button>
+                    )}
+                    <button className="text-sm font-bold text-stone-400 hover:text-stone-900 transition-colors">
+                      View Details
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-row sm:flex-col justify-end sm:justify-between items-center sm:items-end gap-4 sm:gap-0 border-t sm:border-t-0 border-stone-100 pt-4 sm:pt-0">
+                  <button className="p-2 text-stone-300 hover:text-stone-600 rounded-full hover:bg-stone-100 transition-colors">
+                    <MoreVertical size={20} />
+                  </button>
+                  <button
+                    onClick={() => deleteNotification(n.id)}
+                    className="p-2 text-stone-300 hover:text-red-500 sm:opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-red-50"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {filtered.length === 0 && (
+              <div className="py-24 text-center space-y-6 bg-white rounded-[3rem] border border-stone-100 border-dashed">
+                <div className="w-24 h-24 bg-stone-50 rounded-full flex items-center justify-center mx-auto text-stone-300">
+                  <Bell size={48} />
+                </div>
+                <div className="max-w-xs mx-auto">
+                  <h3 className="text-xl font-bold text-stone-900 mb-2">You're all caught up!</h3>
+                  <p className="text-stone-500">No new notifications in this category right now.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </Tabs>
+      </div>
+    </Layout>
   );
 }

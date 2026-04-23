@@ -13,12 +13,14 @@ import NotificationsPage from './pages/Notifications';
 import AICamera from './pages/AICamera';
 import Settings from './pages/Settings';
 import { Toaster } from '@/components/ui/sonner';
+import Onboarding from './pages/Onboarding';
 
 export default function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/recipe/:id" element={<RecipeDetail />} />
         <Route path="/planner" element={<MealPlanner />} />

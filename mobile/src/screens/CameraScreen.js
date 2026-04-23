@@ -6,7 +6,6 @@ import {
   StyleSheet, 
   ActivityIndicator,
   Image,
-  Alert
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ export default function CameraScreen({ navigation }) {
   const [type, setType] = useState('back');
   const [loading, setLoading] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
   const cameraRef = useRef(null);
 
   useEffect(() => {
@@ -30,19 +30,12 @@ export default function CameraScreen({ navigation }) {
     if (cameraRef.current) {
       try {
         setLoading(true);
+        setAnalysisComplete(false);
         const photo = await cameraRef.current.takePictureAsync({ base64: true });
         setCapturedImage(photo.uri);
-        // Simulate AI analysis
         setTimeout(() => {
           setLoading(false);
-          Alert.alert(
-            "AI Analysis Complete",
-            "Detected: Creamy Tuscan Chicken",
-            [
-              { text: "View Recipe", onPress: () => navigation.navigate('RecipeDetail', { id: 1 }) },
-              { text: "Retake", onPress: () => setCapturedImage(null) }
-            ]
-          );
+          setAnalysisComplete(true);
         }, 2000);
       } catch (error) {
         console.error('Failed to take picture', error);
@@ -52,7 +45,7 @@ export default function CameraScreen({ navigation }) {
   };
 
   if (hasPermission === null) {
-    return <View className="flex-1 bg-black items-center justify-center"><ActivityIndicator color="#22C55E" /></View>;
+    return <View className="flex-1 bg-black items-center justify-center"><ActivityIndicator color="#f97316" /></View>;
   }
   if (hasPermission === false) {
     return <View className="flex-1 bg-black items-center justify-center p-10"><Text className="text-white text-center">No access to camera. Please enable permissions in settings.</Text></View>;
@@ -65,47 +58,80 @@ export default function CameraScreen({ navigation }) {
           <Image source={{ uri: capturedImage }} className="flex-1" />
           {loading && (
             <View className="absolute inset-0 bg-black/60 items-center justify-center">
-              <ActivityIndicator size="large" color="#22C55E" />
+              <ActivityIndicator size="large" color="#f97316" />
               <Text className="text-white font-bold mt-4">Analyzing image...</Text>
             </View>
+          )}
+          {analysisComplete && (
+            <SafeAreaView className="absolute inset-0 justify-end p-6" pointerEvents="box-none">
+              <View className="bg-white rounded-3xl p-5 shadow-lg border border-stone-100">
+                <View className="flex-row items-center space-x-3 mb-4">
+                  <View className="w-11 h-11 rounded-2xl bg-orange-50 items-center justify-center">
+                    <Ionicons name="sparkles" size={22} color="#f97316" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-dark font-bold text-lg">AI Analysis Complete</Text>
+                    <Text className="text-stone-400 text-xs font-medium">Detected: Creamy Tuscan Chicken</Text>
+                  </View>
+                </View>
+
+                <View className="flex-row space-x-3">
+                  <TouchableOpacity
+                    onPress={() => {
+                      setCapturedImage(null);
+                      setAnalysisComplete(false);
+                    }}
+                    className="flex-1 h-12 rounded-2xl bg-stone-100 items-center justify-center"
+                  >
+                    <Text className="text-dark font-bold">Retake</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
+                    className="flex-1 h-12 rounded-2xl bg-primary items-center justify-center"
+                  >
+                    <Text className="text-white font-bold">View Recipe</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </SafeAreaView>
           )}
         </View>
       ) : (
         <View className="flex-1">
           <CameraView style={StyleSheet.absoluteFillObject} facing={type} ref={cameraRef} />
-          <SafeAreaView className="flex-1 justify-between p-6" pointerEvents="box-none">
+          <SafeAreaView className="flex-1 justify-between px-5 pt-5 pb-7" pointerEvents="box-none">
             <View className="flex-row justify-between">
               <TouchableOpacity onPress={() => navigation.goBack()}>
-                <Ionicons name="close" size={32} color="white" />
+                <Ionicons name="close" size={26} color="white" />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setType(
                 type === 'back'
                   ? 'front'
                   : 'back'
               )}>
-                <Ionicons name="camera-reverse-outline" size={32} color="white" />
+                <Ionicons name="camera-reverse-outline" size={26} color="white" />
               </TouchableOpacity>
             </View>
 
-            <View className="items-center space-y-8" pointerEvents="box-none">
-              <View className="bg-white/10 px-6 py-2 rounded-full border border-white/20">
-                <Text className="text-white text-xs font-bold">Point at ingredients or a dish</Text>
+            <View className="items-center space-y-7" pointerEvents="box-none">
+              <View className="bg-black/20 px-5 py-2 rounded-full border border-white/25">
+                <Text className="text-white text-[10px] font-bold">Point at ingredients or a dish</Text>
               </View>
               
-              <View className="flex-row items-center space-x-12">
-                <TouchableOpacity className="w-12 h-12 bg-white/20 rounded-full items-center justify-center">
-                  <Ionicons name="images-outline" size={24} color="white" />
+              <View className="flex-row items-center space-x-10">
+                <TouchableOpacity className="w-11 h-11 bg-black/25 rounded-full items-center justify-center border border-white/10">
+                  <Ionicons name="images-outline" size={21} color="white" />
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
                   onPress={takePicture}
-                  className="w-20 h-20 bg-white rounded-full items-center justify-center border-4 border-primary"
+                  className="w-[66px] h-[66px] bg-white rounded-full items-center justify-center border-4 border-primary"
                 >
-                  <View className="w-14 h-14 bg-primary rounded-full" />
+                  <View className="w-12 h-12 bg-primary rounded-full" />
                 </TouchableOpacity>
 
-                <TouchableOpacity className="w-12 h-12 bg-white/20 rounded-full items-center justify-center">
-                  <Ionicons name="flash-outline" size={24} color="white" />
+                <TouchableOpacity className="w-11 h-11 bg-black/25 rounded-full items-center justify-center border border-white/10">
+                  <Ionicons name="flash-outline" size={21} color="white" />
                 </TouchableOpacity>
               </View>
             </View>

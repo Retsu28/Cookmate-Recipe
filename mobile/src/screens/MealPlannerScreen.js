@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  FlatList,
-  Dimensions
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, addDays, startOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import MealSlot from '../components/MealSlot';
 
-const { width } = Dimensions.get('window');
-
 const mealTypes = [
-  { id: 'breakfast', label: 'Breakfast', color: 'bg-yellow-500' },
-  { id: 'lunch', label: 'Lunch', color: 'bg-green-500' },
+  { id: 'breakfast', label: 'Breakfast', color: 'bg-yellow-400' },
+  { id: 'lunch', label: 'Lunch', color: 'bg-green-400' },
   { id: 'dinner', label: 'Dinner', color: 'bg-orange-500' },
-  { id: 'snack', label: 'Snack', color: 'bg-blue-500' },
+  { id: 'snack', label: 'Snack', color: 'bg-blue-400' },
 ];
 
 const mockPlannedMeals = [
@@ -38,42 +34,38 @@ export default function MealPlannerScreen() {
   const [plannedMeals, setPlannedMeals] = useState(mockPlannedMeals);
 
   const startDate = startOfWeek(new Date());
-  const weekDays = eachDayOfInterval({ 
-    start: startDate, 
-    end: addDays(startDate, 6) 
+  const weekDays = eachDayOfInterval({
+    start: startDate,
+    end: addDays(startDate, 6),
   });
 
   const renderPlanner = () => (
-    <ScrollView className="flex-1 px-6 py-4" showsVerticalScrollIndicator={false}>
-      {/* Week Strip */}
-      <View className="flex-row justify-between mb-8">
+    <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 86 }}>
+      <View className="flex-row justify-between mb-7">
         {weekDays.map((day) => {
           const isSelected = isSameDay(day, selectedDate);
-          const isToday = isSameDay(day, new Date());
           return (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={day.toString()}
               onPress={() => setSelectedDate(day)}
-              className={`items-center p-3 rounded-2xl w-[13%] ${isSelected ? 'bg-primary shadow-lg shadow-green-200' : 'bg-white border border-gray-100'}`}
+              className={`items-center justify-center rounded-xl w-[13%] h-11 ${isSelected ? 'bg-primary shadow-lg shadow-orange-200' : 'bg-white shadow-sm'}`}
             >
-              <Text className={`text-[8px] font-bold uppercase ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+              <Text className={`text-[7px] font-bold uppercase ${isSelected ? 'text-white/90' : 'text-stone-400'}`}>
                 {format(day, 'EEE')}
               </Text>
-              <Text className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-dark'}`}>
+              <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-dark'}`}>
                 {format(day, 'd')}
               </Text>
-              {isToday && !isSelected && <View className="w-1 h-1 bg-primary rounded-full mt-1" />}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Meal Slots */}
-      <View className="space-y-2">
+      <View>
         {mealTypes.map((type) => {
           const meal = plannedMeals.find(m => isSameDay(m.date, selectedDate) && m.slot === type.id);
           return (
-            <MealSlot 
+            <MealSlot
               key={type.id}
               label={type.label}
               color={type.color}
@@ -88,28 +80,28 @@ export default function MealPlannerScreen() {
   );
 
   const renderShoppingList = () => (
-    <ScrollView className="flex-1 px-6 py-4" showsVerticalScrollIndicator={false}>
-      <View className="bg-primary/10 p-6 rounded-3xl border border-primary/20 mb-8 flex-row items-center justify-between">
-        <View className="space-y-1">
-          <Text className="text-primary font-bold text-lg">Weekly List</Text>
-          <Text className="text-primary/60 text-xs">Based on your 7-day plan</Text>
+    <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 86 }}>
+      <View className="bg-orange-50 p-5 rounded-2xl border border-orange-100 mb-7 flex-row items-center justify-between">
+        <View>
+          <Text className="text-primary font-bold text-base">Weekly List</Text>
+          <Text className="text-orange-400 text-xs">Based on your 7-day plan</Text>
         </View>
         <TouchableOpacity className="bg-primary p-3 rounded-xl">
-          <Ionicons name="download-outline" size={20} color="white" />
+          <Ionicons name="download-outline" size={18} color="white" />
         </TouchableOpacity>
       </View>
 
       {shoppingList.map((cat) => (
-        <View key={cat.category} className="mb-8">
-          <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">{cat.category}</Text>
+        <View key={cat.category} className="mb-7">
+          <Text className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">{cat.category}</Text>
           <View className="space-y-3">
             {cat.items.map((item, i) => (
-              <TouchableOpacity key={i} className="flex-row items-center justify-between bg-white p-4 rounded-2xl border border-gray-50 shadow-sm">
+              <TouchableOpacity key={i} className="h-12 flex-row items-center justify-between bg-white px-4 rounded-xl shadow-sm">
                 <View className="flex-row items-center space-x-3">
-                  <View className="w-5 h-5 rounded-lg border-2 border-gray-200" />
-                  <Text className="text-sm font-medium text-dark">{item}</Text>
+                  <View className="w-4 h-4 rounded-md border-2 border-stone-200" />
+                  <Text className="text-xs font-medium text-dark">{item}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                <Ionicons name="chevron-forward" size={15} color="#d6d3d1" />
               </TouchableOpacity>
             ))}
           </View>
@@ -120,16 +112,15 @@ export default function MealPlannerScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      {/* Header Tabs */}
-      <View className="px-6 pt-4 pb-2 bg-white border-b border-gray-100">
-        <View className="flex-row bg-gray-100 p-1 rounded-2xl">
+      <View className="px-4 pt-3 pb-2 bg-background">
+        <View className="h-10 flex-row bg-stone-100 p-1 rounded-xl">
           {['Planner', 'Shopping List'].map((tab) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={tab}
               onPress={() => setActiveTab(tab)}
-              className={`flex-1 py-3 rounded-xl items-center ${activeTab === tab ? 'bg-white shadow-sm' : ''}`}
+              className={`flex-1 rounded-lg items-center justify-center ${activeTab === tab ? 'bg-white shadow-sm' : ''}`}
             >
-              <Text className={`text-sm font-bold ${activeTab === tab ? 'text-primary' : 'text-gray-400'}`}>
+              <Text className={`text-[11px] font-bold ${activeTab === tab ? 'text-primary' : 'text-stone-400'}`}>
                 {tab}
               </Text>
             </TouchableOpacity>

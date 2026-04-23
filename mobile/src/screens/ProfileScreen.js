@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
   Image,
   Switch,
-  TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,87 +36,81 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View className="p-8 items-center space-y-4">
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 86 }}>
+        <View className="pt-7 pb-8 items-center">
           <View className="relative">
-            <Image 
-              source={{ uri: 'https://picsum.photos/seed/jane/200/200' }} 
-              className="w-24 h-24 rounded-full border-4 border-white shadow-md"
+            <Image
+              source={{ uri: 'https://picsum.photos/seed/jane/200/200' }}
+              className="w-20 h-20 rounded-full"
             />
-            <TouchableOpacity className="absolute bottom-0 right-0 bg-primary w-8 h-8 rounded-full items-center justify-center border-2 border-white">
-              <Ionicons name="camera" size={16} color="white" />
+            <TouchableOpacity className="absolute bottom-0 right-0 bg-primary w-8 h-8 rounded-full items-center justify-center border-2 border-background">
+              <Ionicons name="camera" size={15} color="white" />
             </TouchableOpacity>
           </View>
-          <View className="items-center">
-            <Text className="text-2xl font-bold text-dark">Jane Doe</Text>
-            <Text className="text-gray-400 text-sm">jane.doe@example.com</Text>
-          </View>
-          <TouchableOpacity className="bg-white px-6 py-2 rounded-xl border border-gray-100 shadow-sm">
-            <Text className="text-primary font-bold text-xs">Edit Profile</Text>
+          <Text className="text-xl font-bold text-dark mt-3">Jane Doe</Text>
+          <Text className="text-stone-400 text-xs">jane.doe@example.com</Text>
+          <TouchableOpacity className="bg-white px-6 py-2 rounded-xl mt-4 shadow-sm">
+            <Text className="text-primary font-bold text-[10px]">Edit Profile</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="px-6 space-y-8 pb-12">
-          {/* Dietary Goals */}
+        <View className="px-5 space-y-8">
           <View className="space-y-4">
-            <Text className="text-lg font-bold text-dark">Dietary Goals</Text>
-            <View className="flex-row flex-wrap">
+            <Text className="text-base font-bold text-dark">Dietary Goals</Text>
+            <View className="flex-row justify-between">
               {dietaryGoals.map((goal) => {
                 const isSelected = selectedGoals.includes(goal);
                 return (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={goal}
                     onPress={() => toggleGoal(goal)}
-                    className={`px-4 py-2 rounded-xl mr-2 mb-2 border ${isSelected ? 'bg-primary border-primary' : 'bg-white border-gray-100'}`}
+                    className={`h-7 px-3 rounded-lg items-center justify-center ${isSelected ? 'bg-primary shadow-sm' : 'bg-white shadow-sm'}`}
                   >
-                    <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-400'}`}>{goal}</Text>
+                    <Text className={`text-[9px] font-bold ${isSelected ? 'text-white' : 'text-stone-400'}`}>{goal}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
 
-          {/* Allergies */}
           <View className="space-y-4">
-            <Text className="text-lg font-bold text-dark">Allergies</Text>
-            <View className="flex-row flex-wrap">
+            <Text className="text-base font-bold text-dark">Allergies</Text>
+            <View className="flex-row justify-between">
               {allergies.map((allergy) => {
                 const isSelected = selectedAllergies.includes(allergy);
                 return (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={allergy}
                     onPress={() => toggleAllergy(allergy)}
-                    className={`px-4 py-2 rounded-xl mr-2 mb-2 border ${isSelected ? 'bg-red-500 border-red-500' : 'bg-white border-gray-100'}`}
+                    className={`h-7 px-3 rounded-lg items-center justify-center ${isSelected ? 'bg-red-500 shadow-sm' : 'bg-white shadow-sm'}`}
                   >
-                    <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-400'}`}>{allergy}</Text>
+                    <Text className={`text-[9px] font-bold ${isSelected ? 'text-white' : 'text-stone-400'}`}>{allergy}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
 
-          {/* Kitchen Inventory */}
           <View className="space-y-4">
             <View className="flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-dark">Kitchen Inventory</Text>
+              <Text className="text-base font-bold text-dark">Kitchen Inventory</Text>
               <TouchableOpacity>
-                <Text className="text-primary font-bold text-xs">Add Item</Text>
+                <Text className="text-primary font-bold text-[10px]">Add Item</Text>
               </TouchableOpacity>
             </View>
             <View className="space-y-3">
               {[
                 { name: 'Chicken Breast', qty: '2 lbs', expiry: 'Tomorrow', urgent: true },
                 { name: 'Heavy Cream', qty: '1 cup', expiry: '3 days', urgent: false },
-              ].map((item, i) => (
-                <View key={i} className="bg-white p-4 rounded-2xl border border-gray-50 shadow-sm flex-row items-center justify-between">
+              ].map((item) => (
+                <View key={item.name} className="h-16 bg-white px-4 rounded-xl shadow-sm flex-row items-center justify-between">
                   <View className="flex-row items-center space-x-3">
-                    <View className={`w-10 h-10 rounded-xl items-center justify-center ${item.urgent ? 'bg-red-50' : 'bg-green-50'}`}>
-                      <Ionicons name={item.urgent ? "alert-circle" : "checkmark-circle"} size={20} color={item.urgent ? "#ef4444" : "#22C55E"} />
+                    <View className={`w-8 h-8 rounded-full items-center justify-center ${item.urgent ? 'bg-red-50' : 'bg-orange-50'}`}>
+                      <Ionicons name={item.urgent ? 'alert-circle' : 'checkmark-circle'} size={18} color={item.urgent ? '#ef4444' : '#f97316'} />
                     </View>
                     <View>
-                      <Text className="text-sm font-bold text-dark">{item.name}</Text>
-                      <Text className="text-[10px] text-gray-400">Expires in {item.expiry}</Text>
+                      <Text className="text-xs font-bold text-dark">{item.name}</Text>
+                      <Text className="text-[9px] text-stone-400">Expires in {item.expiry}</Text>
                     </View>
                   </View>
                   <Text className="text-xs font-bold text-dark">{item.qty}</Text>
@@ -126,35 +119,30 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Preferences */}
           <View className="space-y-4">
-            <Text className="text-lg font-bold text-dark">Preferences</Text>
-            <View className="bg-white p-4 rounded-3xl border border-gray-50 shadow-sm space-y-4">
+            <Text className="text-base font-bold text-dark">Preferences</Text>
+            <View className="bg-white px-4 py-4 rounded-xl shadow-sm space-y-4">
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center space-x-3">
-                  <Ionicons name="notifications-outline" size={20} color="#111827" />
-                  <Text className="text-sm font-medium text-dark">Push Notifications</Text>
+                  <Ionicons name="notifications-outline" size={18} color="#1c1917" />
+                  <Text className="text-xs font-medium text-dark">Push Notifications</Text>
                 </View>
-                <Switch 
-                  value={notifications} 
+                <Switch
+                  value={notifications}
                   onValueChange={setNotifications}
-                  trackColor={{ false: "#d1d5db", true: "#22C55E" }}
+                  trackColor={{ false: '#d6d3d1', true: '#f97316' }}
+                  thumbColor={notifications ? '#0ea5e9' : '#ffffff'}
                 />
               </View>
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center space-x-3">
-                  <Ionicons name="globe-outline" size={20} color="#111827" />
-                  <Text className="text-sm font-medium text-dark">Language</Text>
+                  <Ionicons name="globe-outline" size={18} color="#1c1917" />
+                  <Text className="text-xs font-medium text-dark">Language</Text>
                 </View>
-                <Text className="text-xs font-bold text-gray-400">English (US)</Text>
+                <Text className="text-[10px] font-bold text-stone-400">English (US)</Text>
               </View>
             </View>
           </View>
-
-          {/* Logout */}
-          <TouchableOpacity className="bg-red-50 h-14 rounded-2xl items-center justify-center border border-red-100">
-            <Text className="text-red-500 font-bold">LOGOUT</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

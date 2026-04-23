@@ -24,7 +24,7 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="px-6 py-4 flex-row items-center justify-between bg-white border-b border-gray-100">
+      <View className="px-6 py-4 flex-row items-center justify-between bg-white border-b border-stone-200">
         <Text className="text-2xl font-bold text-dark">Notifications</Text>
         <TouchableOpacity>
           <Text className="text-primary font-bold text-xs">Mark all as read</Text>
@@ -37,9 +37,9 @@ export default function NotificationsScreen() {
             <TouchableOpacity 
               key={f}
               onPress={() => setFilter(f)}
-              className={`px-6 py-2 rounded-xl border ${filter === f ? 'bg-primary border-primary' : 'bg-white border-gray-100'}`}
+              className={`px-6 py-2 rounded-xl border ${filter === f ? 'bg-primary border-primary' : 'bg-white border-stone-100'}`}
             >
-              <Text className={`text-xs font-bold ${filter === f ? 'text-white' : 'text-gray-400'}`}>{f}</Text>
+              <Text className={`text-xs font-bold ${filter === f ? 'text-white' : 'text-stone-400'}`}>{f}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -56,8 +56,8 @@ export default function NotificationsScreen() {
           )}
           ListEmptyComponent={
             <View className="items-center justify-center py-20 space-y-4">
-              <Ionicons name="notifications-off-outline" size={48} color="#d1d5db" />
-              <Text className="text-gray-400 font-medium">No notifications yet</Text>
+              <Ionicons name="notifications-off-outline" size={48} color="#d6d3d1" />
+              <Text className="text-stone-400 font-medium">No notifications yet</Text>
             </View>
           }
         />

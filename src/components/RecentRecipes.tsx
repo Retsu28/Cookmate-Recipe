@@ -1,36 +1,38 @@
 import React from 'react';
-import { Play, Clock } from 'lucide-react';
+import { Clock, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-const recent = [
-  { id: 1, title: 'Beef Stir Fry', date: '2 days ago', image: 'https://picsum.photos/seed/beef/100/100' },
-  { id: 2, title: 'Greek Salad', date: 'Yesterday', image: 'https://picsum.photos/seed/salad/100/100' },
-  { id: 3, title: 'Pancakes', date: 'Today', image: 'https://picsum.photos/seed/pancake/100/100' },
+const quickMeals = [
+  { id: 101, title: 'Garlic Butter Steak Bites', time: '15 min', image: 'https://picsum.photos/seed/steak/400/300' },
+  { id: 102, title: 'Creamy Tomato Pasta', time: '20 min', image: 'https://picsum.photos/seed/pasta/400/300' },
+  { id: 103, title: 'Shrimp Tacos with Slaw', time: '25 min', image: 'https://picsum.photos/seed/taco/400/300' },
+  { id: 104, title: 'Mushroom Risotto', time: '30 min', image: 'https://picsum.photos/seed/risotto/400/300' },
 ];
 
 export function RecentRecipes() {
   return (
-    <div className="space-y-4">
-      {recent.map((recipe) => (
-        <div key={recipe.id} className="flex items-center gap-4 p-3 bg-white rounded-2xl border border-stone-100 hover:border-orange-200 transition-all cursor-pointer group">
-          <div className="w-16 h-16 rounded-xl overflow-hidden relative">
-            <img 
-              src={recipe.image} 
-              alt={recipe.title} 
-              className="w-full h-full object-cover"
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {quickMeals.map((recipe) => (
+        <Link to={`/recipe/${recipe.id}`} key={recipe.id} className="group flex flex-col gap-3">
+          <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden relative shadow-sm">
+            <img
+              src={recipe.image}
+              alt={recipe.title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               referrerPolicy="no-referrer"
             />
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Play size={20} className="text-white fill-white" />
+            <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm text-stone-900 font-medium text-xs">
+              <Clock className="w-3.5 h-3.5 text-orange-500" />
+              {recipe.time}
             </div>
           </div>
-          <div className="flex-1">
-            <h4 className="font-bold text-stone-900">{recipe.title}</h4>
-            <p className="text-xs text-stone-400 font-medium">{recipe.date}</p>
+          <div className="flex items-start justify-between gap-2 px-1">
+            <h4 className="font-bold text-stone-900 leading-snug group-hover:text-orange-600 transition-colors">{recipe.title}</h4>
+            <div className="p-1 bg-stone-100 rounded-full text-stone-400 group-hover:bg-orange-100 group-hover:text-orange-500 transition-colors shrink-0">
+              <ArrowRight className="w-4 h-4" />
+            </div>
           </div>
-          <button className="p-2 text-stone-400 hover:text-orange-600">
-            <Clock size={18} />
-          </button>
-        </div>
+        </Link>
       ))}
     </div>
   );

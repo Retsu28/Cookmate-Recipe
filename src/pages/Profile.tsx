@@ -1,186 +1,196 @@
 import React, { useState } from 'react';
-import { Sidebar } from '../components/Sidebar';
-import { TopBar } from '../components/TopBar';
-import { Badge } from '../components/ui/badge';
+import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { 
-  User, Package, Settings as SettingsIcon, 
-  Plus, Trash2, AlertCircle, CheckCircle2,
-  Globe, Bell, Shield, Ruler
-} from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function ProfilePage() {
+  const [activeTab, setActiveTab] = useState('Dietary Preferences');
+
   return (
-    <div className="flex h-screen bg-stone-50 font-sans text-stone-900">
-      <Sidebar />
-      
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
-        
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="flex items-center gap-6">
-              <div className="w-24 h-24 rounded-full bg-stone-200 border-4 border-white shadow-md overflow-hidden">
-                <img src="https://picsum.photos/seed/jane/200/200" alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-serif italic">Jane Doe</h1>
-                <p className="text-stone-500">Intermediate Cook • Member since April 2024</p>
+    <Layout>
+      <div className="w-full max-w-5xl mx-auto py-8">
+        <h1 className="text-3xl font-extrabold text-stone-900 mb-8 tracking-tight">Profile & Settings</h1>
+
+        {/* Header Card */}
+        <div className="bg-white p-8 mb-8 flex flex-col sm:flex-row items-center sm:items-start gap-8 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-1/2 h-full bg-stone-100 -skew-x-12 translate-x-10 -z-10" />
+          <div className="relative shrink-0">
+            <div className="w-32 h-32 bg-stone-200">
+              <img src="https://picsum.photos/seed/user123/200/200" alt="Marcus" className="w-full h-full object-cover" />
+            </div>
+            <div className="absolute -bottom-2 -right-2 bg-stone-900 text-white p-1.5">
+              <span className="sr-only">Edit Profile Picture</span>
+              ✏️
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6 w-full">
+            <div className="text-center sm:text-left">
+              <h2 className="text-4xl font-extrabold text-stone-900 mb-1">Marcus Thorne</h2>
+              <p className="text-stone-500 font-medium mb-6">Level 12 Home Chef • Joined Jan 2024</p>
+              <div className="flex justify-center sm:justify-start gap-8 text-left">
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Recipes</p>
+                  <p className="text-2xl font-bold text-stone-900">142</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Followers</p>
+                  <p className="text-2xl font-bold text-stone-900">8.4k</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Avg Rating</p>
+                  <p className="text-2xl font-bold text-stone-900">4.9</p>
+                </div>
               </div>
             </div>
-
-            <Tabs defaultValue="profile" className="space-y-8">
-              <TabsList className="bg-white p-1 rounded-2xl border border-stone-100 shadow-sm">
-                <TabsTrigger value="profile" className="rounded-xl px-8 gap-2"><User size={16} /> Profile</TabsTrigger>
-                <TabsTrigger value="inventory" className="rounded-xl px-8 gap-2"><Package size={16} /> Kitchen Inventory</TabsTrigger>
-                <TabsTrigger value="settings" className="rounded-xl px-8 gap-2"><SettingsIcon size={16} /> Settings</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="profile" className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Dietary Goals */}
-                  <Card className="rounded-3xl border-stone-100 shadow-sm">
-                    <CardHeader><CardTitle className="text-lg">Dietary Goals</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        {['Lose Weight', 'Build Muscle', 'Eat Healthy', 'Balanced Diet', 'Increase Energy'].map((goal) => (
-                          <Badge key={goal} variant="outline" className="px-4 py-2 rounded-xl cursor-pointer hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-all">
-                            {goal}
-                          </Badge>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Allergies */}
-                  <Card className="rounded-3xl border-stone-100 shadow-sm">
-                    <CardHeader><CardTitle className="text-lg">Allergies & Intolerances</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        {['Gluten', 'Dairy', 'Nuts', 'Shellfish', 'Eggs', 'Soy'].map((allergy) => (
-                          <Badge key={allergy} variant="outline" className="px-4 py-2 rounded-xl cursor-pointer hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all">
-                            {allergy}
-                          </Badge>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card className="rounded-3xl border-stone-100 shadow-sm">
-                  <CardHeader><CardTitle className="text-lg">Favorite Cuisines</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-3">
-                      {['Italian', 'Asian', 'Mexican', 'French', 'Mediterranean', 'Indian', 'Thai'].map((cuisine) => (
-                        <Badge key={cuisine} className="bg-stone-100 text-stone-600 hover:bg-orange-500 hover:text-white border-none px-5 py-2.5 rounded-xl font-medium transition-all cursor-pointer">
-                          {cuisine}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="inventory" className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold">In Your Kitchen</h2>
-                  <Button className="bg-orange-500 hover:bg-orange-600 rounded-xl gap-2">
-                    <Plus size={18} /> Add Ingredient
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[
-                    { name: 'Chicken Breast', qty: '2 lbs', expiry: 'Tomorrow', urgent: true },
-                    { name: 'Heavy Cream', qty: '1 cup', expiry: '3 days', urgent: true },
-                    { name: 'Spinach', qty: '2 cups', expiry: '5 days', urgent: false },
-                    { name: 'Parmesan', qty: '200g', expiry: '2 weeks', urgent: false },
-                  ].map((item) => (
-                    <Card key={item.name} className="rounded-2xl border-stone-100 shadow-sm group">
-                      <CardContent className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center",
-                            item.urgent ? "bg-red-50 text-red-500" : "bg-green-50 text-green-500"
-                          )}>
-                            {item.urgent ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
-                          </div>
-                          <div>
-                            <p className="font-bold text-stone-900 text-sm">{item.name}</p>
-                            <p className="text-[10px] font-medium text-stone-400">Expires in {item.expiry}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-stone-900">{item.qty}</p>
-                          <button className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="font-bold text-orange-900">Use Your Inventory</p>
-                    <p className="text-sm text-orange-700">Find recipes you can cook right now with what you have.</p>
-                  </div>
-                  <Button className="bg-orange-500 hover:bg-orange-600 rounded-xl">Search with Inventory</Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="settings" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <Card className="rounded-3xl border-stone-100 shadow-sm">
-                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Bell size={18} /> Notifications</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                      {[
-                        { label: 'Meal Reminders', desc: 'Get notified 30 mins before meal time' },
-                        { label: 'Expiry Alerts', desc: 'Alerts for ingredients expiring soon' },
-                        { label: 'New Recommendations', desc: 'Weekly personalized recipe picks' },
-                      ].map((pref) => (
-                        <div key={pref.label} className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-stone-900">{pref.label}</p>
-                            <p className="text-xs text-stone-400">{pref.desc}</p>
-                          </div>
-                          <div className="w-10 h-5 bg-orange-500 rounded-full relative cursor-pointer">
-                            <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full" />
-                          </div>
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border-stone-100 shadow-sm">
-                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Globe size={18} /> Preferences</CardTitle></CardHeader>
-                    <CardContent className="space-y-6">
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Units</p>
-                        <div className="flex gap-2">
-                          <Button variant="secondary" className="rounded-xl flex-1">Metric</Button>
-                          <Button variant="outline" className="rounded-xl flex-1">Imperial</Button>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Language</p>
-                        <Button variant="outline" className="w-full rounded-xl justify-between">
-                          English (US) <Globe size={16} />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-            </Tabs>
+            <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
+              <Button className="rounded-none bg-stone-900 hover:bg-orange-600 text-white font-bold tracking-widest uppercase text-xs w-full sm:w-40 py-5 transition-colors">
+                Edit Profile
+              </Button>
+              <Button variant="outline" className="rounded-none border-stone-300 text-stone-900 font-bold tracking-widest uppercase text-xs w-full sm:w-40 py-5">
+                Share Link
+              </Button>
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Sidebar Navigation */}
+          <div className="md:col-span-3 space-y-1">
+            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4 px-4">Category</p>
+            {[
+              'Personal Info',
+              'Dietary Preferences',
+              'Kitchen Inventory',
+              'Privacy & Security',
+              'App Notifications',
+              'Logout'
+            ].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "w-full text-left px-4 py-3 font-bold text-sm transition-colors",
+                  activeTab === tab ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                )}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          {/* Main Content Area */}
+          <div className="md:col-span-9 bg-white p-8">
+            {activeTab === 'Dietary Preferences' ? (
+              <div className="space-y-10">
+                <div>
+                  <h3 className="text-2xl font-extrabold text-stone-900 mb-2 tracking-tight">Dietary Preferences</h3>
+                  <p className="text-stone-500">Configure your dietary restrictions to help CookMate tailor recipes and AI suggestions to your needs.</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Primary Diet Goal</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {[
+                      { title: 'Plant Based', icon: '🥑', desc: 'Focus on vegetables, fruits, and legumes.', active: true },
+                      { title: 'Ketogenic', icon: '🥓', desc: 'High-fat, low-carbohydrate approach.', active: false },
+                      { title: 'High Protein', icon: '🥩', desc: 'Muscle building and maintenance focus.', active: false },
+                    ].map(goal => (
+                      <div key={goal.title} className={cn(
+                        "p-6 cursor-pointer transition-colors border",
+                        goal.active ? "border-stone-900 bg-white" : "border-transparent bg-stone-100 hover:bg-stone-200"
+                      )}>
+                        <div className="text-2xl mb-4 grayscale">{goal.icon}</div>
+                        <h4 className="font-bold text-stone-900 mb-2">{goal.title}</h4>
+                        <p className="text-xs text-stone-500 leading-relaxed">{goal.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Exclusions & Allergies</p>
+                  <div className="grid grid-cols-2 gap-y-4">
+                    {[
+                      { label: 'Dairy Free', checked: true },
+                      { label: 'Gluten Free', checked: false },
+                      { label: 'Peanut Allergy', checked: true },
+                      { label: 'Shellfish', checked: false },
+                      { label: 'Soy Free', checked: false },
+                      { label: 'Tree Nuts', checked: false },
+                    ].map(item => (
+                      <label key={item.label} className="flex items-center gap-3 cursor-pointer group">
+                        <div className={cn(
+                          "w-5 h-5 flex items-center justify-center border transition-colors",
+                          item.checked ? "bg-stone-900 border-stone-900" : "border-stone-300 bg-white group-hover:border-stone-500"
+                        )}>
+                          {item.checked && <Check size={14} className="text-white" />}
+                        </div>
+                        <span className="font-medium text-stone-700 select-none text-sm">{item.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Disliked Ingredients</p>
+                  <div className="bg-stone-100 p-4">
+                    <p className="text-stone-400 text-sm mb-4">Add ingredients you want to avoid...</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['CILANTRO', 'OLIVES', 'MUSHROOMS'].map(ing => (
+                        <div key={ing} className="flex items-center gap-2 bg-stone-200 px-3 py-1.5 text-xs font-bold text-stone-700">
+                          {ing}
+                          <button className="hover:text-orange-600"><X size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-4 pt-6 border-t border-stone-100">
+                  <Button variant="ghost" className="text-stone-500 font-bold tracking-widest uppercase text-xs">
+                    Discard Changes
+                  </Button>
+                  <Button className="rounded-none bg-stone-900 hover:bg-orange-600 text-white font-bold tracking-widest uppercase text-xs px-8 py-5">
+                    Save Preferences
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-64 text-stone-400">
+                Content for {activeTab}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8">
+          <div className="md:col-span-2 bg-stone-100 p-8 flex flex-col justify-between h-48">
+            <p className="text-[10px] font-bold text-stone-900 uppercase tracking-widest mb-4">Activity Heatmap</p>
+            <div className="flex items-end gap-2 h-20 w-full">
+              {[2, 4, 8, 3, 2, 9, 5, 3, 6, 4, 5, 7, 4, 3].map((val, i) => (
+                <div key={i} className="flex-1 bg-stone-300" style={{ height: `${(val / 9) * 100}%` }}>
+                  {val > 6 && <div className="w-full h-full bg-stone-900" />}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-stone-500 mt-4">Showing recipe creation and planner interaction over the last 14 days.</p>
+          </div>
+
+          <div className="bg-stone-100 p-8 flex flex-col justify-between h-48">
+            <p className="text-[10px] font-bold text-stone-900 uppercase tracking-widest">Health Score</p>
+            <h3 className="text-5xl font-extrabold text-stone-900">88</h3>
+            <div className="space-y-4">
+              <p className="text-[10px] text-stone-500 leading-relaxed">Your dietary choices align with 88% of your set nutritional goals for this week.</p>
+              <div className="w-full h-1 bg-stone-300">
+                <div className="w-[88%] h-full bg-stone-900" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </Layout>
   );
 }
