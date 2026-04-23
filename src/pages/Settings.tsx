@@ -9,7 +9,7 @@ export default function Settings() {
     <div className="flex h-screen bg-[#FDFBF7]">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar title="Settings" />
+        <TopBar />
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-4xl mx-auto space-y-6">
             

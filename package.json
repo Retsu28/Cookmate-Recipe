@@ -46,7 +46,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
-    "natural": "^8.1.1",
+    "natural": "^6.10.5",
     "pg": "^8.20.0",
     "shadcn": "^4.2.0",
     "tailwindcss": "^4.1.14",
@@ -54,5 +54,8 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0"
+  },
+  "overrides": {
+    "@rollup/plugin-terser": "1.0.0"
   }
 }

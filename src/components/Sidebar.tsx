@@ -51,19 +51,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      <div className="p-4 border-t border-stone-100">
-        <div className="bg-stone-900 rounded-xl p-4 text-white relative overflow-hidden">
-          <div className="relative z-10">
-            <p className="text-xs font-medium text-stone-400 mb-1">PRO PLAN</p>
-            <p className="text-sm font-bold mb-3">Unlock AI Recipes</p>
-            <button className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 rounded-lg transition-colors">
-              Upgrade Now
-            </button>
-          </div>
-          <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-orange-500/20 rounded-full blur-2xl" />
-        </div>
-      </div>
     </aside>
   );
 }
