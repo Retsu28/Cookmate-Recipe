@@ -33,3 +33,6 @@ The Expo app in [`mobile/`](mobile) is native-only and is intended for Android/i
    `npm run ios`
 
 Do not use `mobile/` for browser development. The repo root app is the web experience.
+
+Use this in mobile Chrome:
+http://192.168.1.6:3001/

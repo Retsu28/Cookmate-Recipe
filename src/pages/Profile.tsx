@@ -2,10 +2,14 @@ import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Check, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getInitial } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState('Dietary Preferences');
+  const { user } = useAuth();
+  const fullName = user?.name?.trim() || 'CookMate Chef';
+  const initial = getInitial(user?.name);
 
   return (
     <Layout>
@@ -16,8 +20,13 @@ export default function ProfilePage() {
         <div className="bg-white p-8 mb-8 flex flex-col sm:flex-row items-center sm:items-start gap-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-1/2 h-full bg-stone-100 -skew-x-12 translate-x-10 -z-10" />
           <div className="relative shrink-0">
-            <div className="w-32 h-32 bg-stone-200">
-              <img src="https://picsum.photos/seed/user123/200/200" alt="Marcus" className="w-full h-full object-cover" />
+            <div
+              aria-label={`${fullName} avatar`}
+              className="w-32 h-32 bg-stone-900 flex items-center justify-center select-none"
+            >
+              <span className="text-white text-6xl font-extrabold tracking-tight">
+                {initial}
+              </span>
             </div>
             <div className="absolute -bottom-2 -right-2 bg-stone-900 text-white p-1.5">
               <span className="sr-only">Edit Profile Picture</span>
@@ -26,8 +35,10 @@ export default function ProfilePage() {
           </div>
           <div className="flex-1 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6 w-full">
             <div className="text-center sm:text-left">
-              <h2 className="text-4xl font-extrabold text-stone-900 mb-1">Marcus Thorne</h2>
-              <p className="text-stone-500 font-medium mb-6">Level 12 Home Chef • Joined Jan 2024</p>
+              <h2 className="text-4xl font-extrabold text-stone-900 mb-1">{fullName}</h2>
+              <p className="text-stone-500 font-medium mb-6">
+                {user?.email ? `${user.email} • Home Chef` : 'Home Chef'}
+              </p>
               <div className="flex justify-center sm:justify-start gap-8 text-left">
                 <div>
                   <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Recipes</p>

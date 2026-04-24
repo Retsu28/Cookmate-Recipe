@@ -1,0 +1,21 @@
+// Spacing + radius scale aligned with the Web React app.
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  '2xl': 24,
+  '3xl': 32,
+};
+
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,   // rounded-2xl on web
+  xl: 20,
+  '2xl': 24,
+  full: 9999,
+};
+
+export default { spacing, radius };

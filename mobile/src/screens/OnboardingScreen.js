@@ -170,7 +170,7 @@ export default function OnboardingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff7ed', // orange-50
+    backgroundColor: '#fafaf9', // stone-50 (web bg)
   },
   content: {
     flex: 1,
@@ -193,13 +193,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#292524', // stone-800
+    fontFamily: 'Geist_800ExtraBold',
+    color: '#1c1917', // stone-900 (web heading)
     marginBottom: 16,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   description: {
     fontSize: 16,
+    fontFamily: 'Geist_400Regular',
     color: '#57534e', // stone-600
     textAlign: 'center',
     lineHeight: 24,
@@ -224,7 +226,7 @@ const styles = StyleSheet.create({
   },
   skillButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: 'Geist_500Medium',
     color: '#57534e', // stone-600
   },
   skillButtonTextActive: {
@@ -246,7 +248,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontFamily: 'Geist_700Bold',
   },
   buttonIcon: {
     marginLeft: 8,
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
   skipButtonText: {
     color: '#a8a29e', // stone-400
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: 'Geist_500Medium',
   },
   pagination: {
     flexDirection: 'row',

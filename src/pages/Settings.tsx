@@ -3,6 +3,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { User, Bell, Shield, Paintbrush, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import { LogoutButton } from "../components/LogoutButton";
 
 export default function Settings() {
   return (
@@ -75,12 +76,13 @@ export default function Settings() {
           </Card>
         </div>
 
-        <div className="mt-12 flex justify-center">
+        <div className="mt-12 flex flex-col items-center gap-4">
           <Link to="/">
             <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-12 py-6 rounded-full shadow-lg shadow-orange-500/20 text-lg">
               Save Changes
             </Button>
           </Link>
+          <LogoutButton />
         </div>
 
       </div>

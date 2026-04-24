@@ -112,10 +112,10 @@ export default function HomeScreen({ navigation }) {
     <SafeAreaView className="flex-1 bg-background">
       <View className="h-16 px-4 flex-row items-center justify-between border-b border-border bg-background">
         <View className="flex-row items-center space-x-3">
-          <View className="w-9 h-9 bg-primary rounded-lg items-center justify-center">
+          <View className="w-9 h-9 bg-primary rounded-xl items-center justify-center">
             <Ionicons name="restaurant" size={20} color="white" />
           </View>
-          <Text className="text-base font-bold text-dark">CookMate</Text>
+          <Text className="text-base font-extrabold text-dark tracking-tight">CookMate</Text>
         </View>
 
         <View className="flex-row items-center space-x-3">
@@ -154,7 +154,7 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
 
           <View className="space-y-3">
-            <Text className="text-lg italic text-dark">Featured Recipes</Text>
+            <Text className="text-lg font-extrabold text-dark tracking-tight">Featured Recipes</Text>
             <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}

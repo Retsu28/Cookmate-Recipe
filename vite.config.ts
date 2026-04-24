@@ -17,10 +17,12 @@ export default defineConfig(({mode}) => {
         // Workbox auto-generates the service worker
         strategies: 'generateSW',
         registerType: 'autoUpdate',
+        cleanupOutdatedCaches: true,
         // Include all built assets in the precache manifest
         includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
 
         manifest: {
+          id: '/',
           name: 'CookMate',
           short_name: 'CookMate',
           description: 'Your AI-powered recipe and meal planning assistant.',
@@ -56,11 +58,16 @@ export default defineConfig(({mode}) => {
           // App shell (HTML, JS, CSS) — precached on SW install
           // -------------------------------------------------------
           globPatterns: ['**/*.{html,js,css,woff2}'],
+          navigateFallbackDenylist: [/^\/api\//],
 
           // -------------------------------------------------------
           // Runtime caching
           // -------------------------------------------------------
           runtimeCaching: [
+            {
+              urlPattern: /\/api\//,
+              handler: 'NetworkOnly',
+            },
             // Images — cache-first, keep for 30 days, max 60 entries
             {
               urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,

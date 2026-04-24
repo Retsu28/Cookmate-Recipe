@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import LogoutButton from '../components/LogoutButton';
 
 const dietaryGoals = ['Lose Weight', 'Build Muscle', 'Eat Healthy', 'Balanced Diet'];
 const allergies = ['Gluten', 'Dairy', 'Nuts', 'Shellfish', 'Eggs'];
@@ -131,7 +132,7 @@ export default function ProfileScreen() {
                   value={notifications}
                   onValueChange={setNotifications}
                   trackColor={{ false: '#d6d3d1', true: '#f97316' }}
-                  thumbColor={notifications ? '#0ea5e9' : '#ffffff'}
+                  thumbColor={'#ffffff'}
                 />
               </View>
               <View className="flex-row items-center justify-between">
@@ -142,6 +143,10 @@ export default function ProfileScreen() {
                 <Text className="text-[10px] font-bold text-stone-400">English (US)</Text>
               </View>
             </View>
+          </View>
+
+          <View className="pt-2">
+            <LogoutButton />
           </View>
         </View>
       </ScrollView>

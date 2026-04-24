@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 
 // Import routers
-// import authRouter from './routers/auth';
+import authRouter from './routers/auth';
 // ... other routers
 
 import { recommender } from '../ml/recommender';
@@ -41,7 +41,7 @@ async function startServer() {
   // Router skeletons
   const apiRouter = express.Router();
   
-  apiRouter.use('/auth', (req, res) => res.json({ message: 'Auth endpoint' }));
+  apiRouter.use('/auth', authRouter);
   apiRouter.use('/recipes', (req, res) => res.json({ message: 'Recipes endpoint' }));
   apiRouter.use('/ingredients', (req, res) => res.json({ message: 'Ingredients endpoint' }));
   apiRouter.use('/meal-planner', (req, res) => res.json({ message: 'Meal Planner endpoint' }));

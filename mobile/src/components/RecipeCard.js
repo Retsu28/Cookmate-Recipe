@@ -40,7 +40,7 @@ export default function RecipeCard({ recipe, onPress, horizontal = false }) {
           </Text>
           {horizontal && (
             <View className="flex-row items-center">
-              <Ionicons name="star" size={14} color="#f97316" />
+              <Ionicons name="star" size={14} color="#f59e0b" />
               <Text className="text-primary text-xs font-bold ml-1">{recipe.rating || '4.8'}</Text>
             </View>
           )}

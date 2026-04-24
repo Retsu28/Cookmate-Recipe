@@ -16,17 +16,49 @@ const initialNotifications = [
   { id: 3, type: 'Shopping', title: 'Shopping List Update', message: '3 new items added to your list based on next week\'s plan.', time: '5 hours ago', read: true, icon: 'cart', color: 'bg-orange-50', iconColor: '#f97316' },
 ];
 
-export default function NotificationsScreen() {
+export default function NotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [filter, setFilter] = useState('All');
 
   const filters = ['All', 'Reminders', 'Expiring', 'Shopping'];
+  const selectedType = filter.replace(/s$/, '');
+  const filteredNotifications = filter === 'All'
+    ? notifications
+    : notifications.filter((notification) => notification.type === selectedType);
+
+  const markAllRead = () => {
+    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  };
+
+  const markRead = (id) => {
+    setNotifications((current) => (
+      current.map((notification) => (
+        notification.id === id ? { ...notification, read: true } : notification
+      ))
+    ));
+  };
+
+  const openNotification = (notification) => {
+    markRead(notification.id);
+
+    if (notification.type === 'Reminder' || notification.type === 'Shopping') {
+      navigation.navigate('Main', { screen: 'Planner' });
+      return;
+    }
+
+    if (notification.type === 'Expiring') {
+      navigation.navigate('Main', { screen: 'Search' });
+      return;
+    }
+
+    navigation.navigate('Main', { screen: 'Home' });
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="px-6 py-4 flex-row items-center justify-between bg-white border-b border-stone-200">
         <Text className="text-2xl font-bold text-dark">Notifications</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={markAllRead}>
           <Text className="text-primary font-bold text-xs">Mark all as read</Text>
         </TouchableOpacity>
       </View>
@@ -45,13 +77,13 @@ export default function NotificationsScreen() {
         </ScrollView>
 
         <FlatList 
-          data={notifications}
+          data={filteredNotifications}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <NotificationCard 
               notification={item} 
-              onDelete={() => setNotifications(notifications.filter(n => n.id !== item.id))}
+              onPress={() => openNotification(item)}
             />
           )}
           ListEmptyComponent={

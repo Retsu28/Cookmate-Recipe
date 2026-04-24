@@ -32,8 +32,8 @@ export default function MealSlot({ label, meal, color, onAdd, onRemove }) {
           className="h-11 rounded-xl border border-orange-200 items-center justify-center"
         >
           <View className="flex-row items-center space-x-2">
-            <Ionicons name="add-circle-outline" size={15} color="#c26a2e" />
-            <Text className="text-[#c26a2e] text-xs font-medium">Add Recipe</Text>
+            <Ionicons name="add-circle-outline" size={15} color="#f97316" />
+            <Text className="text-primary text-xs font-medium">Add Recipe</Text>
           </View>
         </TouchableOpacity>
       )}

@@ -36,13 +36,13 @@ export default function BottomTabNavigator() {
         tabBarInactiveTintColor: '#a8a29e',
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '600',
+          fontFamily: 'Geist_600SemiBold',
           marginTop: 0,
         },
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
-          borderTopColor: '#eeeae4',
+          borderTopColor: '#e7e5e4',
           elevation: 0,
           height: 58,
           paddingTop: 4,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, Settings as SettingsIcon,
@@ -6,11 +6,24 @@ import {
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '@/lib/utils';
+import { cn, getInitial } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+
+export const LayoutShellContext = createContext(false);
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const isNestedInAppShell = useContext(LayoutShellContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+  const profileInitial = getInitial(user?.name);
+  const profileLabel = user?.name?.trim() || 'Profile';
+
+  // When AppShell provides the persistent frame, page-level Layout calls flatten
+  // to avoid rendering the same chrome twice.
+  if (isNestedInAppShell) {
+    return <>{children}</>;
+  }
 
   const navLinks = [
     { name: 'Home', path: '/', icon: Home },
@@ -136,13 +149,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-            <button className="p-2.5 text-stone-500 hover:bg-stone-200 rounded-full transition-colors relative">
+            <Link
+              to="/notifications"
+              aria-label="Notifications"
+              className="p-2.5 text-stone-500 hover:bg-stone-200 rounded-full transition-colors relative"
+            >
               <Bell size={20} />
               <span className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-stone-50" />
-            </button>
-            <Link to="/profile" className="p-1 rounded-full border-2 border-transparent hover:border-orange-500 transition-colors">
-              <div className="w-9 h-9 rounded-full bg-stone-200 overflow-hidden">
-                <img src="https://picsum.photos/seed/user/100/100" alt="Profile" className="w-full h-full object-cover" />
+            </Link>
+            <Link
+              to="/profile"
+              aria-label={`${profileLabel} profile`}
+              className="p-1 rounded-full border-2 border-transparent hover:border-orange-500 transition-colors"
+            >
+              <div className="w-9 h-9 rounded-full bg-stone-900 flex items-center justify-center select-none">
+                <span className="text-white text-sm font-extrabold tracking-tight">
+                  {profileInitial}
+                </span>
               </div>
             </Link>
           </div>
