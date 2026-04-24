@@ -18,6 +18,7 @@ export interface AuthUser {
   id?: number;
   name: string;
   email: string;
+  role?: 'user' | 'admin';
 }
 
 export interface AuthResult {
@@ -76,6 +77,12 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      /* network unavailable: still clear local state */
+    }
+
+    try {
       localStorage.removeItem(AUTH_TOKEN_KEY);
       localStorage.removeItem(AUTH_USER_KEY);
     } catch {
@@ -93,11 +100,11 @@ export const authService = {
    */
   async me(): Promise<AuthUser | null> {
     const token = this.getToken();
-    if (!token) return null;
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
     const res = await fetch('/api/auth/me', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
 
     if (res.status === 401 || res.status === 404) {

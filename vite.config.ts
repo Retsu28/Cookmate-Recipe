@@ -17,7 +17,6 @@ export default defineConfig(({mode}) => {
         // Workbox auto-generates the service worker
         strategies: 'generateSW',
         registerType: 'autoUpdate',
-        cleanupOutdatedCaches: true,
         // Include all built assets in the precache manifest
         includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
 
@@ -54,6 +53,7 @@ export default defineConfig(({mode}) => {
         },
 
         workbox: {
+          cleanupOutdatedCaches: true,
           // -------------------------------------------------------
           // App shell (HTML, JS, CSS) — precached on SW install
           // -------------------------------------------------------

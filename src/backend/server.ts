@@ -1,11 +1,11 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 
 // Import routers
-import authRouter from './routers/auth';
+import authRouter, { AUTH_COOKIE_NAME, verifyAuthToken } from './routers/auth';
 // ... other routers
 
 import { recommender } from '../ml/recommender';
@@ -19,13 +19,15 @@ const mockRecipes = [
   { id: 5, title: 'Mushroom Risotto', ingredients: ['rice', 'mushroom', 'onion', 'garlic', 'white wine', 'parmesan'], time: '50 min', difficulty: 'Hard', image: 'https://picsum.photos/seed/mushroom/600/400' },
 ];
 
-import { testDbConnection } from './db';
+import { pool, testDbConnection } from './db';
+import { ensureAdminAccount } from './adminBootstrap';
 
 // Train recommender with mock data
 recommender.train(mockRecipes);
 
 async function startServer() {
   await testDbConnection();
+  await ensureAdminAccount();
   const app = express();
   const PORT = Number(process.env.PORT) || 3001;
 
@@ -62,6 +64,30 @@ async function startServer() {
   apiRouter.use('/ml/camera', (req, res) => res.json({ message: 'ML Camera endpoint' }));
 
   app.use('/api', apiRouter);
+
+  const requireAdminPage = async (req: Request, res: Response, next: NextFunction) => {
+    const token = (req as Request & { cookies?: Record<string, string> }).cookies?.[AUTH_COOKIE_NAME];
+
+    if (!token) {
+      return res.redirect('/login');
+    }
+
+    try {
+      const payload = verifyAuthToken(token);
+      const userId = Number(payload.sub);
+      const result = await pool.query('SELECT role FROM users WHERE id = $1 LIMIT 1', [userId]);
+
+      if (result.rowCount && result.rows[0]?.role === 'admin') {
+        return next();
+      }
+    } catch {
+      // Invalid/expired tokens fall through to the safe redirect below.
+    }
+
+    return res.redirect('/');
+  };
+
+  app.use(['/admin', '/admin/*'], requireAdminPage);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, Settings as SettingsIcon,
-  Bell, Menu, X, Zap
+  Bell, Menu, ShieldCheck, X
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
@@ -18,6 +18,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';
+  const isAdmin = user?.role === 'admin';
 
   // When AppShell provides the persistent frame, page-level Layout calls flatten
   // to avoid rendering the same chrome twice.
@@ -25,7 +26,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const navLinks = [
+  const baseNavLinks = [
     { name: 'Home', path: '/', icon: Home },
     { name: 'Search', path: '/search', icon: Search },
     { name: 'Planner', path: '/planner', icon: Calendar },
@@ -33,6 +34,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: 'Profile', path: '/profile', icon: User },
     { name: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
+  const navLinks = isAdmin
+    ? [...baseNavLinks, { name: 'Admin Dashboard', path: '/admin', icon: ShieldCheck }]
+    : baseNavLinks;
 
   return (
     <div className="flex h-screen bg-stone-50 text-stone-900 font-sans overflow-hidden">
@@ -149,6 +153,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+            {isAdmin && (
+              <Link
+                to="/admin"
+                aria-label="Back to admin dashboard"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-stone-200 bg-white px-3 text-xs font-extrabold uppercase tracking-[0.12em] text-stone-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600"
+              >
+                <ShieldCheck size={16} />
+                <span className="hidden sm:inline">Admin</span>
+              </Link>
+            )}
             <Link
               to="/notifications"
               aria-label="Notifications"

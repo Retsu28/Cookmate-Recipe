@@ -18,8 +18,18 @@ import { useAuth } from '@/context/AuthContext';
  * to change — only authService.getCurrentUser() / useAuth() do.
  */
 export default function AuthGate() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-500 shadow-sm">
+          Checking session...
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;

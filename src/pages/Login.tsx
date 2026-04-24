@@ -14,8 +14,8 @@ const fieldVariants = {
   }),
 };
 
-// Business rule: only @gmail.com accounts are accepted (backend enforces too).
-const GMAIL_RE = /^[^\s@]+@gmail\.com$/i;
+// Public signup is Gmail-only, but login also supports seeded system accounts.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -31,7 +31,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
 
   const validate = (): string | null => {
-    if (!GMAIL_RE.test(email.trim())) return 'Email must be a @gmail.com address.';
+    if (!EMAIL_RE.test(email.trim())) return 'Please enter a valid email address.';
     if (!password) return 'Please enter your password.';
     return null;
   };
@@ -46,8 +46,8 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      navigate(from, { replace: true });
+      const signedInUser = await login(email.trim(), password);
+      navigate(signedInUser.role === 'admin' ? '/admin' : from, { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to sign in. Please try again.';
       setError(msg);

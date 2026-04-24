@@ -7,6 +7,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
+    role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     avatar_url TEXT,
     bio TEXT,
     cooking_skill_level VARCHAR(50) DEFAULT 'Beginner',
