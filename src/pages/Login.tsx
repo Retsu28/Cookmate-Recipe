@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { AuthVideoBackground } from '@/components/AuthVideoBackground';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -33,6 +34,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const submittingRef = useRef(false);
 
   const validate = (): string | null => {
     if (!EMAIL_RE.test(email.trim())) return 'Please enter a valid email address.';
@@ -42,12 +44,15 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+
     setError(null);
     const v = validate();
     if (v) {
       setError(v);
       return;
     }
+    submittingRef.current = true;
     setLoading(true);
     try {
       const signedInUser = await login(email.trim(), password);
@@ -56,6 +61,7 @@ export default function Login() {
       const msg = err instanceof Error ? err.message : 'Unable to sign in. Please try again.';
       setError(msg);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -83,8 +89,12 @@ export default function Login() {
             initial={{ opacity: 0, y: 24, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-            className="w-full max-w-md"
+            className="relative w-full max-w-md"
           >
+            <div className="absolute right-3 top-3 z-20 sm:-right-14 sm:top-0">
+              <ThemeToggle />
+            </div>
+
             <motion.div
               key={error ? 'shake-' + error : 'idle'}
               animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '@/components/ui/button';
 import { Plus, Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat } from 'lucide-react';
@@ -8,12 +8,17 @@ import { motion } from 'motion/react';
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
-    if (!hasSeenOnboarding) {
-      navigate('/onboarding');
+  const hasSeenOnboarding = (() => {
+    try {
+      return localStorage.getItem('hasSeenOnboarding') === 'true';
+    } catch {
+      return true;
     }
-  }, [navigate]);
+  })();
+
+  if (!hasSeenOnboarding) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   return (
     <Layout>

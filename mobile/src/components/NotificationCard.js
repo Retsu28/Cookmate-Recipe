@@ -29,7 +29,7 @@ export default function NotificationCard({ notification, onPress }) {
       </View>
 
       {!notification.read && (
-        <View style={[st.dot, { backgroundColor: '#1c1917' }]} />
+        <View style={[st.dot, { backgroundColor: isDark ? colors.primary : '#1c1917' }]} />
       )}
     </TouchableOpacity>
   );

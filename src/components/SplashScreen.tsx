@@ -35,16 +35,30 @@ function buildFloaters(count = 12): FloaterData[] {
 interface SplashScreenProps {
   onFinished: () => void;
   minimumDuration?: number;
+  message?: string;
+  isReady?: boolean;
 }
 
-export default function SplashScreen({ onFinished, minimumDuration = 2400 }: SplashScreenProps) {
+export default function SplashScreen({
+  onFinished,
+  minimumDuration = 2400,
+  message = 'Cooking up something delicious...',
+  isReady = true,
+}: SplashScreenProps) {
   const [visible, setVisible] = useState(true);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
   const floaters = useMemo(() => buildFloaters(), []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), minimumDuration);
+    const timer = setTimeout(() => setMinimumElapsed(true), minimumDuration);
     return () => clearTimeout(timer);
   }, [minimumDuration]);
+
+  useEffect(() => {
+    if (minimumElapsed && isReady) {
+      setVisible(false);
+    }
+  }, [isReady, minimumElapsed]);
 
   return (
     <AnimatePresence onExitComplete={onFinished}>
@@ -107,7 +121,7 @@ export default function SplashScreen({ onFinished, minimumDuration = 2400 }: Spl
               transition={{ delay: 0.5, duration: 0.4 }}
               className="text-stone-500 dark:text-stone-300 text-sm font-medium"
             >
-              Cooking up something delicious…
+              {message}
             </motion.p>
 
             {/* Animated loading dots */}

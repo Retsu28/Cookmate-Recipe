@@ -85,7 +85,10 @@ export default function SearchScreen({ navigation }) {
         <TouchableOpacity
           onPress={ingredients.length > 0 ? handleSearch : addIngredient}
           disabled={loading}
-          style={[st.processBtn, { backgroundColor: ingredients.length === 0 ? colors.border : '#1c1917' }]}
+          style={[
+            st.processBtn,
+            { backgroundColor: ingredients.length === 0 ? colors.border : (isDark ? colors.surfaceAlt : '#1c1917') },
+          ]}
         >
           {loading ? (
             <ActivityIndicator color="white" />
@@ -130,8 +133,8 @@ export default function SearchScreen({ navigation }) {
         <View style={[st.resultsHeader, { borderBottomColor: colors.border }]}>
           <Text style={[st.resultsLabel, { color: colors.textSubtle }]}>RECIPE BLUEPRINTS ({results.length} RESULTS)</Text>
           <View style={st.filterRow}>
-            <TouchableOpacity style={[st.filterBtn, { borderColor: '#1c1917' }]}>
-              <Text style={[st.filterBtnText, { color: '#1c1917' }]}>SORT: RELEVANCE</Text>
+            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.text }]}>
+              <Text style={[st.filterBtnText, { color: colors.text }]}>SORT: RELEVANCE</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[st.filterBtn, { borderColor: colors.border }]}>
               <Text style={[st.filterBtnText, { color: colors.textMuted }]}>FILTER: TIME</Text>

@@ -241,7 +241,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => navigation.navigate('CookingMode', { recipe })}
-          style={st.cookBtn}
+          style={[st.cookBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
         >
           <Text style={st.cookBtnText}>START COOKING</Text>
         </TouchableOpacity>
@@ -307,6 +307,6 @@ const st = StyleSheet.create({
   // Bottom bar
   bottomBar: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
   saveBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
-  cookBtn: { flex: 1, height: 52, backgroundColor: '#1c1917', alignItems: 'center', justifyContent: 'center' },
+  cookBtn: { flex: 1, height: 52, alignItems: 'center', justifyContent: 'center' },
   cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
 });

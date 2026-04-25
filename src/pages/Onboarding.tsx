@@ -43,7 +43,7 @@ export default function Onboarding() {
   useEffect(() => {
     const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding');
     if (hasSeenOnboarding === 'true') {
-      navigate('/');
+      navigate('/', { replace: true });
     }
   }, [navigate]);
 
@@ -63,12 +63,12 @@ export default function Onboarding() {
     }
     localStorage.setItem('hasSeenOnboarding', 'true');
     // Push the user to their first meaningful action
-    navigate('/');
+    navigate('/', { replace: true });
   };
 
   const skipOnboarding = () => {
     localStorage.setItem('hasSeenOnboarding', 'true');
-    navigate('/');
+    navigate('/', { replace: true });
   };
 
   return (

@@ -326,7 +326,7 @@ function AnimatedField({ index, fieldStyle, children }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1c1917' },
+    container: { flex: 1, backgroundColor: isDark ? colors.background : '#1c1917' },
     safeArea: { flex: 1 },
     scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },

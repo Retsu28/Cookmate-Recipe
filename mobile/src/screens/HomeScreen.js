@@ -143,8 +143,8 @@ export default function HomeScreen({ navigation }) {
             <View style={[s.notifDot, { backgroundColor: colors.primary, borderColor: colors.background }]} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={s.avatarWrap}>
-            <View style={[s.avatar, { backgroundColor: colors.text }]}>
-              <Text style={s.avatarText}>{profileInitial}</Text>
+            <View style={[s.avatar, { backgroundColor: isDark ? colors.surfaceAlt : colors.text }]}>
+              <Text style={[s.avatarText, { color: isDark ? colors.text : '#fff' }]}>{profileInitial}</Text>
             </View>
           </TouchableOpacity>
         </View>

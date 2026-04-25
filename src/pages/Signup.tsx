@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { AuthVideoBackground } from '@/components/AuthVideoBackground';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -125,8 +126,12 @@ export default function Signup() {
             initial={{ opacity: 0, y: 24, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-            className="w-full max-w-md"
+            className="relative w-full max-w-md"
           >
+            <div className="absolute right-3 top-3 z-20 sm:-right-14 sm:top-0">
+              <ThemeToggle />
+            </div>
+
             <motion.div
               key={error ? 'shake-' + error : 'idle'}
               animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}

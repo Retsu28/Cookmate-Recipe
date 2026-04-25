@@ -49,7 +49,7 @@ export default function MealPlannerScreen() {
             <TouchableOpacity
               key={day.toString()}
               onPress={() => setSelectedDate(day)}
-              style={[st.dayCell, isSelected && { backgroundColor: '#1c1917' }]}
+              style={[st.dayCell, isSelected && { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
             >
               <Text style={[st.dayLabel, { color: isSelected ? 'rgba(255,255,255,0.7)' : colors.textSubtle }]}>
                 {format(day, 'EEE').toUpperCase()}
@@ -120,7 +120,7 @@ export default function MealPlannerScreen() {
           <TouchableOpacity
             key={tab}
             onPress={() => setActiveTab(tab)}
-            style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: '#1c1917' }]}
+            style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.text }]}
           >
             <Text style={[st.tabText, { color: activeTab === tab ? colors.text : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
@@ -16,27 +17,29 @@ import { profileApi } from '../api/api';
 
 const profileTabs = ['My Recipes', 'Saved', 'Activity'];
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { user } = useAuth();
   const { colors, isDark, toggleTheme } = useAppTheme();
   const [notifications, setNotifications] = useState(true);
   const [activeTab, setActiveTab] = useState('My Recipes');
   const [profile, setProfile] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    const loadProfile = async () => {
-      if (!user?.id) { setProfile(null); return; }
-      try {
-        const { data } = await profileApi.getProfile(user.id);
-        if (active) setProfile(data.profile);
-      } catch (error) {
-        console.error('Failed to load profile', error);
-      }
-    };
-    loadProfile();
-    return () => { active = false; };
-  }, [user?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const loadProfile = async () => {
+        if (!user?.id) { setProfile(null); return; }
+        try {
+          const { data } = await profileApi.getProfile(user.id);
+          if (active) setProfile(data.profile);
+        } catch (error) {
+          console.error('Failed to load profile', error);
+        }
+      };
+      loadProfile();
+      return () => { active = false; };
+    }, [user?.id])
+  );
 
   const displayName = useMemo(() => {
     const name = profile?.full_name || user?.full_name || user?.name;
@@ -49,14 +52,22 @@ export default function ProfileScreen() {
   }, [displayName]);
 
   const displayEmail = user?.email || profile?.email || 'No email available';
+  const openAccountSettings = () => {
+    const parentNavigator = navigation.getParent?.();
+    if (parentNavigator) {
+      parentNavigator.navigate('AccountSettings');
+    } else {
+      navigation.navigate('AccountSettings');
+    }
+  };
 
   return (
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Profile header card — matches web */}
         <View style={[st.headerCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
-          <View style={[st.avatarLg, { backgroundColor: colors.text }]}>
-            <Text style={st.avatarLgText}>{displayInitial}</Text>
+          <View style={[st.avatarLg, { backgroundColor: isDark ? colors.surface : colors.text }]}>
+            <Text style={[st.avatarLgText, { color: isDark ? colors.text : '#fff' }]}>{displayInitial}</Text>
           </View>
           <Text style={[st.nameText, { color: colors.text }]}>{displayName}</Text>
           <Text style={[st.emailText, { color: colors.textMuted }]}>{displayEmail}</Text>
@@ -77,7 +88,10 @@ export default function ProfileScreen() {
 
           {/* Action buttons — matches web */}
           <View style={st.actionRow}>
-            <TouchableOpacity style={[st.editBtn, { backgroundColor: '#1c1917' }]}>
+            <TouchableOpacity
+              onPress={openAccountSettings}
+              style={[st.editBtn, { backgroundColor: isDark ? colors.surface : '#1c1917' }]}
+            >
               <Text style={st.editBtnText}>EDIT PROFILE</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[st.shareBtn, { borderColor: colors.border }]}>
@@ -92,7 +106,7 @@ export default function ProfileScreen() {
             <TouchableOpacity
               key={tab}
               onPress={() => setActiveTab(tab)}
-              style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: '#1c1917' }]}
+              style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.text }]}
             >
               <Text style={[st.tabText, { color: activeTab === tab ? colors.text : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
             </TouchableOpacity>

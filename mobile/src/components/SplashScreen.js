@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { View, Text, Animated, StyleSheet, Dimensions, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -27,7 +27,15 @@ function buildFloaters() {
   }));
 }
 
-export default function SplashScreen({ colors, isDark, onFinished }) {
+export default function SplashScreen({
+  colors,
+  isDark,
+  onFinished,
+  message = 'Cooking up something delicious...',
+  duration = SPLASH_DURATION,
+  isReady = true,
+  blocksTouches = false,
+}) {
   const fadeIn = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const titleFade = useRef(new Animated.Value(0)).current;
@@ -35,6 +43,8 @@ export default function SplashScreen({ colors, isDark, onFinished }) {
   const msgFade = useRef(new Animated.Value(0)).current;
   const exitFade = useRef(new Animated.Value(1)).current;
   const wiggle = useRef(new Animated.Value(0)).current;
+  const hasExited = useRef(false);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
 
   const dotAnims = useRef([
     new Animated.Value(0.35),
@@ -172,20 +182,26 @@ export default function SplashScreen({ colors, isDark, onFinished }) {
       ).start();
     });
 
-    // — Auto-dismiss after duration —
-    const exitTimer = setTimeout(() => {
-      Animated.timing(exitFade, {
-        toValue: 0,
-        duration: 500,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished && onFinished) onFinished();
-      });
-    }, SPLASH_DURATION);
-
-    return () => clearTimeout(exitTimer);
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinimumElapsed(true), duration);
+    return () => clearTimeout(timer);
+  }, [duration]);
+
+  useEffect(() => {
+    if (!minimumElapsed || !isReady || hasExited.current) return;
+
+    hasExited.current = true;
+    Animated.timing(exitFade, {
+      toValue: 0,
+      duration: 500,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && onFinished) onFinished();
+    });
+  }, [exitFade, isReady, minimumElapsed, onFinished]);
 
   const wiggleRotate = wiggle.interpolate({
     inputRange: [-1, 0, 1],
@@ -199,7 +215,7 @@ export default function SplashScreen({ colors, isDark, onFinished }) {
   return (
     <Animated.View
       style={[styles.overlay, { opacity: exitFade, backgroundColor: bgColor }]}
-      pointerEvents="none"
+      pointerEvents={blocksTouches ? 'auto' : 'none'}
     >
       {/* Floating food icons */}
       {floaters.map((f, i) => (
@@ -253,7 +269,7 @@ export default function SplashScreen({ colors, isDark, onFinished }) {
         <Animated.Text
           style={[styles.message, { color: messageTextColor, opacity: msgFade }]}
         >
-          Cooking up something delicious…
+          {message}
         </Animated.Text>
 
         {/* Animated loading dots */}

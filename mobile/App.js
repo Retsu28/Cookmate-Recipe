@@ -31,6 +31,24 @@ function PostLoginSplash({ colors, isDark }) {
   );
 }
 
+function SignOutSplash({ colors, isDark }) {
+  const { showLogoutSplash, isLoggingOut, finishLogoutSplash } = useAuth();
+
+  if (!showLogoutSplash) return null;
+
+  return (
+    <SplashScreen
+      colors={colors}
+      isDark={isDark}
+      onFinished={finishLogoutSplash}
+      message="Signing you out..."
+      duration={1200}
+      isReady={!isLoggingOut}
+      blocksTouches
+    />
+  );
+}
+
 function AppContent({ fontsLoaded }) {
   const { colors, navigationTheme, isDark, isReady } = useAppTheme();
   const [splashDone, setSplashDone] = useState(false);
@@ -52,6 +70,7 @@ function AppContent({ fontsLoaded }) {
             <StatusBar style={isDark ? 'light' : 'dark'} />
           </NavigationContainer>
           <PostLoginSplash colors={colors} isDark={isDark} />
+          <SignOutSplash colors={colors} isDark={isDark} />
         </AuthProvider>
       </SafeAreaProvider>
       {!splashDone && (

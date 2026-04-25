@@ -7,6 +7,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPostLoginSplash, setShowPostLoginSplash] = useState(false);
+  const [showLogoutSplash, setShowLogoutSplash] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -43,17 +45,31 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    setIsLoggingOut(true);
+    setShowLogoutSplash(true);
     try {
       await authService.logout();
-      setUser(null);
-      setShowPostLoginSplash(false);
     } catch (e) {
       console.error('Failed to clear user session', e);
+    } finally {
+      setUser(null);
+      setShowPostLoginSplash(false);
+      setIsLoggingOut(false);
     }
+  };
+
+  const refreshUser = async () => {
+    const freshUser = await authService.me();
+    setUser(freshUser);
+    return freshUser;
   };
 
   const finishPostLoginSplash = () => {
     setShowPostLoginSplash(false);
+  };
+
+  const finishLogoutSplash = () => {
+    setShowLogoutSplash(false);
   };
 
   return (
@@ -62,8 +78,12 @@ export const AuthProvider = ({ children }) => {
       isLoading, 
       login, 
       logout,
+      refreshUser,
       showPostLoginSplash,
+      showLogoutSplash,
+      isLoggingOut,
       finishPostLoginSplash,
+      finishLogoutSplash,
       isAuthenticated: !!user 
     }}>
       {children}

@@ -41,7 +41,7 @@ export function LogoutButton({ className, label = 'Sign out' }: LogoutButtonProp
       )}
     >
       <LogOut size={16} />
-      {busy ? 'Signing out…' : label}
+      {busy ? 'Signing out...' : label}
     </button>
   );
 }

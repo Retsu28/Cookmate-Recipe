@@ -103,7 +103,7 @@ export default function CameraScreen({ navigation }) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
-                    style={st.viewBtn}
+                    style={[st.viewBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
                   >
                     <Text style={st.viewBtnText}>VIEW RECIPE</Text>
                   </TouchableOpacity>
@@ -176,7 +176,7 @@ const st = StyleSheet.create({
   resultActions: { flexDirection: 'row', gap: 10, padding: 16, paddingTop: 4 },
   retakeBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   retakeBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5 },
-  viewBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1917' },
+  viewBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
   viewBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#fff' },
   // Camera
   cameraSafe: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },

@@ -93,8 +93,8 @@ export function AuthVisualPanel({
         onClick={onToggle}
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.92 }}
-        className={`absolute top-4 z-30 backdrop-blur-sm rounded-full p-2 shadow-md hover:shadow-lg transition-shadow border ${t.toggleBg}`}
-        style={{ [collapsed ? 'left' : 'right']: '12px' }}
+        className={`hidden lg:inline-flex absolute top-1/2 z-30 -translate-y-1/2 items-center justify-center backdrop-blur-sm rounded-full p-2 shadow-md hover:shadow-lg transition-shadow border ${t.toggleBg}`}
+        style={{ left: collapsed ? '16px' : 'calc(50% - 12px)' }}
         aria-label={collapsed ? 'Expand visual panel' : 'Collapse visual panel'}
       >
         {collapsed ? <ChevronsRight size={18} className={t.toggleIcon} /> : <ChevronsLeft size={18} className={t.toggleIcon} />}

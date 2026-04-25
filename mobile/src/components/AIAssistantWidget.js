@@ -33,9 +33,13 @@ export default function AIAssistantWidget({ onPress }) {
 
   if (!open) {
     return (
-      <TouchableOpacity style={st.fab} onPress={toggle} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={[st.fab, { backgroundColor: isDark ? colors.surfaceAlt : colors.dark }]}
+        onPress={toggle}
+        activeOpacity={0.85}
+      >
         <Ionicons name="chatbubble-ellipses" size={21} color="#fff" />
-        <View style={[st.fabDot, { borderColor: '#0a0a0a' }]} />
+        <View style={[st.fabDot, { borderColor: isDark ? colors.surfaceAlt : colors.dark }]} />
       </TouchableOpacity>
     );
   }
@@ -63,7 +67,15 @@ export default function AIAssistantWidget({ onPress }) {
         {/* Messages */}
         <ScrollView style={st.msgList} contentContainerStyle={st.msgListContent}>
           {messages.map((msg, i) => (
-            <View key={i} style={[st.msgBubble, msg.role === 'user' ? st.userBubble : [st.aiBubble, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]]}>
+            <View
+              key={i}
+              style={[
+                st.msgBubble,
+                msg.role === 'user'
+                  ? [st.userBubble, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]
+                  : [st.aiBubble, { backgroundColor: isDark ? colors.background : '#f5f5f4' }],
+              ]}
+            >
               <Text style={[st.msgText, { color: msg.role === 'user' ? '#fff' : colors.text }]}>{msg.text}</Text>
             </View>
           ))}
@@ -80,7 +92,10 @@ export default function AIAssistantWidget({ onPress }) {
             onSubmitEditing={send}
             returnKeyType="send"
           />
-          <TouchableOpacity onPress={send} style={st.sendBtn}>
+          <TouchableOpacity
+            onPress={send}
+            style={[st.sendBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
+          >
             <Ionicons name="arrow-up" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -101,10 +116,10 @@ const st = StyleSheet.create({
   msgList: { maxHeight: 260 },
   msgListContent: { padding: 12, gap: 10 },
   msgBubble: { padding: 12, borderRadius: 14, maxWidth: '85%' },
-  userBubble: { backgroundColor: '#1c1917', alignSelf: 'flex-end' },
+  userBubble: { alignSelf: 'flex-end' },
   aiBubble: { alignSelf: 'flex-start' },
   msgText: { fontFamily: 'Geist_400Regular', fontSize: 13, lineHeight: 19 },
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, gap: 8 },
   input: { flex: 1, fontFamily: 'Geist_400Regular', fontSize: 14, paddingVertical: 8 },
-  sendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1c1917', alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });

@@ -5,6 +5,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { User, Bell, Shield, Paintbrush, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LogoutButton } from "../components/LogoutButton";
+import { motion } from "motion/react";
 
 export default function Settings() {
   return (
@@ -16,20 +17,38 @@ export default function Settings() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="border-stone-100 shadow-xl shadow-stone-200/30 rounded-[2rem] bg-white overflow-hidden transition-all hover:shadow-stone-200/50 hover:border-orange-200 group cursor-pointer">
-            <CardContent className="p-8">
-              <div className="flex items-start justify-between mb-8">
-                <div className="p-4 bg-stone-50 text-stone-700 rounded-2xl group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors">
-                  <User size={32} />
-                </div>
-                <ChevronRight size={24} className="text-stone-300 group-hover:text-orange-500 transition-colors" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-stone-900 mb-1">Account</h3>
-                <p className="text-stone-500">Update your email, password, and profile details</p>
-              </div>
-            </CardContent>
-          </Card>
+          <motion.div
+            whileHover={{ y: -6, scale: 1.015 }}
+            whileTap={{ scale: 0.985 }}
+            transition={{ type: "spring", stiffness: 360, damping: 24 }}
+          >
+            <Link to="/settings/account" aria-label="Open account settings" className="block h-full">
+              <Card className="h-full border-stone-100 shadow-xl shadow-stone-200/30 rounded-[2rem] bg-white overflow-hidden transition-all hover:shadow-stone-200/50 hover:border-orange-200 group cursor-pointer">
+                <CardContent className="p-8">
+                  <div className="flex items-start justify-between mb-8">
+                    <motion.div
+                      className="p-4 bg-stone-50 text-stone-700 rounded-2xl group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors"
+                      animate={{ rotate: [0, -5, 5, 0] }}
+                      transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 2.8 }}
+                    >
+                      <User size={32} />
+                    </motion.div>
+                    <motion.span
+                      className="text-stone-300 group-hover:text-orange-500 transition-colors"
+                      animate={{ x: [0, 4, 0] }}
+                      transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 1.8 }}
+                    >
+                      <ChevronRight size={24} />
+                    </motion.span>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-stone-900 mb-1">Account</h3>
+                    <p className="text-stone-500">Update your email, password, and profile details</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </motion.div>
 
           <Card className="border-stone-100 shadow-xl shadow-stone-200/30 rounded-[2rem] bg-white overflow-hidden transition-all hover:shadow-stone-200/50 hover:border-orange-200 group cursor-pointer">
             <CardContent className="p-8">

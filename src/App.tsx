@@ -22,6 +22,7 @@ const ProfilePage = lazy(() => import('./pages/Profile'));
 const NotificationsPage = lazy(() => import('./pages/Notifications'));
 const AICamera = lazy(() => import('./pages/AICamera'));
 const Settings = lazy(() => import('./pages/Settings'));
+const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
@@ -44,6 +45,21 @@ function PostLoginSplash() {
   return <SplashScreen onFinished={finishPostLoginSplash} />;
 }
 
+function SignOutSplash() {
+  const { showLogoutSplash, isLoggingOut, finishLogoutSplash } = useAuth();
+
+  if (!showLogoutSplash) return null;
+
+  return (
+    <SplashScreen
+      onFinished={finishLogoutSplash}
+      minimumDuration={1200}
+      message="Signing you out..."
+      isReady={!isLoggingOut}
+    />
+  );
+}
+
 export default function App() {
   const [splashDone, setSplashDone] = useState(false);
 
@@ -52,6 +68,7 @@ export default function App() {
       {!splashDone && <SplashScreen onFinished={() => setSplashDone(true)} />}
       <AuthProvider>
         <PostLoginSplash />
+        <SignOutSplash />
         <Router>
           <Routes>
             <Route element={<AdminGate />}>
@@ -74,12 +91,12 @@ export default function App() {
               <Route element={<GuestGate />}>
                 <Route path="login" element={<Login />} />
                 <Route path="signup" element={<Signup />} />
-                <Route path="onboarding" element={<Onboarding />} />
               </Route>
 
               {/* Protected routes — AuthGate redirects to /login if signed out */}
               <Route element={<AuthGate />}>
                 <Route index element={<Dashboard />} />
+                <Route path="onboarding" element={<Onboarding />} />
                 <Route path="search" element={<SearchPage />} />
                 <Route path="recipe/:id" element={<RecipeDetail />} />
                 <Route path="planner" element={<MealPlanner />} />
@@ -87,6 +104,7 @@ export default function App() {
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="camera" element={<AICamera />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="settings/account" element={<AccountSettings />} />
               </Route>
             </Route>
           </Routes>

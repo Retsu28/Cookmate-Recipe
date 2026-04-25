@@ -35,7 +35,7 @@ export default function BottomTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#1c1917',
+        tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.textSubtle,
         tabBarLabelStyle: {
           fontSize: 8,

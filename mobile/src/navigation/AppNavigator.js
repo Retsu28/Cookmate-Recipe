@@ -11,6 +11,7 @@ import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import CookingModeScreen from '../screens/CookingModeScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 
 // Public auth-stack screens
 import LoginScreen from '../screens/LoginScreen';
@@ -50,6 +51,26 @@ function AppStack({ colors }) {
     <Stack.Navigator initialRouteName="Onboarding" screenOptions={headerScreenOptions}>
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Main" component={BottomTabNavigator} options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen
+        name="AccountSettings"
+        component={AccountSettingsScreen}
+        options={{
+          headerShown: false,
+          cardStyleInterpolator: ({ current, layouts }) => ({
+            cardStyle: {
+              opacity: current.progress,
+              transform: [
+                {
+                  translateX: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [layouts.screen.width * 0.12, 0],
+                  }),
+                },
+              ],
+            },
+          }),
+        }}
+      />
       <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={{ headerShown: false }} />

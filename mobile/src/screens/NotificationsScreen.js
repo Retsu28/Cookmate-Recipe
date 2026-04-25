@@ -65,7 +65,7 @@ export default function NotificationsScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={[st.pageTitle, { color: colors.text }]}>Updates</Text>
           {unreadCount > 0 && (
-            <View style={[st.badge, { backgroundColor: '#1c1917' }]}>
+            <View style={[st.badge, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}>
               <Text style={st.badgeText}>{unreadCount}</Text>
             </View>
           )}
@@ -88,7 +88,12 @@ export default function NotificationsScreen({ navigation }) {
             <TouchableOpacity
               key={f}
               onPress={() => setFilter(f)}
-              style={[st.filterPill, active ? { backgroundColor: '#1c1917' } : { borderWidth: 1, borderColor: colors.border }]}
+              style={[
+                st.filterPill,
+                active
+                  ? { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }
+                  : { borderWidth: 1, borderColor: colors.border },
+              ]}
             >
               <Text style={[st.filterText, { color: active ? '#fff' : colors.textSubtle }]}>{f.toUpperCase()}</Text>
             </TouchableOpacity>

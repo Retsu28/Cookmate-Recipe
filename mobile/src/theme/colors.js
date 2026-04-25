@@ -47,7 +47,7 @@ export const darkColors = {
   success: '#22c55e',
   danger: '#ef4444',
   info: '#3b82f6',
-  dark: '#000000',
+  dark: '#0a0a0a',
 };
 
 export function getColors(mode = 'light') {

@@ -6,7 +6,11 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   showPostLoginSplash: boolean;
+  showLogoutSplash: boolean;
+  isLoggingOut: boolean;
   finishPostLoginSplash: () => void;
+  finishLogoutSplash: () => void;
+  refreshUser: () => Promise<AuthUser | null>;
   login: (email: string, password: string) => Promise<AuthUser>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -18,6 +22,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPostLoginSplash, setShowPostLoginSplash] = useState(false);
+  const [showLogoutSplash, setShowLogoutSplash] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const cached = authService.getCurrentUser();
@@ -56,13 +62,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authService.logout();
-    setUser(null);
-    setShowPostLoginSplash(false);
+    setIsLoggingOut(true);
+    setShowLogoutSplash(true);
+    try {
+      await authService.logout();
+    } finally {
+      setUser(null);
+      setShowPostLoginSplash(false);
+      setIsLoggingOut(false);
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const fresh = await authService.me();
+    setUser(fresh);
+    return fresh;
   }, []);
 
   const finishPostLoginSplash = useCallback(() => {
     setShowPostLoginSplash(false);
+  }, []);
+
+  const finishLogoutSplash = useCallback(() => {
+    setShowLogoutSplash(false);
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -71,12 +93,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       isAuthenticated: !!user,
       showPostLoginSplash,
+      showLogoutSplash,
+      isLoggingOut,
       finishPostLoginSplash,
+      finishLogoutSplash,
+      refreshUser,
       login,
       signup,
       logout,
     }),
-    [user, isLoading, showPostLoginSplash, finishPostLoginSplash, login, signup, logout]
+    [
+      user,
+      isLoading,
+      showPostLoginSplash,
+      showLogoutSplash,
+      isLoggingOut,
+      finishPostLoginSplash,
+      finishLogoutSplash,
+      refreshUser,
+      login,
+      signup,
+      logout,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
