@@ -23,6 +23,14 @@ const MIN_PASSWORD_LEN = 8;
 // Business rule: only @gmail.com addresses are accepted (matches backend).
 const GMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 
+function normalizeFullName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function getPasswordRequirements(pw: string) {
   return [
     { label: 'At least 8 characters', met: pw.length >= MIN_PASSWORD_LEN },
@@ -57,8 +65,8 @@ export default function Signup() {
   const [panelCollapsed, setPanelCollapsed] = useState(false);
 
   const validate = (): string | null => {
-    if (!name.trim()) return 'Please enter your full name.';
-    if (!GMAIL_RE.test(email.trim())) return 'Email must be a @gmail.com address.';
+    if (!normalizeFullName(name)) return 'Please enter your full name.';
+    if (!GMAIL_RE.test(normalizeEmail(email))) return 'Email must be a @gmail.com address.';
     if (password.length < MIN_PASSWORD_LEN)
       return `Password must be at least ${MIN_PASSWORD_LEN} characters.`;
     if (password !== confirm) return 'Passwords do not match.';
@@ -80,7 +88,7 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      await signup(name.trim(), email.trim(), password);
+      await signup(normalizeFullName(name), normalizeEmail(email), password);
       navigate('/', { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to create account. Please try again.';
@@ -166,7 +174,7 @@ export default function Signup() {
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="you@gmail.com"
                     className={inputCls}
                     disabled={loading}
                   />

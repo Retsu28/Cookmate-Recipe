@@ -9,6 +9,15 @@ const MIN_PASSWORD_LEN = 8;
 const BCRYPT_ROUNDS = 10;
 const JWT_EXPIRES_IN = '7d';
 const JWT_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DUPLICATE_SIGNUP_MESSAGE = 'An account with this full name or Gmail already exists.';
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeFullName(value) {
+  return value.trim().replace(/\s+/g, ' ');
+}
 
 function toPublicUser(row) {
   return {
@@ -50,8 +59,13 @@ exports.signup = async (req, res) => {
   try {
     const { name, email, password } = req.body ?? {};
 
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      return res.status(400).json({ error: 'Email and password are required.' });
+    if (
+      typeof name !== 'string' ||
+      !name.trim() ||
+      typeof email !== 'string' ||
+      typeof password !== 'string'
+    ) {
+      return res.status(400).json({ error: 'Full name, Gmail, and password are required.' });
     }
     if (!SIGNUP_EMAIL_RE.test(email.trim())) {
       return res.status(400).json({ error: 'Email must be a @gmail.com address.' });
@@ -61,10 +75,21 @@ exports.signup = async (req, res) => {
         .status(400)
         .json({ error: `Password must be at least ${MIN_PASSWORD_LEN} characters.` });
     }
-    const cleanName =
-      typeof name === 'string' && name.trim() ? name.trim() : email.trim().split('@')[0];
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const cleanName = normalizeFullName(name);
+    const normalizedEmail = normalizeEmail(email);
+
+    const duplicate = await pool.query(
+      `SELECT
+         EXISTS(SELECT 1 FROM users WHERE LOWER(BTRIM(email)) = $1) AS email_exists,
+         EXISTS(SELECT 1 FROM users WHERE LOWER(BTRIM(full_name)) = LOWER(BTRIM($2))) AS name_exists`,
+      [normalizedEmail, cleanName]
+    );
+
+    if (duplicate.rows[0]?.email_exists || duplicate.rows[0]?.name_exists) {
+      return res.status(409).json({ error: DUPLICATE_SIGNUP_MESSAGE });
+    }
+
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const insert = await pool.query(
@@ -80,7 +105,7 @@ exports.signup = async (req, res) => {
     return res.status(201).json({ token, user });
   } catch (err) {
     if (err?.code === '23505') {
-      return res.status(409).json({ error: 'An account with this email already exists.' });
+      return res.status(409).json({ error: DUPLICATE_SIGNUP_MESSAGE });
     }
     console.error('[auth/signup] failed:', err);
     return res.status(500).json({ error: 'Something went wrong creating your account.' });
@@ -98,9 +123,9 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const result = await pool.query(
-      'SELECT id, email, full_name, role, password_hash FROM users WHERE LOWER(email) = $1 LIMIT 1',
+      'SELECT id, email, full_name, role, password_hash FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
       [normalizedEmail]
     );
 

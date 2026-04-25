@@ -76,6 +76,12 @@ Example:
 psql -U postgres -d Cookmate -f database/schema.sql
 ```
 
+If your database already has a `users` table, apply the auth uniqueness migration instead of recreating the schema:
+
+```bash
+psql -U postgres -d Cookmate -f database/migrations/20260425_unique_user_auth_fields.sql
+```
+
 ## 4. Start the API
 
 From the repo root:

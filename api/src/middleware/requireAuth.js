@@ -18,7 +18,7 @@ function verifyAuthToken(token) {
 
 /**
  * Express middleware — extracts JWT from Authorization header or cookie.
- * Attaches `req.userId` on success, responds 401 on failure.
+ * Attaches `req.userId` and `req.userRole` on success, responds 401 on failure.
  */
 function requireAuth(req, res, next) {
   const header = req.header('authorization') || '';
@@ -31,6 +31,7 @@ function requireAuth(req, res, next) {
   try {
     const payload = verifyAuthToken(token);
     req.userId = Number(payload.sub);
+    req.userRole = payload.role === 'admin' ? 'admin' : 'user';
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token.' });

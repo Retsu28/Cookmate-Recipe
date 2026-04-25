@@ -24,6 +24,14 @@ import AuthThemeToggle from '../components/AuthThemeToggle';
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
 
+function normalizeFullName(value) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
 function getPasswordRequirements(pw) {
   return [
     { label: 'At least 8 characters', met: pw.length >= MIN_PASSWORD_LEN },
@@ -72,8 +80,8 @@ export default function SignupScreen({ navigation }) {
   }, [strength.score, strengthBar]);
 
   const validate = () => {
-    if (!name.trim()) return 'Please enter your full name.';
-    if (!EMAIL_RE.test(email.trim())) return 'Email must be a @gmail.com address.';
+    if (!normalizeFullName(name)) return 'Please enter your full name.';
+    if (!EMAIL_RE.test(normalizeEmail(email))) return 'Email must be a @gmail.com address.';
     if (password.length < MIN_PASSWORD_LEN) return `Password must be at least ${MIN_PASSWORD_LEN} characters.`;
     if (password !== confirm) return 'Passwords do not match.';
     return null;
@@ -89,7 +97,7 @@ export default function SignupScreen({ navigation }) {
     }
     setLoading(true);
     try {
-      const result = await authService.signup(name.trim(), email.trim(), password);
+      const result = await authService.signup(normalizeFullName(name), normalizeEmail(email), password);
       await login(result.user);
       // AppNavigator auto-swaps AuthStack → AppStack once authenticated.
     } catch (err) {
@@ -149,7 +157,7 @@ export default function SignupScreen({ navigation }) {
                 styles={styles}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder="you@gmail.com"
                 autoCapitalize="none"
                 keyboardType="email-address"
                 textContentType="emailAddress"

@@ -6,14 +6,18 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(255),
+    full_name VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     avatar_url TEXT,
     bio TEXT,
     cooking_skill_level VARCHAR(50) DEFAULT 'Beginner',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT users_full_name_not_blank CHECK (BTRIM(full_name) <> '')
 );
+
+CREATE UNIQUE INDEX users_email_normalized_unique_idx ON users (LOWER(BTRIM(email)));
+CREATE UNIQUE INDEX users_full_name_lower_unique_idx ON users (LOWER(BTRIM(full_name)));
 
 -- Ingredients table
 CREATE TABLE ingredients (
