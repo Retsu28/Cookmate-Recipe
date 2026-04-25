@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
   ActivityIndicator,
   Image,
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppTheme } from '../context/ThemeContext';
+
+const detectedIngredients = ['Chicken', 'Sun-dried Tomatoes', 'Spinach', 'Cream'];
 
 export default function CameraScreen({ navigation }) {
+  const { colors, isDark } = useAppTheme();
   const [hasPermission, setHasPermission] = useState(null);
   const [type, setType] = useState('back');
   const [loading, setLoading] = useState(false);
@@ -45,51 +49,63 @@ export default function CameraScreen({ navigation }) {
   };
 
   if (hasPermission === null) {
-    return <View className="flex-1 bg-black items-center justify-center"><ActivityIndicator color="#f97316" /></View>;
+    return <View style={st.permWrap}><ActivityIndicator color="#f97316" /></View>;
   }
   if (hasPermission === false) {
-    return <View className="flex-1 bg-black items-center justify-center p-10"><Text className="text-white text-center">No access to camera. Please enable permissions in settings.</Text></View>;
+    return (
+      <View style={st.permWrap}>
+        <Text style={st.permText}>No access to camera. Please enable permissions in settings.</Text>
+      </View>
+    );
   }
 
   return (
-    <View className="flex-1 bg-black">
+    <View style={st.root}>
       {capturedImage ? (
-        <View className="flex-1">
-          <Image source={{ uri: capturedImage }} className="flex-1" />
+        <View style={st.flex1}>
+          <Image source={{ uri: capturedImage }} style={StyleSheet.absoluteFillObject} />
           {loading && (
-            <View className="absolute inset-0 bg-black/60 items-center justify-center">
+            <View style={st.loadingOverlay}>
               <ActivityIndicator size="large" color="#f97316" />
-              <Text className="text-white font-bold mt-4">Analyzing image...</Text>
+              <Text style={st.loadingText}>Analyzing image...</Text>
             </View>
           )}
           {analysisComplete && (
-            <SafeAreaView className="absolute inset-0 justify-end p-6" pointerEvents="box-none">
-              <View className="bg-white rounded-3xl p-5 shadow-lg border border-stone-100">
-                <View className="flex-row items-center space-x-3 mb-4">
-                  <View className="w-11 h-11 rounded-2xl bg-orange-50 items-center justify-center">
-                    <Ionicons name="sparkles" size={22} color="#f97316" />
+            <SafeAreaView style={st.resultSafe} pointerEvents="box-none">
+              {/* Analysis card — matches web dark header + content */}
+              <View style={[st.resultCard, { backgroundColor: colors.surface }]}>
+                <View style={st.resultHeader}>
+                  <View style={st.resultIconBox}>
+                    <Ionicons name="restaurant" size={16} color="#0a0a0a" />
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-dark font-bold text-lg">AI Analysis Complete</Text>
-                    <Text className="text-stone-400 text-xs font-medium">Detected: Creamy Tuscan Chicken</Text>
+                  <View style={st.resultHeaderText}>
+                    <Text style={st.resultTitle}>Analysis Complete</Text>
+                    <Text style={st.resultSub}>Creamy Tuscan Chicken · 450 kcal</Text>
                   </View>
                 </View>
 
-                <View className="flex-row space-x-3">
+                {/* Ingredient badges */}
+                <View style={st.badgeWrap}>
+                  {detectedIngredients.map((ing) => (
+                    <View key={ing} style={[st.badge, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+                      <Text style={[st.badgeText, { color: colors.text }]}>{ing.toUpperCase()}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Actions */}
+                <View style={st.resultActions}>
                   <TouchableOpacity
-                    onPress={() => {
-                      setCapturedImage(null);
-                      setAnalysisComplete(false);
-                    }}
-                    className="flex-1 h-12 rounded-2xl bg-stone-100 items-center justify-center"
+                    onPress={() => { setCapturedImage(null); setAnalysisComplete(false); }}
+                    style={[st.retakeBtn, { borderColor: colors.border }]}
                   >
-                    <Text className="text-dark font-bold">Retake</Text>
+                    <Text style={[st.retakeBtnText, { color: colors.text }]}>RETAKE</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
-                    className="flex-1 h-12 rounded-2xl bg-primary items-center justify-center"
+                    style={st.viewBtn}
                   >
-                    <Text className="text-white font-bold">View Recipe</Text>
+                    <Text style={st.viewBtnText}>VIEW RECIPE</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -97,41 +113,37 @@ export default function CameraScreen({ navigation }) {
           )}
         </View>
       ) : (
-        <View className="flex-1">
+        <View style={st.flex1}>
           <CameraView style={StyleSheet.absoluteFillObject} facing={type} ref={cameraRef} />
-          <SafeAreaView className="flex-1 justify-between px-5 pt-5 pb-7" pointerEvents="box-none">
-            <View className="flex-row justify-between">
-              <TouchableOpacity onPress={() => navigation.goBack()}>
-                <Ionicons name="close" size={26} color="white" />
+          <SafeAreaView style={st.cameraSafe} pointerEvents="box-none">
+            {/* Top controls */}
+            <View style={st.topBar}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={st.camBtn}>
+                <Ionicons name="close" size={22} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setType(
-                type === 'back'
-                  ? 'front'
-                  : 'back'
-              )}>
-                <Ionicons name="camera-reverse-outline" size={26} color="white" />
+              <TouchableOpacity
+                onPress={() => setType(type === 'back' ? 'front' : 'back')}
+                style={st.camBtn}
+              >
+                <Ionicons name="camera-reverse-outline" size={22} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            <View className="items-center space-y-7" pointerEvents="box-none">
-              <View className="bg-black/20 px-5 py-2 rounded-full border border-white/25">
-                <Text className="text-white text-[10px] font-bold">Point at ingredients or a dish</Text>
+            {/* Bottom controls */}
+            <View style={st.bottomBar}>
+              <View style={st.hintPill}>
+                <Text style={st.hintText}>Point at ingredients or a dish</Text>
               </View>
-              
-              <View className="flex-row items-center space-x-10">
-                <TouchableOpacity className="w-11 h-11 bg-black/25 rounded-full items-center justify-center border border-white/10">
-                  <Ionicons name="images-outline" size={21} color="white" />
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  onPress={takePicture}
-                  className="w-[66px] h-[66px] bg-white rounded-full items-center justify-center border-4 border-primary"
-                >
-                  <View className="w-12 h-12 bg-primary rounded-full" />
-                </TouchableOpacity>
 
-                <TouchableOpacity className="w-11 h-11 bg-black/25 rounded-full items-center justify-center border border-white/10">
-                  <Ionicons name="flash-outline" size={21} color="white" />
+              <View style={st.captureRow}>
+                <TouchableOpacity style={st.sideBtn}>
+                  <Ionicons name="images-outline" size={20} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={takePicture} style={st.captureOuter}>
+                  <View style={st.captureInner} />
+                </TouchableOpacity>
+                <TouchableOpacity style={st.sideBtn}>
+                  <Ionicons name="flash-outline" size={20} color="#fff" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -141,3 +153,40 @@ export default function CameraScreen({ navigation }) {
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000' },
+  flex1: { flex: 1 },
+  permWrap: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: 40 },
+  permText: { fontFamily: 'Geist_400Regular', fontSize: 14, color: '#fff', textAlign: 'center' },
+  // Loading
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff', marginTop: 14 },
+  // Result
+  resultSafe: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', padding: 12 },
+  resultCard: { overflow: 'hidden', borderRadius: 0 },
+  resultHeader: { backgroundColor: '#0a0a0a', flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
+  resultIconBox: { width: 36, height: 36, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  resultHeaderText: { flex: 1 },
+  resultTitle: { fontFamily: 'Geist_700Bold', fontSize: 16, color: '#fff' },
+  resultSub: { fontFamily: 'Geist_400Regular', fontSize: 12, color: '#a8a29e', marginTop: 2 },
+  badgeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 16 },
+  badge: { paddingHorizontal: 10, paddingVertical: 6 },
+  badgeText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },
+  resultActions: { flexDirection: 'row', gap: 10, padding: 16, paddingTop: 4 },
+  retakeBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  retakeBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5 },
+  viewBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1917' },
+  viewBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#fff' },
+  // Camera
+  cameraSafe: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between' },
+  camBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  bottomBar: { alignItems: 'center', gap: 20 },
+  hintPill: { backgroundColor: 'rgba(0,0,0,0.3)', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  hintText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1, color: '#fff' },
+  captureRow: { flexDirection: 'row', alignItems: 'center', gap: 32 },
+  sideBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  captureOuter: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#f97316' },
+  captureInner: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#f97316' },
+});

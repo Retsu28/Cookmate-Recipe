@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface AdminTopbarProps {
   onMenuClick: () => void;
@@ -41,8 +42,9 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <Badge className="hidden h-8 rounded-full bg-orange-100 px-3 font-bold text-orange-700 sm:inline-flex">
           <ShieldCheck size={14} />
-          Admin preview
+          Admin dashboard
         </Badge>
+        <ThemeToggle />
         <Link
           to="/admin/notifications"
           aria-label="Admin notifications"

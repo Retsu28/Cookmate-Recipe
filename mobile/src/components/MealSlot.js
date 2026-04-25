@@ -1,42 +1,46 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
 
 export default function MealSlot({ label, meal, color, onAdd, onRemove }) {
+  const { colors, isDark } = useAppTheme();
+
   return (
-    <View className="mb-6">
-      <View className="flex-row items-center space-x-2 mb-3">
-        <View className={`w-1.5 h-1.5 rounded-full ${color}`} />
-        <Text className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{label}</Text>
-      </View>
+    <View style={st.wrap}>
+      <Text style={[st.label, { color: colors.textSubtle }]}>{label.toUpperCase()}</Text>
 
       {meal ? (
-        <View className="h-14 bg-white rounded-xl flex-row items-center justify-between px-3 shadow-sm">
-          <View className="flex-row items-center space-x-3">
-            <Image
-              source={{ uri: meal.image }}
-              className="w-10 h-10 rounded-lg"
-            />
+        <View style={[st.filledSlot, { borderColor: colors.border }]}>
+          <View style={st.filledLeft}>
+            <Image source={{ uri: meal.image }} style={st.mealImg} />
             <View>
-              <Text className="text-xs font-bold text-dark">{meal.recipe}</Text>
-              <Text className="text-[9px] text-stone-400">15 min - Easy</Text>
+              <Text style={[st.mealTitle, { color: colors.text }]}>{meal.recipe}</Text>
+              <Text style={[st.mealMeta, { color: colors.textSubtle }]}>15 MIN · EASY</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={onRemove} className="p-2">
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
+          <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={16} color={colors.textSubtle} />
           </TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity
-          onPress={onAdd}
-          className="h-11 rounded-xl border border-orange-200 items-center justify-center"
-        >
-          <View className="flex-row items-center space-x-2">
-            <Ionicons name="add-circle-outline" size={15} color="#f97316" />
-            <Text className="text-primary text-xs font-medium">Add Recipe</Text>
-          </View>
+        <TouchableOpacity onPress={onAdd} style={[st.emptySlot, { borderColor: colors.border }]}>
+          <Ionicons name="add" size={18} color={colors.textSubtle} />
+          <Text style={[st.addText, { color: colors.textSubtle }]}>ADD RECIPE</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  wrap: { marginBottom: 20 },
+  label: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 2, marginBottom: 8 },
+  filledSlot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderWidth: 1 },
+  filledLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  mealImg: { width: 40, height: 40 },
+  mealTitle: { fontFamily: 'Geist_700Bold', fontSize: 13 },
+  mealMeta: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1, marginTop: 2 },
+  emptySlot: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed' },
+  addText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+});

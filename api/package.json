@@ -1,0 +1,28 @@
+{
+  "name": "cookmate-api",
+  "version": "1.0.0",
+  "description": "CookMate Express API — single backend for web and mobile clients",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "natural": "^6.10.5",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {},
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "overrides": {
+    "uuid": "^14.0.0"
+  }
+}

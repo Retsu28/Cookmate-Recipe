@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppTheme } from '../context/ThemeContext';
 
 const ONBOARDING_STEPS = [
   {
@@ -42,6 +43,8 @@ const ONBOARDING_STEPS = [
 ];
 
 export default function OnboardingScreen({ navigation }) {
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [skillLevel, setSkillLevel] = useState(null);
   const { width } = useWindowDimensions();
@@ -167,115 +170,117 @@ export default function OnboardingScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fafaf9', // stone-50 (web bg)
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'space-between',
-  },
-  slideContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    marginBottom: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#ffedd5', // orange-100
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Geist_800ExtraBold',
-    color: '#1c1917', // stone-900 (web heading)
-    marginBottom: 16,
-    textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  description: {
-    fontSize: 16,
-    fontFamily: 'Geist_400Regular',
-    color: '#57534e', // stone-600
-    textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 16,
-  },
-  preferencesContainer: {
-    width: '100%',
-    marginTop: 24,
-    gap: 12,
-  },
-  skillButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#e7e5e4', // stone-200
-    alignItems: 'center',
-  },
-  skillButtonActive: {
-    borderColor: '#f97316', // orange-500
-    backgroundColor: '#ffedd5', // orange-100
-  },
-  skillButtonText: {
-    fontSize: 16,
-    fontFamily: 'Geist_500Medium',
-    color: '#57534e', // stone-600
-  },
-  skillButtonTextActive: {
-    color: '#c2410c', // orange-700
-  },
-  footer: {
-    width: '100%',
-    paddingBottom: 20,
-  },
-  primaryButton: {
-    backgroundColor: '#f97316', // orange-500
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontFamily: 'Geist_700Bold',
-  },
-  buttonIcon: {
-    marginLeft: 8,
-  },
-  skipButton: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  skipButtonText: {
-    color: '#a8a29e', // stone-400
-    fontSize: 16,
-    fontFamily: 'Geist_500Medium',
-  },
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-    gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#fed7aa', // orange-200
-  },
-  activeDot: {
-    width: 24,
-    backgroundColor: '#f97316', // orange-500
-  },
-});
+function createStyles(colors, isDark) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      padding: 24,
+      justifyContent: 'space-between',
+    },
+    slideContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    iconContainer: {
+      marginBottom: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: colors.primarySoft,
+    },
+    title: {
+      fontSize: 28,
+      fontFamily: 'Geist_800ExtraBold',
+      color: isDark ? '#fafaf9' : colors.text,
+      marginBottom: 16,
+      textAlign: 'center',
+      letterSpacing: -0.5,
+    },
+    description: {
+      fontSize: 16,
+      fontFamily: 'Geist_400Regular',
+      color: isDark ? '#e7e5e4' : colors.textMuted,
+      textAlign: 'center',
+      lineHeight: 24,
+      paddingHorizontal: 16,
+    },
+    preferencesContainer: {
+      width: '100%',
+      marginTop: 24,
+      gap: 12,
+    },
+    skillButton: {
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    skillButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    skillButtonText: {
+      fontSize: 16,
+      fontFamily: 'Geist_500Medium',
+      color: isDark ? '#d6d3d1' : colors.textMuted,
+    },
+    skillButtonTextActive: {
+      color: isDark ? '#fed7aa' : colors.primaryDark,
+    },
+    footer: {
+      width: '100%',
+      paddingBottom: 20,
+    },
+    primaryButton: {
+      backgroundColor: colors.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 18,
+      borderRadius: 16,
+      marginBottom: 16,
+    },
+    primaryButtonText: {
+      color: '#fff',
+      fontSize: 18,
+      fontFamily: 'Geist_700Bold',
+    },
+    buttonIcon: {
+      marginLeft: 8,
+    },
+    skipButton: {
+      alignItems: 'center',
+      paddingVertical: 12,
+    },
+    skipButtonText: {
+      color: isDark ? '#d6d3d1' : colors.textSubtle,
+      fontSize: 16,
+      fontFamily: 'Geist_500Medium',
+    },
+    pagination: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: 24,
+      gap: 8,
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.primarySoftBorder,
+    },
+    activeDot: {
+      width: 24,
+      backgroundColor: colors.primary,
+    },
+  });
+}

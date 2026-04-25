@@ -1,7 +1,29 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { tokenStorage } from '../lib/tokenStorage';
 
-const API_URL = 'https://ais-dev-2c7mel3x5hyi6g2uhhdwnk-445093172081.asia-southeast1.run.app';
+/**
+ * API base URL — reads from Expo extra config.
+ *
+ * Set in app.json → expo.extra.apiBaseUrl  (or app.config.js).
+ * Defaults:
+ *   - Android emulator: http://10.0.2.2:5000  (maps to host localhost)
+ *   - Others / physical device: http://localhost:5000
+ *
+ * For production, set apiBaseUrl to your EC2 URL, e.g.:
+ *   https://api.cookmate.com
+ */
+const configuredBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl;
+const expoHost = Constants.expoGoConfig?.debuggerHost?.split(':')[0];
+const API_URL =
+  (typeof configuredBaseUrl === 'string' && configuredBaseUrl.trim())
+    ? configuredBaseUrl.trim()
+    : expoHost
+      ? `http://${expoHost}:5000`
+      : Platform.OS === 'android'
+        ? 'http://10.0.2.2:5000'
+        : 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_URL,

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Edit3, Plus, Star, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
@@ -9,6 +10,10 @@ import { adminRecipes, type AdminRecipe } from '../data/adminMockData';
 
 export default function RecipeManagement() {
   const [recipes, setRecipes] = useState<AdminRecipe[]>(adminRecipes);
+
+  const openRecipeEditor = (recipe?: AdminRecipe) => {
+    toast.info(recipe ? `Recipe editor preview for ${recipe.name}.` : 'Recipe creation preview is not connected to a backend yet.');
+  };
 
   const toggleFeatured = (id: number) => {
     setRecipes((current) => current.map((recipe) => (recipe.id === id ? { ...recipe, featured: !recipe.featured } : recipe)));
@@ -43,7 +48,7 @@ export default function RecipeManagement() {
       header: 'Actions',
       render: (recipe) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon-sm" className="rounded-full text-stone-500" aria-label={`Edit ${recipe.name}`}>
+          <Button variant="ghost" size="icon-sm" className="rounded-full text-stone-500" aria-label={`Edit ${recipe.name}`} onClick={() => openRecipeEditor(recipe)}>
             <Edit3 size={14} />
           </Button>
           <Button
@@ -75,7 +80,7 @@ export default function RecipeManagement() {
         title="Recipe Management"
         description="Add, edit, feature, and monitor CookMate recipes. Destructive actions are local mock actions until backend admin APIs exist."
         actions={
-          <Button className="rounded-full bg-orange-500 px-5 font-bold text-white hover:bg-orange-600">
+          <Button className="rounded-full bg-orange-500 px-5 font-bold text-white hover:bg-orange-600" onClick={() => openRecipeEditor()}>
             <Plus size={16} />
             Add recipe
           </Button>

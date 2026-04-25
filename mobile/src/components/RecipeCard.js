@@ -1,61 +1,59 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
 
-export default function RecipeCard({ recipe, onPress, horizontal = false }) {
-  const difficultyColor =
-    recipe.difficulty === 'Easy'
-      ? 'bg-green-400'
-      : recipe.difficulty === 'Medium'
-        ? 'bg-orange-400'
-        : 'bg-red-400';
-  const image = recipe.image || 'https://picsum.photos/seed/cookmate/600/400';
+export default function RecipeCard({ recipe, horizontal, onPress }) {
+  const { colors, isDark } = useAppTheme();
 
-  return (
-    <TouchableOpacity 
-      onPress={onPress}
-      className={`bg-white rounded-2xl overflow-hidden shadow-sm ${horizontal ? 'w-64 mr-4' : 'w-[48%] mb-4'}`}
-    >
-      <View className="relative">
-        <Image 
-          source={{ uri: image }} 
-          className={horizontal ? 'w-full h-40' : 'w-full h-28'}
+  if (horizontal) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[st.hCard, { borderColor: colors.border }]}>
+        <Image
+          source={{ uri: recipe.image || 'https://picsum.photos/seed/placeholder/400/200' }}
+          style={st.hImage}
           resizeMode="cover"
         />
-        {horizontal && (
-          <>
-            <View className="absolute top-3 left-3 bg-white/90 px-3 py-1 rounded-full">
-              <Text className="text-[9px] font-bold text-dark">{recipe.category || 'Chef Pick'}</Text>
+        <View style={st.hBody}>
+          <Text style={[st.hTitle, { color: colors.text }]} numberOfLines={1}>{recipe.title}</Text>
+          <View style={st.hMeta}>
+            <Text style={[st.hTime, { color: colors.textSubtle }]}>{(recipe.time || '30 MIN').toUpperCase()}</Text>
+            <View style={st.hRating}>
+              <Ionicons name="star" size={10} color={colors.amber} />
+              <Text style={[st.hRatingText, { color: colors.text }]}>{recipe.rating || '4.5'}</Text>
             </View>
-            <View className="absolute top-3 right-3 w-8 h-8 bg-white/90 rounded-full items-center justify-center">
-              <Ionicons name="bookmark-outline" size={17} color="#a8a29e" />
-            </View>
-          </>
-        )}
-      </View>
-      <View className={horizontal ? 'p-4 space-y-3' : 'p-3 space-y-2'}>
-        <View className="flex-row items-start justify-between">
-          <Text className={`${horizontal ? 'text-base' : 'text-sm'} text-dark font-bold flex-1 pr-2`} numberOfLines={1}>
-            {recipe.title}
-          </Text>
-          {horizontal && (
-            <View className="flex-row items-center">
-              <Ionicons name="star" size={14} color="#f59e0b" />
-              <Text className="text-primary text-xs font-bold ml-1">{recipe.rating || '4.8'}</Text>
-            </View>
-          )}
-        </View>
-        <View className="flex-row items-center space-x-4">
-          <View className="flex-row items-center">
-            <Ionicons name="time-outline" size={12} color="#d6d3d1" />
-            <Text className="text-stone-400 text-[9px] font-medium ml-1">{recipe.time}</Text>
-          </View>
-          <View className="flex-row items-center">
-            <View className={`w-1.5 h-1.5 rounded-full ${difficultyColor}`} />
-            <Text className="text-stone-400 text-[9px] font-medium ml-1">{recipe.difficulty}</Text>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={st.vCard}>
+      <Image
+        source={{ uri: recipe.image || 'https://picsum.photos/seed/placeholder/400/400' }}
+        style={[st.vImage, { borderColor: colors.border }]}
+        resizeMode="cover"
+      />
+      <Text style={[st.vTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
+      <Text style={[st.vTime, { color: colors.textSubtle }]}>{(recipe.time || '30 MIN').toUpperCase()}</Text>
     </TouchableOpacity>
   );
 }
+
+const st = StyleSheet.create({
+  // Horizontal
+  hCard: { width: 248, marginRight: 12, borderWidth: 1, overflow: 'hidden' },
+  hImage: { width: '100%', height: 140 },
+  hBody: { padding: 14, gap: 6 },
+  hTitle: { fontFamily: 'Geist_700Bold', fontSize: 14 },
+  hMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  hTime: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },
+  hRating: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  hRatingText: { fontFamily: 'Geist_700Bold', fontSize: 11 },
+  // Vertical / Grid
+  vCard: { width: '48%', marginBottom: 16 },
+  vImage: { width: '100%', aspectRatio: 1, borderWidth: 1, marginBottom: 8 },
+  vTitle: { fontFamily: 'Geist_700Bold', fontSize: 13, lineHeight: 17, marginBottom: 4 },
+  vTime: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },
+});

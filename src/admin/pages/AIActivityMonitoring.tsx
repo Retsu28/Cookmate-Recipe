@@ -1,4 +1,5 @@
 import { AlertTriangle, ShieldCheck, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
 import { AdminTable, type AdminTableColumn } from '../components/AdminTable';
@@ -32,21 +33,36 @@ export default function AIActivityMonitoring() {
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[2rem] border border-green-200 bg-green-50 p-5">
+        <motion.div
+          className="rounded-[2rem] border border-green-200 bg-green-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0, ease: [0.22, 1, 0.36, 1] }}
+        >
           <ShieldCheck className="text-green-700" size={24} />
           <p className="mt-3 font-extrabold text-stone-900">Server-side key policy</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">Gemini API keys must stay server-side and never use a VITE_ prefix.</p>
-        </div>
-        <div className="rounded-[2rem] border border-blue-200 bg-blue-50 p-5">
+        </motion.div>
+        <motion.div
+          className="rounded-[2rem] border border-blue-200 bg-blue-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.07, ease: [0.22, 1, 0.36, 1] }}
+        >
           <Sparkles className="text-blue-700" size={24} />
           <p className="mt-3 font-extrabold text-stone-900">Network-only AI responses</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">Gemini responses are never cached in the service worker.</p>
-        </div>
-        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5">
+        </motion.div>
+        <motion.div
+          className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
+        >
           <AlertTriangle className="text-amber-700" size={24} />
           <p className="mt-3 font-extrabold text-stone-900">Monitoring preview</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">Logs below are mock admin records until a real audit trail exists.</p>
-        </div>
+        </motion.div>
       </div>
 
       <AdminSectionCard title="AI Request Log" description="No request payloads or API secrets are shown in admin UI.">

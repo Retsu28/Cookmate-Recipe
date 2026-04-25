@@ -2,37 +2,132 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run Cookmate locally
+# Run CookMate locally
 
-This contains everything you need to run your app locally.
+CookMate is a monorepo with three apps:
 
-View your app in AI Studio: https://ai.studio/apps/ee8f0d6f-9564-4090-8325-73edeeb29dc1
+- `./` — React + Vite web app
+- `api/` — Express API backed by PostgreSQL
+- `mobile/` — Expo React Native mobile app
 
-## Web app
+## Prerequisites
 
-**Prerequisites:**  Node.js
+- Node.js 18+
+- npm
+- PostgreSQL
+- Expo Go / Android Studio / Xcode if you want to run the mobile app
 
+## 1. Install dependencies
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+From the repo root:
 
-## Mobile app
+```bash
+npm install
+npm --prefix api install
+npm --prefix mobile install
+```
 
-The Expo app in [`mobile/`](mobile) is native-only and is intended for Android/iOS development.
+## 2. Configure environment files
 
-1. Open a terminal in `mobile/`
-2. Install dependencies:
-   `npm install`
-3. Start the Expo dev server:
-   `npx expo start`
-4. Or launch a native target directly:
-   `npm run android`
-   `npm run ios`
+This repo currently includes one example env file at [`/.env.example`](.env.example).
+
+Create these files before starting development:
+
+- `./.env` — used by the Vite web app
+- `./api/.env` — used by the Express API
+
+Copy the values you need from `.env.example`.
+
+### Minimum `api/.env` values
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=Cookmate
+JWT_SECRET=replace-with-a-long-random-string
+```
+
+Optional API values:
+
+```env
+PORT=5000
+NODE_ENV=development
+CORS_ORIGINS=http://localhost:5173
+```
+
+### Web `./.env` notes
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+VITE_API_BASE_URL=
+```
+
+Leave `VITE_API_BASE_URL` empty for local development. The Vite dev server already proxies `/api/*` requests to `http://localhost:5000`.
+
+## 3. Prepare PostgreSQL
+
+Create the database named in `DB_NAME`, then run the schema in [`database/schema.sql`](database/schema.sql).
+
+Example:
+
+```bash
+psql -U postgres -d Cookmate -f database/schema.sql
+```
+
+## 4. Start the API
+
+From the repo root:
+
+```bash
+npm run dev:api
+```
+
+Or directly inside `api/`:
+
+```bash
+npm run dev
+```
+
+The API runs at `http://localhost:5000`.
+
+## 5. Start the web app
+
+From the repo root:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
+## 6. Start the mobile app
+
+From `mobile/`:
+
+```bash
+npx expo start
+```
+
+Or launch a device target directly:
+
+```bash
+npm run android
+npm run ios
+```
+
+The mobile app reads `expo.extra.apiBaseUrl` from [`mobile/app.json`](mobile/app.json).
+
+- Leave it empty to use Expo's detected local host during development
+- Set it to `http://YOUR_LAN_IP:5000` if you are testing on a physical device and `localhost` is not reachable
+- Set it to your production API URL for deployed builds
 
 Do not use `mobile/` for browser development. The repo root app is the web experience.
 
-Use this in mobile Chrome:
-http://192.168.1.6:3001/
+## Local development flow
+
+1. Start PostgreSQL
+2. Start the API on port `5000`
+3. Start the web app on port `5173`
+4. Start the mobile app only if you need native testing

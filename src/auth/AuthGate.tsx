@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { isAdminUser } from '@/services/authService';
 
 /**
  * AuthGate — renders children only if the user is authenticated.
@@ -34,5 +35,25 @@ export default function AuthGate() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+  return <Outlet />;
+}
+
+export function GuestGate() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-500 shadow-sm">
+          Checking session...
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to={isAdminUser(user) ? '/admin' : '/'} replace />;
+  }
+
   return <Outlet />;
 }

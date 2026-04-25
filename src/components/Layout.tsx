@@ -8,6 +8,8 @@ import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getInitial } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { isAdminUser } from '@/services/authService';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const LayoutShellContext = createContext(false);
 
@@ -18,7 +20,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = isAdminUser(user);
 
   // When AppShell provides the persistent frame, page-level Layout calls flatten
   // to avoid rendering the same chrome twice.
@@ -153,6 +155,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+            <ThemeToggle />
             {isAdmin && (
               <Link
                 to="/admin"

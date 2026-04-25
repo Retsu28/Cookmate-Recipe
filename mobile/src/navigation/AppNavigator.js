@@ -4,7 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabNavigator from './BottomTabNavigator';
 import { useAuth } from '../context/AuthContext';
-import { colors } from '../theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 // Protected stack screens
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
@@ -18,24 +18,6 @@ import SignupScreen from '../screens/SignupScreen';
 
 const Stack = createStackNavigator();
 
-const headerScreenOptions = {
-  headerStyle: {
-    backgroundColor: '#fafaf9',
-    borderBottomColor: '#e7e5e4',
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  headerTintColor: '#1c1917',
-  headerBackImage: ({ tintColor }) => (
-    <Ionicons name="chevron-back" size={28} color={tintColor || '#1c1917'} />
-  ),
-  headerTitleStyle: {
-    fontFamily: 'Geist_800ExtraBold',
-    fontSize: 18,
-    letterSpacing: -0.3,
-  },
-};
-
 function AuthStack() {
   return (
     <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
@@ -45,13 +27,31 @@ function AuthStack() {
   );
 }
 
-function AppStack() {
+function AppStack({ colors }) {
+  const headerScreenOptions = {
+    headerStyle: {
+      backgroundColor: colors.background,
+      borderBottomColor: colors.border,
+      elevation: 0,
+      shadowOpacity: 0,
+    },
+    headerTintColor: colors.text,
+    headerBackImage: ({ tintColor }) => (
+      <Ionicons name="chevron-back" size={28} color={tintColor || colors.text} />
+    ),
+    headerTitleStyle: {
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 18,
+      letterSpacing: -0.3,
+    },
+  };
+
   return (
     <Stack.Navigator initialRouteName="Onboarding" screenOptions={headerScreenOptions}>
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Main" component={BottomTabNavigator} options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={{ title: 'Recipe Details' }} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
+      <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
@@ -71,6 +71,7 @@ function AppStack() {
  */
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { colors } = useAppTheme();
 
   if (isLoading) {
     return (
@@ -80,5 +81,5 @@ export default function AppNavigator() {
     );
   }
 
-  return isAuthenticated ? <AppStack /> : <AuthStack />;
+  return isAuthenticated ? <AppStack colors={colors} /> : <AuthStack />;
 }

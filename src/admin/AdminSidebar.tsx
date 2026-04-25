@@ -80,10 +80,10 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
         ))}
       </nav>
 
-      <div className="m-4 rounded-[1.5rem] bg-stone-900 p-4 text-white">
-        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-300">Preview mode</p>
-        <p className="mt-2 text-sm leading-relaxed text-stone-300">
-          Admin actions use local mock data until production APIs and role-based auth exist.
+      <div className="m-4 rounded-[1.5rem] border border-stone-200 bg-white p-4">
+        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600">Admin access</p>
+        <p className="mt-2 text-sm leading-relaxed text-stone-600">
+          Admin pages still use local mock data for now, while access stays limited to signed-in admin accounts.
         </p>
       </div>
     </aside>

@@ -1,8 +1,8 @@
 /**
  * CookMate authentication service (Web).
  *
- * Calls the real Express backend in `src/backend/routers/auth.ts`,
- * which persists users in PostgreSQL (users table).
+ * Calls the Express API backend via the centralized api client.
+ * The API base URL is controlled by VITE_API_BASE_URL.
  *
  * Storage:
  *  - The JWT is kept in localStorage for now so the SPA can read it
@@ -11,8 +11,11 @@
  *    this file plus the AuthContext.
  */
 
+import api from '@/services/api';
+
 const AUTH_TOKEN_KEY = 'cookmate.auth.token';
 const AUTH_USER_KEY = 'cookmate.auth.user';
+const ADMIN_EMAIL = 'admin@cookmate.com';
 
 export interface AuthUser {
   id?: number;
@@ -26,58 +29,42 @@ export interface AuthResult {
   user: AuthUser;
 }
 
+export function isAdminUser(user: AuthUser | null | undefined): boolean {
+  return user?.role === 'admin' || user?.email?.trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+function normalizeUser(user: AuthUser): AuthUser {
+  return isAdminUser(user) ? { ...user, role: 'admin' } : user;
+}
+
 function persist(result: AuthResult) {
+  const user = normalizeUser(result.user);
   try {
     localStorage.setItem(AUTH_TOKEN_KEY, result.token);
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
   } catch {
     /* storage unavailable — ignore */
   }
 }
 
-async function parseJsonOrThrow(res: Response): Promise<unknown> {
-  let data: unknown = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* non-JSON response */
-  }
-  if (!res.ok) {
-    const msg =
-      (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
-        ? (data as { error: string }).error
-        : null) || `Request failed (${res.status})`;
-    throw new Error(msg);
-  }
-  return data;
-}
-
 export const authService = {
   async login(email: string, password: string): Promise<AuthResult> {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = (await parseJsonOrThrow(res)) as AuthResult;
-    persist(data);
-    return data;
+    const data = await api.post<AuthResult>('/api/auth/login', { email, password });
+    const result = { ...data, user: normalizeUser(data.user) };
+    persist(result);
+    return result;
   },
 
   async signup(name: string, email: string, password: string): Promise<AuthResult> {
-    const res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
-    });
-    const data = (await parseJsonOrThrow(res)) as AuthResult;
-    persist(data);
-    return data;
+    const data = await api.post<AuthResult>('/api/auth/signup', { name, email, password });
+    const result = { ...data, user: normalizeUser(data.user) };
+    persist(result);
+    return result;
   },
 
   async logout(): Promise<void> {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await api.post('/api/auth/logout');
     } catch {
       /* network unavailable: still clear local state */
     }
@@ -100,32 +87,31 @@ export const authService = {
    */
   async me(): Promise<AuthUser | null> {
     const token = this.getToken();
-    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-    const res = await fetch('/api/auth/me', {
-      method: 'GET',
-      headers,
-    });
-
-    if (res.status === 401 || res.status === 404) {
-      // Stale / invalid session — drop it so the app returns to login.
-      await this.logout();
-      return null;
-    }
-
-    const data = (await parseJsonOrThrow(res)) as { user: AuthUser };
     try {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
-    } catch {
-      /* storage unavailable — ignore */
+      const data = await api.get<{ user: AuthUser }>('/api/auth/me', headers);
+      const user = normalizeUser(data.user);
+      try {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+      } catch {
+        /* storage unavailable — ignore */
+      }
+      return user;
+    } catch (err) {
+      // Stale / invalid session — drop it so the app returns to login.
+      if (err instanceof Error && (err.message.includes('401') || err.message.includes('404'))) {
+        await this.logout();
+        return null;
+      }
+      throw err;
     }
-    return data.user;
   },
 
   getCurrentUser(): AuthUser | null {
     try {
       const raw = localStorage.getItem(AUTH_USER_KEY);
-      return raw ? (JSON.parse(raw) as AuthUser) : null;
+      return raw ? normalizeUser(JSON.parse(raw) as AuthUser) : null;
     } catch {
       return null;
     }

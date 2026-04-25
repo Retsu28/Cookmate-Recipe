@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, ChefHat, Eye, EyeOff, Loader2, X } from 'lucide-react';
+import { Check, ChefHat, Eye, EyeOff, Loader2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
+import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -22,21 +23,24 @@ const MIN_PASSWORD_LEN = 8;
 // Business rule: only @gmail.com addresses are accepted (matches backend).
 const GMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 
-function scorePassword(pw: string): { score: number; label: string; color: string } {
-  if (!pw) return { score: 0, label: '', color: 'bg-stone-200' };
-  let score = 0;
-  if (pw.length >= 8) score += 1;
-  if (pw.length >= 12) score += 1;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score += 1;
-  if (/\d/.test(pw)) score += 1;
-  if (/[^A-Za-z0-9]/.test(pw)) score += 1;
-  if (pw.length < MIN_PASSWORD_LEN) {
-    return { score: 1, label: 'Too short', color: 'bg-red-500' };
-  }
-  if (score <= 2) return { score: 2, label: 'Weak', color: 'bg-orange-400' };
-  if (score <= 3) return { score: 3, label: 'Fair', color: 'bg-yellow-500' };
-  if (score <= 4) return { score: 4, label: 'Good', color: 'bg-lime-500' };
-  return { score: 5, label: 'Strong', color: 'bg-green-500' };
+function getPasswordRequirements(pw: string) {
+  return [
+    { label: 'At least 8 characters', met: pw.length >= MIN_PASSWORD_LEN },
+    { label: 'At least 1 number', met: /\d/.test(pw) },
+    { label: 'At least 1 lowercase letter', met: /[a-z]/.test(pw) },
+    { label: 'At least 1 uppercase letter', met: /[A-Z]/.test(pw) },
+    { label: 'At least 1 special character', met: /[^A-Za-z0-9]/.test(pw) },
+  ];
+}
+
+function scorePassword(requirements: Array<{ met: boolean }>): { score: number; color: string } {
+  const score = requirements.filter((item) => item.met).length;
+  if (score === 0) return { score, color: 'bg-stone-200' };
+  if (score <= 1) return { score, color: 'bg-red-500' };
+  if (score <= 2) return { score, color: 'bg-orange-400' };
+  if (score <= 3) return { score, color: 'bg-yellow-500' };
+  if (score <= 4) return { score, color: 'bg-lime-500' };
+  return { score, color: 'bg-green-500' };
 }
 
 export default function Signup() {
@@ -50,6 +54,7 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
 
   const validate = (): string | null => {
     if (!name.trim()) return 'Please enter your full name.';
@@ -60,8 +65,8 @@ export default function Signup() {
     return null;
   };
 
-  const strength = useMemo(() => scorePassword(password), [password]);
-  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LEN;
+  const passwordRequirements = useMemo(() => getPasswordRequirements(password), [password]);
+  const strength = useMemo(() => scorePassword(passwordRequirements), [passwordRequirements]);
   const confirmMatches = confirm.length > 0 && confirm === password;
   const confirmMismatch = confirm.length > 0 && confirm !== password;
 
@@ -89,20 +94,35 @@ export default function Signup() {
     'w-full h-12 rounded-xl border border-stone-200 bg-white px-4 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all';
 
   return (
-    <div className="min-h-screen bg-orange-50 flex items-center justify-center p-4 py-10 overflow-hidden">
-      <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-        className="w-full max-w-md"
-      >
+    <div className="min-h-screen bg-orange-50 flex overflow-hidden">
+      {/* ── Split-screen wrapper ── */}
+      <div className="relative flex w-full min-h-screen">
+        {/* Visual panel (left) — hidden on mobile, collapsible on desktop */}
+        <AuthVisualPanel
+          collapsed={panelCollapsed}
+          onToggle={() => setPanelCollapsed((c) => !c)}
+          heading="Join CookMate."
+          subheading="Create an account to save recipes, plan meals, and cook with AI."
+        />
+
+        {/* ── Form side (right) ── */}
         <motion.div
-          key={error ? 'shake-' + error : 'idle'}
-          animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}
-          transition={{ duration: 0.45 }}
+          layout
+          className="flex-1 flex items-center justify-center p-4 sm:p-8"
         >
-          <Card className="bg-white shadow-xl rounded-2xl overflow-hidden border-none">
-            <CardContent className="p-8">
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+            className="w-full max-w-md"
+          >
+            <motion.div
+              key={error ? 'shake-' + error : 'idle'}
+              animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}
+              transition={{ duration: 0.45 }}
+            >
+              <Card className="bg-white shadow-xl rounded-2xl overflow-hidden border-none">
+                <CardContent className="p-8">
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -190,7 +210,6 @@ export default function Signup() {
                     </motion.button>
                   </div>
 
-                  {/* Password strength bar — fulfills "Warning: at least 8 characters" rule */}
                   <div id="password-strength" className="pt-1">
                     <div className="h-1.5 w-full rounded-full bg-stone-100 overflow-hidden">
                       <motion.div
@@ -200,24 +219,27 @@ export default function Signup() {
                         transition={{ duration: 0.25, ease: 'easeOut' }}
                       />
                     </div>
-                    <div className="flex items-center gap-1.5 mt-1.5 text-[11px] font-semibold">
-                      {passwordTooShort ? (
-                        <>
-                          <AlertTriangle size={12} className="text-red-600" />
-                          <span className="text-red-600">
-                            Warning: password must be at least {MIN_PASSWORD_LEN} characters.
-                          </span>
-                        </>
-                      ) : password.length === 0 ? (
-                        <span className="text-stone-400">Use at least {MIN_PASSWORD_LEN} characters.</span>
-                      ) : (
-                        <>
-                          <Check size={12} className="text-green-600" />
-                          <span className="text-stone-500">
-                            Strength: <span className="text-stone-700">{strength.label}</span>
-                          </span>
-                        </>
-                      )}
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between gap-3 text-[12px] font-extrabold text-stone-500">
+                        <span>Must contain:</span>
+                        <span>{password.length === 0 ? 'Enter a password' : `${strength.score}/5 complete`}</span>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {passwordRequirements.map((item) => (
+                          <motion.div
+                            key={item.label}
+                            initial={false}
+                            animate={{ opacity: item.met ? 1 : 0.75, x: item.met ? 2 : 0 }}
+                            transition={{ duration: 0.18, ease: 'easeOut' }}
+                            className={`flex items-center gap-2 text-[12px] font-semibold ${
+                              item.met ? 'text-green-600' : 'text-stone-400'
+                            }`}
+                          >
+                            {item.met ? <Check size={14} /> : <X size={14} />}
+                            <span>{item.label}</span>
+                          </motion.div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -307,21 +329,23 @@ export default function Signup() {
                 </p>
               </form>
 
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-center text-sm text-stone-500 mt-6"
-              >
-                Already have an account?{' '}
-                <Link to="/login" className="font-bold text-orange-600 hover:text-orange-700 hover:underline underline-offset-2">
-                  Sign in
-                </Link>
-              </motion.p>
-            </CardContent>
-          </Card>
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                    className="text-center text-sm text-stone-500 mt-6"
+                  >
+                    Already have an account?{' '}
+                    <Link to="/login" className="font-bold text-orange-600 hover:text-orange-700 hover:underline underline-offset-2">
+                      Sign in
+                    </Link>
+                  </motion.p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }

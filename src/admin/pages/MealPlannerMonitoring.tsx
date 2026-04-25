@@ -1,4 +1,5 @@
 import { CalendarDays, Clock, Utensils } from 'lucide-react';
+import { motion } from 'motion/react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
 import { MetricBarList } from '../components/MetricBarList';
@@ -21,15 +22,21 @@ export default function MealPlannerMonitoring() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        {engagementCards.map((card) => (
-          <div key={card.label} className="rounded-[2rem] border border-stone-100 bg-white p-5 shadow-lg shadow-stone-200/40">
+        {engagementCards.map((card, i) => (
+          <motion.div
+            key={card.label}
+            className="rounded-[2rem] border border-stone-100 bg-white p-5 shadow-lg shadow-stone-200/40 transition-shadow hover:shadow-xl"
+            initial={{ opacity: 0, y: 18, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.45, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+          >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
               <card.icon size={22} />
             </div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">{card.label}</p>
             <p className="mt-2 text-3xl font-extrabold text-stone-900">{card.value}</p>
             <p className="mt-2 text-sm text-stone-500">{card.detail}</p>
-          </div>
+          </motion.div>
         ))}
       </div>
 

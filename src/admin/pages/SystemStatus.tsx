@@ -1,4 +1,5 @@
 import { AlertTriangle, KeyRound, Server, ShieldCheck } from 'lucide-react';
+import { motion } from 'motion/react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
 import { StatusBadge } from '../components/StatusBadge';
@@ -13,21 +14,36 @@ export default function SystemStatus() {
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[2rem] border border-green-200 bg-green-50 p-5">
+        <motion.div
+          className="rounded-[2rem] border border-green-200 bg-green-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0, ease: [0.22, 1, 0.36, 1] }}
+        >
           <ShieldCheck size={24} className="text-green-700" />
           <p className="mt-3 font-extrabold text-stone-900">PWA configured</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">Manifest, icons, and Workbox generation are part of the web build.</p>
-        </div>
-        <div className="rounded-[2rem] border border-blue-200 bg-blue-50 p-5">
+        </motion.div>
+        <motion.div
+          className="rounded-[2rem] border border-blue-200 bg-blue-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.07, ease: [0.22, 1, 0.36, 1] }}
+        >
           <Server size={24} className="text-blue-700" />
           <p className="mt-3 font-extrabold text-stone-900">Gemini network-only</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">AI responses should go through the server-side proxy and avoid service worker caching.</p>
-        </div>
-        <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5">
+        </motion.div>
+        <motion.div
+          className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5"
+          initial={{ opacity: 0, y: 18, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
+        >
           <AlertTriangle size={24} className="text-amber-700" />
           <p className="mt-3 font-extrabold text-stone-900">Roadmap gaps visible</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">Offline recipe access, production auth, and favorites remain planned or placeholder features.</p>
-        </div>
+        </motion.div>
       </div>
 
       <AdminSectionCard title="Status Matrix" description="The labels below follow ARCHITECTURE.md rather than pretending planned features are complete.">
@@ -44,7 +60,12 @@ export default function SystemStatus() {
         </div>
       </AdminSectionCard>
 
-      <div className="mt-6 rounded-[2rem] border border-red-200 bg-red-50 p-5">
+      <motion.div
+        className="mt-6 rounded-[2rem] border border-red-200 bg-red-50 p-5"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
         <div className="flex gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-red-600">
             <KeyRound size={20} />
@@ -56,7 +77,7 @@ export default function SystemStatus() {
             </p>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

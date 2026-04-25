@@ -130,3 +130,210 @@
     @apply font-sans;
   }
 }
+
+.dark {
+  color-scheme: dark;
+  --cook-surface-0: #0c0a09;
+  --cook-surface-1: #1c1917;
+  --cook-surface-2: #292524;
+  --cook-surface-3: #44403c;
+  --cook-text-0: #fafaf9;
+  --cook-text-1: #e7e5e4;
+  --cook-text-2: #d6d3d1;
+  --cook-text-3: #a8a29e;
+  --cook-accent-soft: #431407;
+  --cook-accent-soft-2: #7c2d12;
+}
+
+@layer utilities {
+  .dark .bg-white,
+  .dark .bg-background {
+    background-color: var(--cook-surface-1) !important;
+  }
+
+  .dark .bg-white\/95 {
+    background-color: rgb(28 25 23 / 0.95) !important;
+  }
+
+  .dark .bg-white\/90 {
+    background-color: rgb(28 25 23 / 0.9) !important;
+  }
+
+  .dark .bg-white\/80 {
+    background-color: rgb(28 25 23 / 0.8) !important;
+  }
+
+  .dark .bg-stone-50,
+  .dark .bg-stone-50\/80 {
+    background-color: var(--cook-surface-0) !important;
+  }
+
+  .dark .bg-stone-100,
+  .dark .bg-stone-100\/95 {
+    background-color: var(--cook-surface-1) !important;
+  }
+
+  .dark .bg-stone-200,
+  .dark .bg-stone-200\/50 {
+    background-color: var(--cook-surface-2) !important;
+  }
+
+  .dark .bg-orange-50 {
+    background-color: var(--cook-accent-soft) !important;
+  }
+
+  .dark .bg-orange-100 {
+    background-color: var(--cook-accent-soft-2) !important;
+  }
+
+  .dark .text-stone-900,
+  .dark .text-foreground {
+    color: var(--cook-text-0) !important;
+  }
+
+  .dark .text-stone-700 {
+    color: var(--cook-text-1) !important;
+  }
+
+  .dark .text-stone-600,
+  .dark .text-stone-500 {
+    color: var(--cook-text-2) !important;
+  }
+
+  .dark .text-stone-400,
+  .dark .text-stone-300 {
+    color: var(--cook-text-3) !important;
+  }
+
+  .dark .border-stone-100,
+  .dark .border-stone-200,
+  .dark .border-border {
+    border-color: var(--cook-surface-2) !important;
+  }
+
+  .dark .hover\:bg-stone-50:hover,
+  .dark .hover\:bg-stone-100:hover,
+  .dark .hover\:bg-stone-200:hover {
+    background-color: var(--cook-surface-2) !important;
+  }
+
+  .dark .hover\:text-stone-900:hover {
+    color: var(--cook-text-0) !important;
+  }
+
+  .dark .shadow-stone-200\/30,
+  .dark .shadow-stone-200\/40,
+  .dark .shadow-stone-200\/50,
+  .dark .shadow-orange-500\/20 {
+    --tw-shadow-color: rgb(0 0 0 / 0.45) !important;
+  }
+
+  .dark .bg-stone-50\/90 {
+    background-color: rgb(12 10 9 / 0.9) !important;
+  }
+
+  .dark .ring-stone-200 {
+    --tw-ring-color: var(--cook-surface-2) !important;
+  }
+
+  .dark .ring-white {
+    --tw-ring-color: var(--cook-surface-1) !important;
+  }
+
+  /* Colored status backgrounds — green */
+  .dark .bg-green-50 {
+    background-color: #052e16 !important;
+  }
+
+  .dark .bg-green-100 {
+    background-color: #14532d !important;
+  }
+
+  .dark .border-green-200 {
+    border-color: #166534 !important;
+  }
+
+  .dark .text-green-700 {
+    color: #4ade80 !important;
+  }
+
+  /* Colored status backgrounds — blue */
+  .dark .bg-blue-50 {
+    background-color: #172554 !important;
+  }
+
+  .dark .bg-blue-100 {
+    background-color: #1e3a5f !important;
+  }
+
+  .dark .border-blue-200 {
+    border-color: #1e40af !important;
+  }
+
+  .dark .text-blue-700 {
+    color: #60a5fa !important;
+  }
+
+  /* Colored status backgrounds — amber */
+  .dark .bg-amber-50 {
+    background-color: #451a03 !important;
+  }
+
+  .dark .bg-amber-100 {
+    background-color: #78350f !important;
+  }
+
+  .dark .border-amber-200 {
+    border-color: #92400e !important;
+  }
+
+  .dark .text-amber-700 {
+    color: #fbbf24 !important;
+  }
+
+  .dark .text-amber-600 {
+    color: #fbbf24 !important;
+  }
+
+  /* Colored status backgrounds — red */
+  .dark .bg-red-50 {
+    background-color: #450a0a !important;
+  }
+
+  .dark .bg-red-100 {
+    background-color: #7f1d1d !important;
+  }
+
+  .dark .border-red-200 {
+    border-color: #991b1b !important;
+  }
+
+  .dark .text-red-700 {
+    color: #f87171 !important;
+  }
+
+  .dark .text-red-500 {
+    color: #fca5a5 !important;
+  }
+
+  .dark .text-red-600 {
+    color: #fca5a5 !important;
+  }
+
+  /* Hover overrides for colored admin rows/buttons */
+  .dark .hover\:bg-orange-50\/30:hover {
+    background-color: rgb(124 45 18 / 0.15) !important;
+  }
+
+  .dark .hover\:bg-amber-50:hover {
+    background-color: #451a03 !important;
+  }
+
+  .dark .hover\:bg-red-50:hover {
+    background-color: #450a0a !important;
+  }
+
+  .dark .hover\:border-orange-300:hover {
+    border-color: #f97316 !important;
+  }
+}

@@ -1,4 +1,5 @@
 import { Layout } from "../components/Layout";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { User, Bell, Shield, Paintbrush, ChevronRight } from "lucide-react";
@@ -51,11 +52,11 @@ export default function Settings() {
                 <div className="p-4 bg-green-50 text-green-600 rounded-2xl">
                   <Paintbrush size={32} />
                 </div>
-                <ChevronRight size={24} className="text-stone-300 group-hover:text-orange-500 transition-colors" />
+                <ThemeToggle className="size-10" />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-stone-900 mb-1">Appearance</h3>
-                <p className="text-stone-500">Customize the UI theme, colors, and accessibility</p>
+                <p className="text-stone-500">Use the toggle to switch between light and dark mode without changing your layout.</p>
               </div>
             </CardContent>
           </Card>

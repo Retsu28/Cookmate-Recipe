@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
 
 // Placeholder screens (will be created in Phase 3+)
 import HomeScreen from '../screens/HomeScreen';
@@ -12,6 +13,8 @@ import ProfileScreen from '../screens/ProfileScreen';
 const Tab = createBottomTabNavigator();
 
 export default function BottomTabNavigator() {
+  const { colors } = useAppTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -32,21 +35,23 @@ export default function BottomTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#f97316',
-        tabBarInactiveTintColor: '#a8a29e',
+        tabBarActiveTintColor: '#1c1917',
+        tabBarInactiveTintColor: colors.textSubtle,
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontFamily: 'Geist_600SemiBold',
-          marginTop: 0,
+          fontSize: 8,
+          fontFamily: 'Geist_700Bold',
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          marginTop: 2,
         },
         tabBarStyle: {
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
-          borderTopColor: '#e7e5e4',
+          borderTopColor: colors.border,
           elevation: 0,
-          height: 58,
-          paddingTop: 4,
-          paddingBottom: 4,
+          height: 62,
+          paddingTop: 6,
+          paddingBottom: 6,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0,

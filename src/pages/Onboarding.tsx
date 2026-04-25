@@ -80,12 +80,12 @@ export default function Onboarding() {
             {!currentStep.isPreferences ? (
               <>
                 {currentStep.icon}
-                <h1 className="text-2xl font-bold text-stone-800 mb-4">{currentStep.title}</h1>
+                <h1 className="text-2xl font-bold text-stone-800 dark:text-stone-50 mb-4">{currentStep.title}</h1>
                 <p className="text-stone-600 mb-8 leading-relaxed">{currentStep.description}</p>
               </>
             ) : (
               <>
-                <h1 className="text-2xl font-bold text-stone-800 mb-4">{currentStep.title}</h1>
+                <h1 className="text-2xl font-bold text-stone-800 dark:text-stone-50 mb-4">{currentStep.title}</h1>
                 <p className="text-stone-600 mb-8">{currentStep.description}</p>
                 <div className="w-full flex flex-col gap-3 mb-8">
                   {['Beginner', 'Intermediate', 'Advanced'].map((level) => (
@@ -93,8 +93,8 @@ export default function Onboarding() {
                       key={level}
                       onClick={() => setSkillLevel(level)}
                       className={`py-3 px-4 rounded-xl border-2 transition-all ${skillLevel === level
-                          ? 'border-orange-500 bg-orange-50 text-orange-700 font-medium'
-                          : 'border-stone-200 text-stone-600 hover:border-orange-200 hover:bg-orange-50/50'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700 dark:text-orange-300 font-medium'
+                          : 'border-stone-200 text-stone-600 dark:text-stone-300 hover:border-orange-200 hover:bg-orange-50/50'
                         }`}
                     >
                       {level}
@@ -116,7 +116,7 @@ export default function Onboarding() {
 
             <button
               onClick={skipOnboarding}
-              className="text-stone-400 hover:text-stone-600 font-medium py-2 transition-colors"
+              className="text-stone-400 dark:text-stone-300 hover:text-stone-600 dark:hover:text-stone-100 font-medium py-2 transition-colors"
             >
               Skip
             </button>

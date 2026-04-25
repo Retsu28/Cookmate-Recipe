@@ -35,7 +35,7 @@ export default function AdminOverview() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {overviewStats.map((stat, index) => (
-          <AdminStatCard key={stat.id} {...stat} icon={statIcons[index] ?? Activity} />
+          <AdminStatCard key={stat.id} {...stat} icon={statIcons[index] ?? Activity} index={index} />
         ))}
       </div>
 

@@ -3,6 +3,7 @@ import { WifiOff } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Layout, LayoutShellContext } from '@/components/Layout';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup']);
@@ -59,6 +60,9 @@ export default function AppShell() {
         </Layout>
       ) : (
         <>
+          <div className="fixed right-4 top-4 z-[140]">
+            <ThemeToggle />
+          </div>
           <header className="sr-only">
             <Link to="/">CookMate</Link>
           </header>

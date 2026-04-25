@@ -1,114 +1,121 @@
 # Cookmate — System Architecture & Feature Reference
 
-> **Version:** Pre-deployment (Gap 3 in progress)  
+> **Version:** Monorepo architecture reference  
 > **Last updated:** April 2026  
-> **Status:** Development → PWA transition
+> **Status:** Active development across web, API, and mobile
 
 ---
 
 ## What Is Cookmate?
 
-Cookmate is an **AI-powered recipe and cooking assistant** designed to help users discover recipes, cook with guidance, and make the most of whatever ingredients they have on hand. It combines a curated static recipe library with Google Gemini AI to deliver intelligent, context-aware cooking assistance across both web and mobile.
+Cookmate is an **AI-powered recipe and cooking assistant** delivered as a small monorepo with three active applications:
+- a **React + Vite web app**
+- an **Express API backend**
+- an **Expo React Native mobile app**
 
-The app is built for everyday home cooks who want more than just a recipe list — they want a system that helps them from the moment they open the fridge to the moment they plate the dish.
+It helps users browse recipes, follow guided cooking flows, manage meal plans, access profile and notification features, and use AI-assisted experiences such as ingredient recognition and recipe suggestion.
 
 ---
 
 ## Core Features
 
-### 📖 Recipe Browsing & Search
-Users can browse and search a curated collection of recipes from the Dashboard. The interface supports filtering and surfacing recipes based on what the user is looking for. Recipe data is currently stored as static structured data within the project — no external recipe API dependency.
+### Recipe browsing and search
+Users can browse recipes from the dashboard, search by terms or ingredients, and open detail views for individual recipes.
 
-### 🍽️ Recipe Detail View
-Each recipe has a dedicated detail screen showing:
-- Full ingredient list with quantities
-- Complete cooking instructions
-- Visual layout optimized for readability while cooking
+### Recipe detail and guided cooking
+Recipe detail pages provide ingredients, instructions, metadata, and cooking-focused UI. Guided cooking remains a core experience across web and mobile, including step navigation and cooking assistance patterns.
 
-### 👨‍🍳 Guided Cooking Mode
-Once a user opens a recipe, they can enter a step-by-step guided cooking experience that includes:
-- **Next/back navigation** between individual cooking steps — users move through the recipe at their own pace without losing their place
-- **Per-step countdown timers** — each step that requires waiting (simmering, baking, resting) has an integrated timer so users don't need to switch apps
-- **Ingredient checklist** — users can check off ingredients as they gather and use them, reducing errors mid-cook
+### Authentication and profile
+Both web and mobile now use real backend-backed authentication rather than placeholder-only UI. Session state is cached locally and refreshed against the API with `/api/auth/me`.
 
-This mode is designed to keep the user focused and hands-free as much as possible during the actual cooking process.
+### Meal planning, notifications, and profile data
+Meal planning, profile, notification, inventory, and related user features are represented in the API and database schema, with the web and mobile clients consuming backend endpoints.
 
-### 📷 AI Camera — Ingredient Recognition & Recipe Suggestion
-The AI camera is the flagship intelligent feature of Cookmate. Using the device camera and Google Gemini's vision capabilities, the user can:
-- **Point the camera at ingredients** they have available — raw vegetables, pantry items, proteins, etc.
-- Gemini analyzes the image and **identifies the ingredients**
-- The system then **suggests recipes** that can be made with those ingredients
+### Admin area
+The web application includes a dedicated admin section gated separately from standard authenticated routes. Admin pages cover recipes, ingredients, users, meal planner monitoring, AI activity, reports, notifications, reviews, and system status.
 
-This removes the friction of manually searching for recipes when a user doesn't know what to cook — they just show the app what they have.
+### AI camera and AI assistance
+Cookmate uses Google Gemini for AI-assisted flows such as ingredient recognition, recipe suggestion, and assistant-style cooking help. AI is treated as a backend-integrated capability rather than a purely client-side feature.
 
 ---
 
-## Planned AI Features (Roadmap)
+## Monorepo Structure
 
-These features have been identified as natural extensions of the current AI integration and are planned for future development:
-
-| Feature | Description |
-|---|---|
-| **Pantry Mode** | User lists or photographs all available ingredients; AI generates a set of recipe options using only what they have — no grocery run required |
-| **Recipe from Dish Photo** | Point the camera at a finished meal (in a restaurant, online, or at home) and AI reverse-engineers the recipe |
-| **Dietary Substitution Assistant** | During recipe view, ask AI to swap ingredients for dietary needs — vegan, gluten-free, nut-free, etc. — and get an adjusted recipe instantly |
-| **Recipe Scaling AI** | Tell the app how many people you're cooking for and AI adjusts all ingredient quantities and cooking times proportionally |
-| **In-Context Step Clarification** | During guided cooking mode, ask the AI questions like "what does fold mean?" or "how do I julienne a carrot?" and get contextual answers without leaving the step |
-
-The most near-term candidate is **Pantry Mode**, as it directly extends the existing AI camera feature and gives users a strong reason to open the app proactively rather than reactively.
+```text
+Cookmate-Recipe/
+├── src/                     # Web app (React 19 + Vite + TypeScript)
+│   ├── app/                 # Shared shell/layout wiring
+│   ├── admin/               # Admin layout, pages, hooks, data
+│   ├── auth/                # AuthGate and AdminGate route protection
+│   ├── components/          # Shared web UI components
+│   ├── context/             # Web auth context
+│   ├── pages/               # Public/authenticated page routes
+│   ├── services/            # API client and auth service
+│   └── main.tsx             # Web entry
+├── api/                     # Express backend
+│   ├── src/config/          # Environment and DB configuration
+│   ├── src/controllers/     # Route handlers / application logic
+│   ├── src/middleware/      # Error handling, auth middleware
+│   ├── src/models/          # DB-facing model helpers
+│   ├── src/routes/          # REST API routes mounted under /api
+│   └── src/server.js        # API entrypoint
+├── mobile/                  # Expo React Native app
+│   ├── src/api/             # Mobile HTTP client
+│   ├── src/components/      # Shared native UI components
+│   ├── src/context/         # Mobile auth and theme contexts
+│   ├── src/navigation/      # Stack + tab navigation
+│   ├── src/screens/         # App screens
+│   ├── src/services/        # Mobile auth/session services
+│   └── App.js               # Mobile entry
+├── database/schema.sql      # PostgreSQL schema
+├── public/                  # Web static assets
+├── vite.config.ts           # Vite config and local API proxy
+└── vercel.json              # Web deployment rewrites
+```
 
 ---
 
-## Project Structure
+## Runtime Architecture
 
-```
-cookmate/
-├── src/                            ← Web app (Vite + React Router)
-│   ├── components/
-│   │   ├── Dashboard.tsx           ← Recipe browsing + search entry point
-│   │   ├── Search.tsx              ← Search interface and results
-│   │   ├── RecipeDetail.tsx        ← Full recipe view + guided cooking mode
-│   │   └── AICamera.tsx            ← Camera interface + Gemini integration
-│   ├── backend/
-│   │   └── server.ts               ← Legacy Express file (unused, to be removed)
-│   └── main.tsx
-│
-├── api/
-│   └── gemini.ts                   ← Serverless function (Gemini API proxy)
-│
-├── public/
-│   ├── pwa-192x192.png             ← PWA icon
-│   ├── pwa-512x512.png             ← PWA icon (maskable, Android)
-│   └── favicon.png
-│
-├── mobile/                         ← Expo + React Native app (separate codebase)
-│   ├── screens/
-│   │   ├── RecipeDetailScreen.js   ← Mobile recipe view + guided cooking
-│   │   ├── CameraScreen.js         ← Mobile camera + AI feature
-│   │   └── (other screens)
-│   └── (Expo config files)
-│
-├── vite.config.ts                  ← Vite + PWA plugin config
-├── vercel.json                     ← SPA catch-all rewrite (Vercel)
-├── public/_redirects               ← SPA catch-all rewrite (Netlify)
-├── .env.example                    ← Environment variable reference
-└── package.json
-```
+### Web application
+
+- React 19 + TypeScript
+- Vite 6
+- React Router 7
+- Tailwind CSS 4 + component primitives in `src/components/ui`
+- Protected user routes via `src/auth/AuthGate.tsx`
+- Protected admin routes via `src/auth/AdminGate.tsx`
+
+### API backend
+
+- Express 4 in `api/src/server.js`
+- CORS + JSON + cookie parsing middleware
+- Central route mount at `/api`
+- PostgreSQL connectivity via `pg`
+- JWT and bcrypt-based auth stack
+- Startup bootstrap that attempts to ensure an admin account exists
+
+### Mobile application
+
+- Expo SDK 55 + React Native 0.83
+- React Navigation stack and bottom tabs
+- Secure local session persistence using `expo-secure-store`
+- Shared theme context for native styling and navigation theme
 
 ---
 
 ## Two Separate Codebases
 
-Cookmate currently exists as two parallel implementations sharing the same repository. They are **not connected at the code level** — no shared components, no shared state, no shared routing.
+The web and mobile clients are still separate frontends, but they now share a common backend contract through the Express API.
 
 | | Web App | Mobile App |
 |---|---|---|
-| **Technology** | Vite + React + TypeScript | Expo + React Native + JavaScript |
-| **Routing** | React Router | Expo navigation |
-| **Runs on** | Browser (localhost / future host) | Expo Go via QR code scan |
-| **Build status** | Production-ready | Development preview only |
-| **PWA support** | ✅ Configured | ❌ Not applicable |
-| **Offline support** | 🔧 In progress (Gap 3) | ❌ Not yet |
+| **Technology** | React 19 + Vite + TypeScript | Expo + React Native + JavaScript |
+| **Routing** | React Router | React Navigation |
+| **Auth source** | Express API + localStorage cache | Express API + SecureStore cache |
+| **Runs on** | Browser | Android/iOS via Expo |
+| **PWA support** | Configured | Not applicable |
+| **Backend dependency** | Shared Express API | Shared Express API |
 
 ---
 
@@ -117,150 +124,196 @@ Cookmate currently exists as two parallel implementations sharing the same repos
 ### Web Application
 | Layer | Technology | Notes |
 |---|---|---|
-| Framework | React 18 + TypeScript | |
-| Bundler | Vite | Split bundles, optimized output |
-| Routing | React Router | Client-side, SPA catch-all configured |
+| Framework | React 19 + TypeScript | |
+| Bundler | Vite 6 | Local dev proxies `/api` to the backend |
+| Routing | React Router 7 | Client-side routing |
 | Styling | Tailwind CSS + Shadcn UI | |
 | Animation | Motion (Framer Motion) | |
 | Icons | Lucide React | |
-| AI | Google Gemini API | Proxied via serverless function |
-| PWA | vite-plugin-pwa + Workbox | generateSW mode |
+| Theming | `next-themes` | Light-first configuration |
+| AI | Google Gemini | Used by AI features |
+| PWA | `vite-plugin-pwa` + Workbox | Installability and caching |
 
 ### Mobile Application
 | Layer | Technology | Notes |
 |---|---|---|
-| Framework | Expo + React Native | |
+| Framework | Expo SDK 55 + React Native | |
 | Language | JavaScript | |
-| Dev access | Expo Go + QR code | Not yet a standalone app |
+| Navigation | React Navigation | Stack + tabs |
+| Secure session storage | `expo-secure-store` | Persists token and user |
+
+### API and Data
+| Layer | Technology | Notes |
+|---|---|---|
+| API | Express 4 | Backend mounted in `api/` |
+| Auth | `bcryptjs` + `jsonwebtoken` | Login, signup, token auth |
+| Database | PostgreSQL + `pg` | Schema in `database/schema.sql` |
+| Recommendation/ML | `natural` | Ingredient-based recommendation support |
+
+---
+
+## Route and Access Model
+
+### Web routes
+
+Public guest routes:
+
+- `/login`
+- `/signup`
+- `/onboarding`
+
+Authenticated app routes:
+
+- `/`
+- `/search`
+- `/recipe/:id`
+- `/planner`
+- `/profile`
+- `/notifications`
+- `/camera`
+- `/settings`
+
+Admin-only routes:
+
+- `/admin`
+- `/admin/recipes`
+- `/admin/ingredients`
+- `/admin/users`
+- `/admin/meal-planner`
+- `/admin/ai-activity`
+- `/admin/reviews`
+- `/admin/notifications`
+- `/admin/reports`
+- `/admin/system-status`
+
+### API route groups
+
+Mounted under `/api`:
+
+- `/health`
+- `/auth`
+- `/recipes`
+- `/ingredients`
+- `/meal-planner`
+- `/shopping-list`
+- `/notifications`
+- `/profile`
+- `/inventory`
+- `/ml`
+
+---
+
+## Authentication Flow
+
+### Web
+
+- `AuthProvider` boots from cached localStorage user data
+- `authService.me()` refreshes state from `GET /api/auth/me`
+- invalid or stale sessions are cleared on `401` or `404`
+- `AuthGate` protects signed-in routes
+- `AdminGate` protects admin routes
+
+### Mobile
+
+- `AuthContext` persists both token and user in SecureStore
+- the session is refreshed from `/api/auth/me`
+- stale sessions are cleared automatically on invalid responses
+- navigation acts as a mobile auth gate by switching between auth and app stacks
+
+---
+
+## Data Layer
+
+The PostgreSQL schema in `database/schema.sql` currently defines the core domain tables:
+
+- `users`
+- `ingredients`
+- `recipes`
+- `recipe_ingredients`
+- `meal_plans`
+- `shopping_lists`
+- `kitchen_inventory`
+- `reviews`
+- `notifications`
+
+The `users` table includes a `role` column with `user` and `admin` values, which supports admin authorization in both backend and frontend flows.
 
 ---
 
 ## AI Integration
 
-All Gemini API calls are **proxied through a serverless function** at `api/gemini.ts`. The API key lives server-side only and is never exposed in the client bundle.
+Cookmate uses Google Gemini as part of its AI feature set. The architecture should be understood as **backend-integrated AI**, not a standalone serverless-only layer.
 
-```
-User Action (camera / search)
-        │
-        ▼
-  Frontend (src/)
-        │  POST /api/gemini
-        ▼
-  Serverless Function (api/gemini.ts)
-        │  Gemini API key (server-side only)
-        ▼
-  Google Gemini API
-        │
-        ▼
-  Recipe suggestions returned to UI
+Conceptual flow:
+
+```text
+Web or Mobile Client
+        |
+        | authenticated API requests
+        v
+ Express API (/api/*)
+        |
+        | domain logic / AI-related processing
+        v
+ Google Gemini + PostgreSQL-backed application data
 ```
 
-**Caching policy for AI responses:** Network-only — Gemini responses are never stored in the service worker cache. AI results must always be fresh.
+For local development:
+
+- web requests can hit `/api/*` through the Vite proxy
+- mobile uses the configured API base URL from Expo config
+- API secrets remain server-side in backend environment files
 
 ---
 
-## PWA & Offline Configuration
+## PWA and Local Development Notes
 
-### Service Worker Caching Strategy
-| Content Type | Strategy | TTL |
-|---|---|---|
-| HTML, JS, CSS, fonts | Precache on install | Until next deploy |
-| Images (png, jpg, svg, webp) | Cache-first | 30 days |
-| Gemini API calls | Network-only | Never cached |
-
-### PWA Manifest
-| Property | Value |
-|---|---|
-| Name | CookMate |
-| Short name | CookMate |
-| Display | standalone |
-| Theme color | #E8642C (warm orange) |
-| Background color | #1a0f0a (deep dark) |
-| Start URL | / |
-| Icons | 192px + 512px (maskable) |
+- The root web app is the PWA-enabled frontend.
+- Local web development typically leaves `VITE_API_BASE_URL` empty so Vite proxies `/api` to `http://localhost:5000`.
+- The API loads its own environment from `api/.env`.
+- The mobile app reads its API base URL from Expo config and runtime fallbacks.
 
 ---
 
 ## Feature Implementation Status
 
-### ✅ Fully Implemented
+### Fully Implemented
 | Feature | Web | Mobile |
 |---|---|---|
 | Recipe browsing / listing | ✅ | ✅ |
 | Recipe search | ✅ | ✅ |
 | Recipe detail view | ✅ | ✅ |
-| Guided cooking — step navigation | ✅ | ✅ |
-| Guided cooking — per-step timers | ✅ | ✅ |
-| Guided cooking — ingredient checklist | ✅ | ✅ |
-| AI camera — ingredient recognition | ✅ | ✅ |
-| AI camera — recipe suggestion | ✅ | ✅ |
+| Authentication flow | ✅ | ✅ |
+| Profile backed by authenticated user/session | ✅ | ✅ |
+| Meal planning UI | ✅ | ✅ |
+| Notifications UI | ✅ | ✅ |
+| Admin dashboard and admin route tree | ✅ | N/A |
 | PWA installability | ✅ | N/A |
-| Production build | ✅ | ❌ |
+| Express API foundation | N/A | N/A |
 
-### 🟡 Stubbed / Placeholder Only
+### Partial / In Progress
 | Feature | Notes |
 |---|---|
-| User authentication | Placeholder UI only — no real logic |
-| Favorites / saved recipes | Placeholder UI only — no real logic |
+| Some API domains | Present in route structure but depth of CRUD differs by module |
+| Mobile production packaging | Expo app is active but still in development workflow |
+| Offline support | Limited / evolving rather than complete offline-first behavior |
 
-### ❌ Not Yet Implemented
+### Not Yet Implemented
 | Feature | Notes |
 |---|---|
-| Offline recipe access | Planned — Gap 3 |
-| Offline indicator UI | Planned — Gap 3 |
-| Service worker update prompt | Queued before Gap 3 |
-| Pantry Mode | Future AI feature |
-| Dish photo → recipe | Future AI feature |
-| Dietary substitution | Future AI feature |
-| Recipe scaling | Future AI feature |
-| In-context step clarification | Future AI feature |
+| Full favorites/saved-recipes product flow | Not yet documented as complete |
+| Broader AI roadmap items | Pantry mode, dish-photo reconstruction, substitutions, scaling, step clarification |
 
 ---
 
-## Known Issues & Queued Fixes
+## Roadmap Direction
 
-These were identified during the Gap 1 and Gap 2 audit and are queued to be resolved before Gap 3 begins:
+Likely next architecture-level improvements include:
 
-| Priority | Issue | Status |
-|---|---|---|
-| 🔴 High | ~~Gemini API key exposed in client bundle~~ | ✅ Fixed — moved to serverless function |
-| 🔴 High | Service worker update prompt missing | ⬜ Queued |
-| 🟡 Medium | `src/backend/server.ts` still in web src folder | ⬜ Queued |
-| 🟡 Medium | Maskable icon safe zone not verified | ⬜ Queued |
-| 🟢 Low | iOS "Add to Home Screen" instructions missing | ⬜ Queued |
-| 🟢 Low | `rimraf` for cross-platform clean script | ⬜ Queued |
-
----
-
-## Transition Roadmap
-
-```
-✅  Dev Mode (Expo Go + localhost)
-        │
-✅  Gap 1 — Production-ready web build
-        │   Clean Vite output, split bundles, routing fixed,
-        │   dev dependencies removed, project renamed
-        │
-✅  Gap 2 — PWA installable
-        │   Manifest, service worker, icons, Apple meta tags,
-        │   Workbox caching strategies configured
-        │
-🔧  Pre-Gap 3 — Security & stability fixes
-        │   API key secured, SW update prompt, icon audit
-        │
-⬜  Gap 3 — Basic offline functionality
-        │   Viewed recipes cached locally, offline indicator,
-        │   AI features gracefully disabled when offline
-        │
-⬜  Gap 4 — Auth + Favorites
-        │   Real login system, saved recipes per user
-        │
-⬜  Gap 5 — Deployment
-        │   Domain, hosting, environment variables in production
-        │
-⬜  Gap 6 — Mobile production build
-            Expo → standalone installable app (TestFlight / Play Store)
-```
+- stronger offline/PWA behavior
+- deeper CRUD completion across API modules
+- richer AI-assisted cooking and pantry workflows
+- production deployment hardening for web, API, and mobile
 
 ---
 
@@ -268,10 +321,10 @@ These were identified during the Gap 1 and Gap 2 audit and are queued to be reso
 
 | Variable | Location | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | Server-side only (`.env`) | Google Gemini API authentication |
-
-> ⚠️ Never prefix this variable with `VITE_`. Any variable prefixed with `VITE_` is embedded into the client bundle and becomes publicly visible in the browser.
+| `VITE_API_BASE_URL` | Root web env | Optional explicit API base URL for the web app |
+| API runtime env vars | `api/.env` | Backend port, database, auth, and secret configuration |
+| Expo `extra.apiBaseUrl` | `mobile/app.json` | Mobile API base URL |
 
 ---
 
-*This document should be updated after each Gap is completed.*
+*This document should be updated whenever route structure, backend boundaries, auth flow, or deployment strategy changes.*

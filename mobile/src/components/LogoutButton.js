@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/authService';
-import { colors } from '../theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 /**
  * Small sign-out trigger styled to sit inside any existing card or
@@ -15,13 +14,14 @@ import { colors } from '../theme';
  */
 export default function LogoutButton({ label = 'Sign out', style }) {
   const { logout } = useAuth();
+  const { isDark } = useAppTheme();
   const [busy, setBusy] = useState(false);
+  const styles = createStyles(isDark);
 
   const handlePress = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      await authService.logout();
       await logout();
     } finally {
       setBusy(false);
@@ -47,27 +47,27 @@ export default function LogoutButton({ label = 'Sign out', style }) {
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    alignSelf: 'stretch',
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-    paddingHorizontal: 16,
-  },
-  label: {
-    color: '#b91c1c',
-    fontFamily: 'Geist_700Bold',
-    fontSize: 14,
-    marginLeft: 6,
-  },
-  // colors import kept to stay consistent with theme module, ensures
-  // any future theming edits land in one place
-  _themeRef: { color: colors?.primary },
-});
+function createStyles(isDark) {
+  return StyleSheet.create({
+    btn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      alignSelf: 'stretch',
+      height: 48,
+      borderRadius: 0,
+      borderWidth: 1,
+      borderColor: isDark ? '#292524' : '#e7e5e4',
+      backgroundColor: 'transparent',
+      paddingHorizontal: 16,
+    },
+    label: {
+      color: '#b91c1c',
+      fontFamily: 'Geist_700Bold',
+      fontSize: 10,
+      letterSpacing: 1.5,
+      marginLeft: 6,
+    },
+  });
+}

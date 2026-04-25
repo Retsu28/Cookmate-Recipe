@@ -1,10 +1,6 @@
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
+const { Pool } = require('pg');
 
-dotenv.config();
-
-// Initialize the PostgreSQL connection pool
-export const pool = new Pool({
+const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'cookmate',
@@ -12,8 +8,7 @@ export const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
-// A helper function to test the database connection when the server boots
-export const testDbConnection = async () => {
+const testDbConnection = async () => {
   try {
     const client = await pool.connect();
     console.log('✅ Successfully connected to the PostgreSQL database!');
@@ -22,3 +17,5 @@ export const testDbConnection = async () => {
     console.error('❌ Failed to connect to the PostgreSQL database:', err);
   }
 };
+
+module.exports = { pool, testDbConnection };

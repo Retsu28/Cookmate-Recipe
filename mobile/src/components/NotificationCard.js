@@ -1,33 +1,47 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
 
 export default function NotificationCard({ notification, onPress }) {
+  const { colors, isDark } = useAppTheme();
+
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={`${notification.title}. ${notification.message}`}
       onPress={onPress}
-      className={`bg-white p-4 rounded-3xl border border-stone-100 shadow-sm flex-row space-x-4 mb-4 ${notification.read ? 'opacity-60' : ''}`}
+      style={[st.card, { borderBottomColor: colors.border, opacity: notification.read ? 0.55 : 1 }]}
     >
-      <View className={`w-12 h-12 rounded-2xl items-center justify-center ${notification.color}`}>
-        <Ionicons name={notification.icon} size={24} color={notification.iconColor} />
+      <View style={[st.iconBox, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+        <Ionicons name={notification.icon} size={20} color={notification.iconColor} />
       </View>
-      
-      <View className="flex-1 space-y-1">
-        <View className="flex-row justify-between items-center">
-          <Text className="text-sm font-bold text-dark">{notification.title}</Text>
-          <Text className="text-[8px] font-bold text-stone-400 uppercase">{notification.time}</Text>
+
+      <View style={st.body}>
+        <View style={st.topRow}>
+          <Text style={[st.title, { color: colors.text }]}>{notification.title}</Text>
+          <Text style={[st.time, { color: colors.textSubtle }]}>{notification.time}</Text>
         </View>
-        <Text className="text-xs text-stone-500 leading-relaxed" numberOfLines={2}>
+        <Text style={[st.msg, { color: colors.textMuted }]} numberOfLines={2}>
           {notification.message}
         </Text>
       </View>
 
       {!notification.read && (
-        <View className="absolute top-4 right-4 w-2 h-2 bg-primary rounded-full" />
+        <View style={[st.dot, { backgroundColor: '#1c1917' }]} />
       )}
     </TouchableOpacity>
   );
 }
+
+const st = StyleSheet.create({
+  card: { flexDirection: 'row', gap: 14, paddingVertical: 16, borderBottomWidth: 1 },
+  iconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  body: { flex: 1, gap: 4 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { fontFamily: 'Geist_700Bold', fontSize: 14, flex: 1, paddingRight: 8 },
+  time: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1 },
+  msg: { fontFamily: 'Geist_400Regular', fontSize: 13, lineHeight: 19 },
+  dot: { width: 8, height: 8, marginTop: 4 },
+});

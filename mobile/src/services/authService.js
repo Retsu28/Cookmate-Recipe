@@ -1,51 +1,106 @@
 /**
- * Placeholder authentication service for Cookmate (Mobile).
+ * CookMate authentication service (Mobile).
  *
- * TODO: Replace simulated calls with real Cookmate backend endpoints
- * once available (see ARCHITECTURE.md — Gap 4). The existing axios
- * instance at `src/api/api.js` already attaches the Bearer token
- * from SecureStore, so once the endpoints exist you can swap the
- * bodies below to real calls like:
- *
- *   const { data } = await api.post('/api/auth/login', { email, password });
- *   return { token: data.token, user: data.user };
- *
- * Security notes:
- *  - Real tokens are stored via expo-secure-store (see lib/tokenStorage.js).
- *  - Never log or persist plaintext passwords.
+ * Calls the Express API backend via the shared axios instance.
+ * Token storage is handled via expo-secure-store (see lib/tokenStorage.js).
  */
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+import api from '../api/api';
+import { tokenStorage } from '../lib/tokenStorage';
+
+const AUTH_TOKEN_KEY = 'userToken';
+const AUTH_USER_KEY = 'cookmate.auth.user';
+
+function toMessage(error, fallback) {
+  return error?.response?.data?.error || error?.message || fallback;
+}
+
+async function persist(result) {
+  await tokenStorage.setItem(AUTH_TOKEN_KEY, result.token);
+  await tokenStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
+}
+
+async function clearStoredSession() {
+  await tokenStorage.deleteItem(AUTH_TOKEN_KEY);
+  await tokenStorage.deleteItem(AUTH_USER_KEY);
+}
 
 export const authService = {
   async login(email, password) {
-    // TODO: Replace with api.post('/api/auth/login', { email, password })
     if (!email || !password) {
       throw new Error('Email and password are required.');
     }
-    await wait(600); // simulate latency only
-    return {
-      token: `placeholder.${Date.now()}`,
-      user: { name: email.split('@')[0] || 'Cook', email },
-    };
+    try {
+      const { data } = await api.post('/api/auth/login', { email, password });
+      const result = { token: data.token, user: data.user };
+      await persist(result);
+      return result;
+    } catch (error) {
+      throw new Error(toMessage(error, 'Unable to sign in. Please try again.'));
+    }
   },
 
   async signup(name, email, password) {
-    // TODO: Replace with api.post('/api/auth/signup', { name, email, password })
     if (!name || !email || !password) {
       throw new Error('Please fill in all fields.');
     }
-    await wait(700);
-    return {
-      token: `placeholder.${Date.now()}`,
-      user: { name, email },
-    };
+    try {
+      const { data } = await api.post('/api/auth/signup', { name, email, password });
+      const result = { token: data.token, user: data.user };
+      await persist(result);
+      return result;
+    } catch (error) {
+      throw new Error(toMessage(error, 'Unable to create account. Please try again.'));
+    }
   },
 
   async logout() {
-    // TODO: Call api.post('/api/auth/logout') once backend exists.
-    // Token removal is handled in AuthContext.logout().
-    return Promise.resolve();
+    try {
+      await api.post('/api/auth/logout');
+    } catch {
+      /* network unavailable: still clear local state */
+    }
+
+    await clearStoredSession();
+  },
+
+  async me() {
+    const token = await this.getToken();
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const { data } = await api.get('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await tokenStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      return data.user;
+    } catch (error) {
+      const status = error?.response?.status;
+      if (status === 401 || status === 404) {
+        await this.logout();
+        return null;
+      }
+      throw new Error(toMessage(error, 'Unable to load your session.'));
+    }
+  },
+
+  async getCurrentUser() {
+    try {
+      const raw = await tokenStorage.getItem(AUTH_USER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async getToken() {
+    try {
+      return await tokenStorage.getItem(AUTH_TOKEN_KEY);
+    } catch {
+      return null;
+    }
   },
 };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
@@ -13,8 +13,42 @@ import {
   Geist_800ExtraBold,
 } from '@expo-google-fonts/geist';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import { colors } from './src/theme';
+import SplashScreen from './src/components/SplashScreen';
+
+function AppContent({ fontsLoaded }) {
+  const { colors, navigationTheme, isDark, isReady } = useAppTheme();
+  const [splashDone, setSplashDone] = useState(false);
+
+  if (!fontsLoaded || !isReady) {
+    return (
+      <View style={[styles.root, styles.loading, { backgroundColor: colors.background }]}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: colors.background }]}>
+      <SafeAreaProvider style={styles.safeArea}>
+        <AuthProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <AppNavigator />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
+          </NavigationContainer>
+        </AuthProvider>
+      </SafeAreaProvider>
+      {!splashDone && (
+        <SplashScreen
+          colors={colors}
+          isDark={isDark}
+          onFinished={() => setSplashDone(true)}
+        />
+      )}
+    </GestureHandlerRootView>
+  );
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -25,32 +59,16 @@ export default function App() {
     Geist_800ExtraBold,
   });
 
-  if (!fontsLoaded) {
-    return (
-      <View style={[styles.root, styles.loading]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider style={styles.safeArea}>
-        <AuthProvider>
-          <NavigationContainer>
-            <AppNavigator />
-            <StatusBar style="dark" />
-          </NavigationContainer>
-        </AuthProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ThemeProvider>
+      <AppContent fontsLoaded={fontsLoaded} />
+    </ThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   safeArea: {
     flex: 1,

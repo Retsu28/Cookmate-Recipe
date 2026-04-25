@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,14 +15,39 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../context/ThemeContext';
 import { authService } from '../services/authService';
-import { colors } from '../theme';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
+import AuthVisualPanel from '../components/AuthVisualPanel';
+import AuthThemeToggle from '../components/AuthThemeToggle';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
+const MIN_PASSWORD_LEN = 8;
+
+function getPasswordRequirements(pw) {
+  return [
+    { label: 'At least 8 characters', met: pw.length >= MIN_PASSWORD_LEN },
+    { label: 'At least 1 number', met: /\d/.test(pw) },
+    { label: 'At least 1 lowercase letter', met: /[a-z]/.test(pw) },
+    { label: 'At least 1 uppercase letter', met: /[A-Z]/.test(pw) },
+    { label: 'At least 1 special character', met: /[^A-Za-z0-9]/.test(pw) },
+  ];
+}
+
+function scorePassword(requirements) {
+  const score = requirements.filter((item) => item.met).length;
+  if (score === 0) return { score, color: '#e7e5e4' };
+  if (score <= 1) return { score, color: '#ef4444' };
+  if (score <= 2) return { score, color: '#fb923c' };
+  if (score <= 3) return { score, color: '#eab308' };
+  if (score <= 4) return { score, color: '#84cc16' };
+  return { score, color: '#22c55e' };
+}
 
 export default function SignupScreen({ navigation }) {
   const { login } = useAuth();
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { cardStyle, fieldStyle, shakeStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
     useAuthAnimations(5);
 
@@ -33,11 +58,23 @@ export default function SignupScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const strengthBar = useRef(new Animated.Value(0)).current;
+  const passwordRequirements = useMemo(() => getPasswordRequirements(password), [password]);
+  const strength = useMemo(() => scorePassword(passwordRequirements), [passwordRequirements]);
+
+  useEffect(() => {
+    Animated.timing(strengthBar, {
+      toValue: strength.score / 5,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [strength.score, strengthBar]);
 
   const validate = () => {
     if (!name.trim()) return 'Please enter your full name.';
-    if (!EMAIL_RE.test(email.trim())) return 'Please enter a valid email address.';
-    if (password.length < 6) return 'Password must be at least 6 characters.';
+    if (!EMAIL_RE.test(email.trim())) return 'Email must be a @gmail.com address.';
+    if (password.length < MIN_PASSWORD_LEN) return `Password must be at least ${MIN_PASSWORD_LEN} characters.`;
     if (password !== confirm) return 'Passwords do not match.';
     return null;
   };
@@ -53,7 +90,7 @@ export default function SignupScreen({ navigation }) {
     setLoading(true);
     try {
       const result = await authService.signup(name.trim(), email.trim(), password);
-      await login(result.token);
+      await login(result.user);
       // AppNavigator auto-swaps AuthStack → AppStack once authenticated.
     } catch (err) {
       setError(err?.message || 'Unable to create account. Please try again.');
@@ -65,6 +102,7 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <AuthThemeToggle />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -74,6 +112,13 @@ export default function SignupScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <AuthVisualPanel
+            collapsed={panelCollapsed}
+            onToggle={() => setPanelCollapsed((c) => !c)}
+            heading="Join CookMate."
+            subheading="Create an account to save recipes, plan meals, and cook with AI."
+          />
+
           <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
             <View style={styles.brand}>
               <View style={styles.logo}>
@@ -85,7 +130,9 @@ export default function SignupScreen({ navigation }) {
 
             <AnimatedField index={0} fieldStyle={fieldStyle}>
               <FieldInput
+                colors={colors}
                 label="FULL NAME"
+                styles={styles}
                 value={name}
                 onChangeText={setName}
                 placeholder="Jane Doe"
@@ -97,7 +144,9 @@ export default function SignupScreen({ navigation }) {
 
             <AnimatedField index={1} fieldStyle={fieldStyle}>
               <FieldInput
+                colors={colors}
                 label="EMAIL"
+                styles={styles}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
@@ -114,7 +163,7 @@ export default function SignupScreen({ navigation }) {
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="At least 6 characters"
+                  placeholder="At least 8 characters"
                   placeholderTextColor={colors.textSubtle}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
@@ -138,11 +187,58 @@ export default function SignupScreen({ navigation }) {
                   />
                 </Pressable>
               </View>
+              <View style={styles.strengthWrap}>
+                <View style={styles.strengthTrack}>
+                  <Animated.View
+                    style={[
+                      styles.strengthFill,
+                      {
+                        backgroundColor: strength.color,
+                        width: strengthBar.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0%', '100%'],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.requirementsHeader}>
+                  <Text style={styles.requirementsTitle}>Must contain:</Text>
+                  <Text style={styles.requirementsStatus}>
+                    {password.length === 0 ? 'Enter a password' : `${strength.score}/5 complete`}
+                  </Text>
+                </View>
+                <View style={styles.requirementsList}>
+                  {passwordRequirements.map((item) => (
+                    <Animated.View
+                      key={item.label}
+                      style={[
+                        styles.requirementRow,
+                        {
+                          opacity: item.met ? 1 : 0.75,
+                          transform: [{ translateX: item.met ? 2 : 0 }],
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={item.met ? 'checkmark-outline' : 'close-outline'}
+                        size={15}
+                        color={item.met ? '#16a34a' : colors.textSubtle}
+                      />
+                      <Text style={[styles.requirementText, item.met && styles.requirementTextMet]}>
+                        {item.label}
+                      </Text>
+                    </Animated.View>
+                  ))}
+                </View>
+              </View>
             </Animated.View>
 
             <AnimatedField index={3} fieldStyle={fieldStyle}>
               <FieldInput
+                colors={colors}
                 label="CONFIRM PASSWORD"
+                styles={styles}
                 value={confirm}
                 onChangeText={setConfirm}
                 placeholder="Re-enter your password"
@@ -195,7 +291,7 @@ export default function SignupScreen({ navigation }) {
   );
 }
 
-function FieldInput({ label, ...inputProps }) {
+function FieldInput({ label, colors, styles, ...inputProps }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -215,101 +311,152 @@ function AnimatedField({ index, fieldStyle, children }) {
   return <Animated.View style={fieldStyle(index)}>{children}</Animated.View>;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.primarySoft },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 4,
-  },
-  brand: { alignItems: 'center', marginBottom: 24 },
-  logo: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  title: {
-    fontFamily: 'Geist_800ExtraBold',
-    fontSize: 22,
-    color: colors.text,
-    letterSpacing: -0.3,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontFamily: 'Geist_400Regular',
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  field: { marginBottom: 14 },
-  label: {
-    fontFamily: 'Geist_700Bold',
-    fontSize: 10,
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    marginBottom: 6,
-  },
-  input: {
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#fff',
-    paddingHorizontal: 14,
-    fontFamily: 'Geist_500Medium',
-    fontSize: 14,
-    color: colors.text,
-  },
-  passwordWrap: { position: 'relative', justifyContent: 'center' },
-  eyeBtn: { position: 'absolute', right: 10, padding: 6 },
-  errorBox: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-  },
-  errorText: { color: '#b91c1c', fontFamily: 'Geist_500Medium', fontSize: 13 },
-  primaryBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontFamily: 'Geist_700Bold',
-    fontSize: 16,
-  },
-  terms: {
-    fontFamily: 'Geist_400Regular',
-    fontSize: 11,
-    color: colors.textSubtle,
-    textAlign: 'center',
-    marginTop: 12,
-    paddingHorizontal: 8,
-    lineHeight: 16,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  footerText: { color: colors.textMuted, fontFamily: 'Geist_400Regular', fontSize: 13 },
-  footerLink: { color: colors.primaryDark, fontFamily: 'Geist_700Bold', fontSize: 13 },
-});
+function createStyles(colors, isDark) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.primarySoft },
+    scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 24,
+      padding: 28,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: isDark ? 0.18 : 0.08,
+      shadowRadius: 20,
+      elevation: isDark ? 0 : 4,
+    },
+    brand: { alignItems: 'center', marginBottom: 24 },
+    logo: {
+      width: 56,
+      height: 56,
+      borderRadius: 18,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 12,
+    },
+    title: {
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 22,
+      color: colors.text,
+      letterSpacing: -0.3,
+      textAlign: 'center',
+    },
+    subtitle: {
+      fontFamily: 'Geist_400Regular',
+      fontSize: 13,
+      color: colors.textMuted,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    field: { marginBottom: 14 },
+    label: {
+      fontFamily: 'Geist_700Bold',
+      fontSize: 10,
+      color: colors.textMuted,
+      letterSpacing: 1.5,
+      marginBottom: 6,
+    },
+    input: {
+      height: 48,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceAlt,
+      paddingHorizontal: 14,
+      fontFamily: 'Geist_500Medium',
+      fontSize: 14,
+      color: colors.text,
+    },
+    passwordWrap: { position: 'relative', justifyContent: 'center' },
+    eyeBtn: { position: 'absolute', right: 10, padding: 6 },
+    strengthWrap: { paddingTop: 8 },
+    strengthTrack: {
+      height: 6,
+      width: '100%',
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(68, 64, 60, 0.7)' : '#f5f5f4',
+      overflow: 'hidden',
+    },
+    strengthFill: {
+      height: '100%',
+      borderRadius: 999,
+    },
+    requirementsHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginTop: 12,
+    },
+    requirementsTitle: {
+      color: colors.textMuted,
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 12,
+    },
+    requirementsStatus: {
+      color: colors.textMuted,
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 12,
+      textAlign: 'right',
+      flexShrink: 1,
+    },
+    requirementsList: {
+      marginTop: 8,
+      gap: 6,
+    },
+    requirementRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    requirementText: {
+      color: colors.textSubtle,
+      fontFamily: 'Geist_600SemiBold',
+      fontSize: 12,
+    },
+    requirementTextMet: {
+      color: '#16a34a',
+      fontFamily: 'Geist_700Bold',
+    },
+    errorBox: {
+      backgroundColor: isDark ? 'rgba(127, 29, 29, 0.2)' : '#fef2f2',
+      borderColor: isDark ? 'rgba(252, 165, 165, 0.35)' : '#fecaca',
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 12,
+    },
+    errorText: { color: '#b91c1c', fontFamily: 'Geist_500Medium', fontSize: 13 },
+    primaryBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      height: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 6,
+    },
+    primaryBtnText: {
+      color: '#fff',
+      fontFamily: 'Geist_700Bold',
+      fontSize: 16,
+    },
+    terms: {
+      fontFamily: 'Geist_400Regular',
+      fontSize: 11,
+      color: colors.textSubtle,
+      textAlign: 'center',
+      marginTop: 12,
+      paddingHorizontal: 8,
+      lineHeight: 16,
+    },
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: 16,
+    },
+    footerText: { color: colors.textMuted, fontFamily: 'Geist_400Regular', fontSize: 13 },
+    footerLink: { color: colors.primaryDark, fontFamily: 'Geist_700Bold', fontSize: 13 },
+  });
+}

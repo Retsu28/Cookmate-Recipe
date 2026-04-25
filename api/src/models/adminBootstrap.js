@@ -1,12 +1,12 @@
-import bcrypt from 'bcryptjs';
-import { pool } from './db';
+const bcrypt = require('bcryptjs');
+const { pool } = require('../config/db');
 
 const ADMIN_EMAIL = 'admin@cookmate.com';
 const ADMIN_PASSWORD = 'admin12345';
 const ADMIN_NAME = 'CookMate Admin';
 const BCRYPT_ROUNDS = 10;
 
-export async function ensureAdminAccount() {
+async function ensureAdminAccount() {
   await pool.query(`
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'
@@ -35,3 +35,5 @@ export async function ensureAdminAccount() {
     [ADMIN_EMAIL, passwordHash, ADMIN_NAME]
   );
 }
+
+module.exports = { ensureAdminAccount };

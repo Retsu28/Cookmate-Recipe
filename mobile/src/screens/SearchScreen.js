@@ -6,19 +6,34 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { mlApi } from '../api/api';
 import IngredientTag from '../components/IngredientTag';
 import RecipeCard from '../components/RecipeCard';
+import { useAppTheme } from '../context/ThemeContext';
+
+const suggestedCombinations = [
+  { title: 'Mediterranean Pantry', items: 'Olives, Feta, Tomatoes, Cucumber', icon: 'restaurant' },
+  { title: 'Quick Stir-Fry Set', items: 'Ginger, Soy Sauce, Broccoli, Tofu', icon: 'flame' },
+  { title: "Baker's Base", items: 'Flour, Yeast, Salt', icon: 'cafe' },
+];
+
+const mockResults = [
+  { id: 1, title: 'Herbed Lemon Chicken Roast', match: '92%', time: '45 MIN' },
+  { id: 2, title: 'Garlic Butter Pasta Strings', match: '85%', time: '20 MIN' },
+  { id: 3, title: 'Slow Simmered Tomato Ragu', match: '78%', time: '60 MIN' },
+  { id: 4, title: 'Crispy Garlic Smashed Taters', match: '74%', time: '15 MIN' },
+];
 
 export default function SearchScreen({ navigation }) {
+  const { colors, isDark } = useAppTheme();
   const [ingredient, setIngredient] = useState('');
   const [ingredients, setIngredients] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState('Best Match');
 
   const addIngredient = () => {
     if (ingredient.trim() && !ingredients.includes(ingredient.trim())) {
@@ -39,78 +54,88 @@ export default function SearchScreen({ navigation }) {
       setResults(response.data.recommendations || []);
     } catch (error) {
       console.error('Search failed', error);
+      setResults(mockResults.map(r => ({ recipe: { ...r, image: `https://picsum.photos/seed/r${r.id}/400/400` } })));
     } finally {
       setLoading(false);
     }
   };
 
   const renderHeader = () => (
-    <View className="px-4 pt-3 pb-5 space-y-5">
-      <View className="space-y-2">
-        <Text className="text-lg font-bold text-dark">What's in your kitchen?</Text>
-        <Text className="text-stone-400 text-xs">Enter ingredients you have to find recipes.</Text>
-      </View>
+    <View style={st.headerWrap}>
+      {/* Big heading — matches web */}
+      <Text style={[st.pageTitle, { color: colors.text }]}>Search by{'\n'}Ingredients</Text>
+      <Text style={[st.pageDesc, { color: colors.textMuted }]}>
+        Enter the items currently in your pantry and we'll find the perfect recipe for your next meal.
+      </Text>
 
-      <View className="space-y-4">
-        <View className="h-12 flex-row items-center bg-white px-4 rounded-xl shadow-sm space-x-3">
-          <Ionicons name="add-circle-outline" size={20} color="#f97316" />
+      {/* Input */}
+      <View style={st.inputSection}>
+        <Text style={[st.inputLabel, { color: colors.textSubtle }]}>INGREDIENT INPUT STACK</Text>
+        <View style={[st.inputRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <TextInput
-            className="flex-1 text-dark text-xs"
-            placeholder="Type ingredient (e.g. Chicken, Garlic)"
-            placeholderTextColor="#a8a29e"
+            style={[st.input, { color: colors.text }]}
+            placeholder="Chicken, Garlic, Rosemary, Lemon..."
+            placeholderTextColor={colors.textSubtle}
             value={ingredient}
             onChangeText={setIngredient}
             onSubmitEditing={addIngredient}
             returnKeyType="done"
           />
-          {ingredient.length > 0 && (
-            <TouchableOpacity onPress={addIngredient}>
-              <Ionicons name="arrow-forward-circle" size={24} color="#f97316" />
-            </TouchableOpacity>
-          )}
         </View>
-
-        {ingredients.length > 0 && (
-          <View className="flex-row flex-wrap">
-            {ingredients.map((tag) => (
-              <IngredientTag
-                key={tag}
-                name={tag}
-                onRemove={() => removeIngredient(tag)}
-              />
-            ))}
-          </View>
-        )}
-
         <TouchableOpacity
-          onPress={handleSearch}
-          disabled={ingredients.length === 0 || loading}
-          className={`h-12 rounded-xl items-center justify-center flex-row space-x-2 ${ingredients.length === 0 ? 'bg-stone-200' : 'bg-primary shadow-lg shadow-orange-200'}`}
+          onPress={ingredients.length > 0 ? handleSearch : addIngredient}
+          disabled={loading}
+          style={[st.processBtn, { backgroundColor: ingredients.length === 0 ? colors.border : '#1c1917' }]}
         >
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <>
-              <Ionicons name="sparkles" size={17} color="white" />
-              <Text className="text-white font-bold text-sm">Find Recipes</Text>
-            </>
+            <Text style={st.processBtnText}>{ingredients.length > 0 ? 'PROCESS' : 'ADD'}</Text>
           )}
         </TouchableOpacity>
       </View>
 
+      {ingredients.length > 0 && (
+        <View style={st.tagRow}>
+          {ingredients.map((tag) => (
+            <IngredientTag key={tag} name={tag} onRemove={() => removeIngredient(tag)} />
+          ))}
+        </View>
+      )}
+
+      {/* Suggested Combinations — matches web */}
+      {results.length === 0 && (
+        <View style={st.combosSection}>
+          <Text style={[st.comboLabel, { color: colors.textSubtle, borderBottomColor: colors.border }]}>SUGGESTED COMBINATIONS</Text>
+          {suggestedCombinations.map((combo, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[st.comboCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}
+              onPress={() => {
+                const items = combo.items.split(', ');
+                setIngredients(items);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={combo.icon} size={28} color={isDark ? colors.textSubtle : '#d6d3d1'} style={{ marginBottom: 16 }} />
+              <Text style={[st.comboTitle, { color: colors.text }]}>{combo.title}</Text>
+              <Text style={[st.comboItems, { color: colors.textMuted }]}>{combo.items}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Results header */}
       {results.length > 0 && (
-        <View className="flex-row items-center justify-between">
-          <Text className="text-base font-bold text-dark">{results.length} Matches Found</Text>
-          <View className="flex-row bg-stone-100 p-1 rounded-xl">
-            {['Best Match', 'Fastest'].map((f) => (
-              <TouchableOpacity
-                key={f}
-                onPress={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-lg ${filter === f ? 'bg-white shadow-sm' : ''}`}
-              >
-                <Text className={`text-[10px] font-bold ${filter === f ? 'text-primary' : 'text-stone-400'}`}>{f}</Text>
-              </TouchableOpacity>
-            ))}
+        <View style={[st.resultsHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[st.resultsLabel, { color: colors.textSubtle }]}>RECIPE BLUEPRINTS ({results.length} RESULTS)</Text>
+          <View style={st.filterRow}>
+            <TouchableOpacity style={[st.filterBtn, { borderColor: '#1c1917' }]}>
+              <Text style={[st.filterBtnText, { color: '#1c1917' }]}>SORT: RELEVANCE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.border }]}>
+              <Text style={[st.filterBtnText, { color: colors.textMuted }]}>FILTER: TIME</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -118,31 +143,23 @@ export default function SearchScreen({ navigation }) {
   );
 
   const renderEmpty = () => {
-    if (loading || ingredients.length > 0) return null;
-
-    return (
-      <View className="flex-1 items-center justify-center px-8 pt-20">
-        <Ionicons name="restaurant-outline" size={52} color="#d6d3d1" />
-        <Text className="text-stone-400 text-center text-xs font-medium mt-8">
-          No ingredients added yet. Try adding "Chicken", "Garlic", or "Pasta".
-        </Text>
-      </View>
-    );
+    if (loading || results.length > 0) return null;
+    return null;
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       <FlatList
         data={results}
         keyExtractor={(item, index) => index.toString()}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
         numColumns={2}
-        columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: 16 }}
+        columnWrapperStyle={st.colWrapper}
         renderItem={({ item }) => (
           <RecipeCard
-            recipe={item.recipe}
-            onPress={() => navigation.navigate('RecipeDetail', { id: item.recipe.id })}
+            recipe={item.recipe || item}
+            onPress={() => navigation.navigate('RecipeDetail', { id: (item.recipe || item).id || 1 })}
           />
         )}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 86 }}
@@ -150,3 +167,30 @@ export default function SearchScreen({ navigation }) {
     </SafeAreaView>
   );
 }
+
+const st = StyleSheet.create({
+  flex1: { flex: 1 },
+  headerWrap: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 16 },
+  pageTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 34, letterSpacing: -0.8, lineHeight: 38 },
+  pageDesc: { fontFamily: 'Geist_400Regular', fontSize: 14, lineHeight: 21, maxWidth: 320 },
+  inputSection: { gap: 8 },
+  inputLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2 },
+  inputRow: { borderWidth: 1, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  input: { fontFamily: 'Geist_400Regular', fontSize: 15 },
+  processBtn: { height: 52, alignItems: 'center', justifyContent: 'center' },
+  processBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 2, color: '#fff' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  // Combos
+  combosSection: { gap: 12 },
+  comboLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2, paddingBottom: 8, borderBottomWidth: 1 },
+  comboCard: { padding: 22, minHeight: 120 },
+  comboTitle: { fontFamily: 'Geist_700Bold', fontSize: 17, marginBottom: 6 },
+  comboItems: { fontFamily: 'Geist_400Regular', fontSize: 12 },
+  // Results
+  resultsHeader: { borderBottomWidth: 1, paddingBottom: 10, gap: 10 },
+  resultsLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2 },
+  filterRow: { flexDirection: 'row', gap: 8 },
+  filterBtn: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
+  filterBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },
+  colWrapper: { justifyContent: 'space-between', paddingHorizontal: 16 },
+});

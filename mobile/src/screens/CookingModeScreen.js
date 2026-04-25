@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StatusBar,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,67 +22,64 @@ export default function CookingModeScreen({ route, navigation }) {
   const progress = ((currentStep + 1) / steps.length) * 100;
 
   return (
-    <View className="flex-1 bg-dark">
+    <View style={st.root}>
       <StatusBar barStyle="light-content" />
-      <SafeAreaView className="flex-1">
-        <View className="px-6 py-4 flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="close" size={28} color="white" />
+      <SafeAreaView style={st.flex1}>
+        {/* Header — matches web GuidedCooking header */}
+        <View style={st.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.closeBtn}>
+            <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
-          <View className="items-center">
-            <Text className="text-white font-bold text-sm" numberOfLines={1}>{recipe.title}</Text>
-            <Text className="text-stone-400 text-[10px]">Step {currentStep + 1} of {steps.length}</Text>
+          <View style={st.headerCenter}>
+            <Text style={st.headerTitle} numberOfLines={1}>{recipe.title}</Text>
+            <Text style={st.headerSub}>Step {currentStep + 1} of {steps.length}</Text>
           </View>
-          <View className="w-8" />
+          <View style={{ width: 40 }} />
         </View>
 
-        <View className="px-6 py-2">
-          <View className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <View
-              className="h-full bg-primary"
-              style={{ width: `${progress}%` }}
-            />
+        {/* Progress bar */}
+        <View style={st.progressWrap}>
+          <View style={st.progressBg}>
+            <View style={[st.progressFill, { width: `${progress}%` }]} />
           </View>
         </View>
 
-        <View className="flex-1 items-center justify-center px-10 space-y-12">
-          <Text className="text-primary text-8xl font-bold opacity-20">
-            {steps[currentStep].number}
-          </Text>
-          <Text className="text-white text-3xl font-medium text-center leading-tight">
-            {steps[currentStep].text}
-          </Text>
+        {/* Step content — matches web center area */}
+        <View style={st.content}>
+          <View style={st.stepBadge}>
+            <Text style={st.stepBadgeText}>{steps[currentStep].number}</Text>
+          </View>
+          <Text style={st.stepText}>{steps[currentStep].text}</Text>
 
           {steps[currentStep].time && (
-            <View className="flex-row items-center space-x-3 bg-white/5 px-6 py-3 rounded-2xl border border-white/10">
-              <Ionicons name="timer-outline" size={24} color="#f97316" />
-              <Text className="text-white text-2xl font-bold">{steps[currentStep].time}</Text>
+            <View style={st.timerCard}>
+              <Ionicons name="timer-outline" size={28} color="#f97316" />
+              <Text style={st.timerText}>{steps[currentStep].time}:00</Text>
+              <Text style={st.timerLabel}>Timer ready</Text>
+              <TouchableOpacity style={st.timerBtn}>
+                <Text style={st.timerBtnText}>START TIMER</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
 
-        <View className="p-8 flex-row justify-between items-center">
+        {/* Footer — matches web footer controls */}
+        <View style={st.footer}>
           <TouchableOpacity
             onPress={() => setCurrentStep(Math.max(0, currentStep - 1))}
             disabled={currentStep === 0}
-            className={`px-6 py-4 rounded-2xl border border-white/20 ${currentStep === 0 ? 'opacity-30' : ''}`}
+            style={[st.prevBtn, currentStep === 0 && { opacity: 0.3 }]}
           >
-            <Text className="text-white font-bold">PREVIOUS</Text>
+            <Text style={st.prevBtnText}>PREVIOUS</Text>
           </TouchableOpacity>
 
           {currentStep === steps.length - 1 ? (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              className="bg-primary px-10 py-4 rounded-2xl shadow-lg shadow-orange-900"
-            >
-              <Text className="text-white font-bold text-lg">FINISH</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={[st.nextBtn, { backgroundColor: '#22c55e' }]}>
+              <Text style={st.nextBtnText}>FINISH</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              onPress={() => setCurrentStep(currentStep + 1)}
-              className="bg-primary px-10 py-4 rounded-2xl shadow-lg shadow-orange-900"
-            >
-              <Text className="text-white font-bold text-lg">NEXT STEP</Text>
+            <TouchableOpacity onPress={() => setCurrentStep(currentStep + 1)} style={st.nextBtn}>
+              <Text style={st.nextBtnText}>NEXT STEP</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -89,3 +87,34 @@ export default function CookingModeScreen({ route, navigation }) {
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#1c1917' },
+  flex1: { flex: 1 },
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 12 },
+  headerTitle: { fontFamily: 'Geist_700Bold', fontSize: 16, color: '#fff' },
+  headerSub: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#a8a29e', marginTop: 2 },
+  // Progress
+  progressWrap: { paddingHorizontal: 20, paddingVertical: 10 },
+  progressBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#f97316' },
+  // Content
+  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  stepBadge: { width: 64, height: 64, backgroundColor: 'rgba(249,115,22,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: 24, borderRadius: 20 },
+  stepBadgeText: { fontFamily: 'Geist_800ExtraBold', fontSize: 28, color: '#fb923c' },
+  stepText: { fontFamily: 'Geist_500Medium', fontSize: 26, color: '#fff', textAlign: 'center', lineHeight: 36, marginBottom: 28 },
+  timerCard: { alignItems: 'center', gap: 6, paddingVertical: 20, paddingHorizontal: 28, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 24 },
+  timerText: { fontFamily: 'Geist_800ExtraBold', fontSize: 32, color: '#fff' },
+  timerLabel: { fontFamily: 'Geist_400Regular', fontSize: 12, color: '#a8a29e' },
+  timerBtn: { marginTop: 10, backgroundColor: '#fff', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
+  timerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#1c1917' },
+  // Footer
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', backgroundColor: '#0c0a09' },
+  prevBtn: { paddingHorizontal: 20, paddingVertical: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 999 },
+  prevBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 1.5, color: '#fff' },
+  nextBtn: { backgroundColor: '#f97316', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 999 },
+  nextBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14, letterSpacing: 1, color: '#fff' },
+});

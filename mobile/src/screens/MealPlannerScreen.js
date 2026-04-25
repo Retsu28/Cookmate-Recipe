@@ -4,11 +4,13 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, addDays, startOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import MealSlot from '../components/MealSlot';
+import { useAppTheme } from '../context/ThemeContext';
 
 const mealTypes = [
   { id: 'breakfast', label: 'Breakfast', color: 'bg-yellow-400' },
@@ -29,31 +31,30 @@ const shoppingList = [
 ];
 
 export default function MealPlannerScreen() {
+  const { colors, isDark } = useAppTheme();
   const [activeTab, setActiveTab] = useState('Planner');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [plannedMeals, setPlannedMeals] = useState(mockPlannedMeals);
 
   const startDate = startOfWeek(new Date());
-  const weekDays = eachDayOfInterval({
-    start: startDate,
-    end: addDays(startDate, 6),
-  });
+  const weekDays = eachDayOfInterval({ start: startDate, end: addDays(startDate, 6) });
 
   const renderPlanner = () => (
-    <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 86 }}>
-      <View className="flex-row justify-between mb-7">
+    <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 86 }}>
+      {/* Week strip — matches web calendar row */}
+      <View style={[st.weekStrip, { borderBottomColor: colors.border }]}>
         {weekDays.map((day) => {
           const isSelected = isSameDay(day, selectedDate);
           return (
             <TouchableOpacity
               key={day.toString()}
               onPress={() => setSelectedDate(day)}
-              className={`items-center justify-center rounded-xl w-[13%] h-11 ${isSelected ? 'bg-primary shadow-lg shadow-orange-200' : 'bg-white shadow-sm'}`}
+              style={[st.dayCell, isSelected && { backgroundColor: '#1c1917' }]}
             >
-              <Text className={`text-[7px] font-bold uppercase ${isSelected ? 'text-white/90' : 'text-stone-400'}`}>
-                {format(day, 'EEE')}
+              <Text style={[st.dayLabel, { color: isSelected ? 'rgba(255,255,255,0.7)' : colors.textSubtle }]}>
+                {format(day, 'EEE').toUpperCase()}
               </Text>
-              <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-dark'}`}>
+              <Text style={[st.dayNum, { color: isSelected ? '#fff' : colors.text }]}>
                 {format(day, 'd')}
               </Text>
             </TouchableOpacity>
@@ -61,74 +62,98 @@ export default function MealPlannerScreen() {
         })}
       </View>
 
-      <View>
-        {mealTypes.map((type) => {
-          const meal = plannedMeals.find(m => isSameDay(m.date, selectedDate) && m.slot === type.id);
-          return (
-            <MealSlot
-              key={type.id}
-              label={type.label}
-              color={type.color}
-              meal={meal}
-              onAdd={() => console.log('Add meal to', type.id)}
-              onRemove={() => setPlannedMeals(plannedMeals.filter(m => !(isSameDay(m.date, selectedDate) && m.slot === type.id)))}
-            />
-          );
-        })}
-      </View>
+      {/* Date heading */}
+      <Text style={[st.dateHeading, { color: colors.text }]}>
+        {format(selectedDate, 'EEEE, MMMM d')}
+      </Text>
+
+      {mealTypes.map((type) => {
+        const meal = plannedMeals.find(m => isSameDay(m.date, selectedDate) && m.slot === type.id);
+        return (
+          <MealSlot
+            key={type.id}
+            label={type.label}
+            color={type.color}
+            meal={meal}
+            onAdd={() => console.log('Add meal to', type.id)}
+            onRemove={() => setPlannedMeals(plannedMeals.filter(m => !(isSameDay(m.date, selectedDate) && m.slot === type.id)))}
+          />
+        );
+      })}
     </ScrollView>
   );
 
   const renderShoppingList = () => (
-    <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 86 }}>
-      <View className="bg-orange-50 p-5 rounded-2xl border border-orange-100 mb-7 flex-row items-center justify-between">
-        <View>
-          <Text className="text-primary font-bold text-base">Weekly List</Text>
-          <Text className="text-orange-400 text-xs">Based on your 7-day plan</Text>
+    <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 86 }}>
+      {/* Weekly summary banner — matches web */}
+      <View style={st.weeklyBanner}>
+        <View style={st.bannerIconBox}>
+          <Ionicons name="cart" size={18} color="#0a0a0a" />
         </View>
-        <TouchableOpacity className="bg-primary p-3 rounded-xl">
-          <Ionicons name="download-outline" size={18} color="white" />
-        </TouchableOpacity>
+        <View style={st.bannerText}>
+          <Text style={st.bannerTitle}>Weekly Shopping List</Text>
+          <Text style={st.bannerSub}>Auto-generated from your 7-day meal plan</Text>
+        </View>
       </View>
 
       {shoppingList.map((cat) => (
-        <View key={cat.category} className="mb-7">
-          <Text className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">{cat.category}</Text>
-          <View className="space-y-3">
-            {cat.items.map((item, i) => (
-              <TouchableOpacity key={i} className="h-12 flex-row items-center justify-between bg-white px-4 rounded-xl shadow-sm">
-                <View className="flex-row items-center space-x-3">
-                  <View className="w-4 h-4 rounded-md border-2 border-stone-200" />
-                  <Text className="text-xs font-medium text-dark">{item}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={15} color="#d6d3d1" />
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View key={cat.category} style={st.catSection}>
+          <Text style={[st.catLabel, { color: colors.textSubtle, borderBottomColor: colors.border }]}>{cat.category.toUpperCase()}</Text>
+          {cat.items.map((item, i) => (
+            <View key={i} style={[st.shopRow, { borderBottomColor: colors.border }]}>
+              <View style={st.shopLeft}>
+                <View style={[st.shopCheck, { borderColor: colors.border }]} />
+                <Text style={[st.shopText, { color: colors.text }]}>{item}</Text>
+              </View>
+            </View>
+          ))}
         </View>
       ))}
     </ScrollView>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="px-4 pt-3 pb-2 bg-background">
-        <View className="h-10 flex-row bg-stone-100 p-1 rounded-xl">
-          {['Planner', 'Shopping List'].map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              onPress={() => setActiveTab(tab)}
-              className={`flex-1 rounded-lg items-center justify-center ${activeTab === tab ? 'bg-white shadow-sm' : ''}`}
-            >
-              <Text className={`text-[11px] font-bold ${activeTab === tab ? 'text-primary' : 'text-stone-400'}`}>
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+    <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
+      {/* Tab switcher — matches web top toggle */}
+      <View style={[st.tabBar, { borderBottomColor: colors.border }]}>
+        {['Planner', 'Shopping List'].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            onPress={() => setActiveTab(tab)}
+            style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: '#1c1917' }]}
+          >
+            <Text style={[st.tabText, { color: activeTab === tab ? colors.text : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {activeTab === 'Planner' ? renderPlanner() : renderShoppingList()}
     </SafeAreaView>
   );
 }
+
+const st = StyleSheet.create({
+  flex1: { flex: 1 },
+  // Tab
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16 },
+  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  tabText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+  // Week strip
+  weekStrip: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 16, marginBottom: 8, borderBottomWidth: 1 },
+  dayCell: { alignItems: 'center', justifyContent: 'center', width: 42, height: 52, padding: 4 },
+  dayLabel: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 1 },
+  dayNum: { fontFamily: 'Geist_700Bold', fontSize: 16, marginTop: 2 },
+  dateHeading: { fontFamily: 'Geist_700Bold', fontSize: 16, marginBottom: 18 },
+  // Shopping
+  weeklyBanner: { backgroundColor: '#0a0a0a', padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  bannerIconBox: { width: 36, height: 36, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  bannerText: { flex: 1 },
+  bannerTitle: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff' },
+  bannerSub: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#a8a29e', marginTop: 2 },
+  catSection: { marginBottom: 20 },
+  catLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2, paddingBottom: 8, borderBottomWidth: 1, marginBottom: 0 },
+  shopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1 },
+  shopLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  shopCheck: { width: 18, height: 18, borderWidth: 2 },
+  shopText: { fontFamily: 'Geist_500Medium', fontSize: 14 },
+});

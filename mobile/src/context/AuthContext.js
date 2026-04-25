@@ -1,55 +1,61 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { tokenStorage } from '../lib/tokenStorage';
+import { authService } from '../services/authService';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [userToken, setUserToken] = useState(null);
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for token on app load
-    const loadToken = async () => {
+    const loadSession = async () => {
+      let cachedUser = null;
       try {
-        const token = await tokenStorage.getItem('userToken');
-        if (token) {
-          setUserToken(token);
+        cachedUser = await authService.getCurrentUser();
+        if (cachedUser) {
+          setUser(cachedUser);
+        }
+
+        const freshUser = await authService.me();
+        if (freshUser) {
+          setUser(freshUser);
+        } else if (cachedUser) {
+          setUser(null);
         }
       } catch (e) {
-        console.error('Failed to load token', e);
+        console.error('Failed to load session', e);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadToken();
+    loadSession();
   }, []);
 
-  const login = async (token) => {
+  const login = async (nextUser) => {
     try {
-      await tokenStorage.setItem('userToken', token);
-      setUserToken(token);
+      setUser(nextUser);
     } catch (e) {
-      console.error('Failed to save token', e);
+      console.error('Failed to store user session', e);
     }
   };
 
   const logout = async () => {
     try {
-      await tokenStorage.deleteItem('userToken');
-      setUserToken(null);
+      await authService.logout();
+      setUser(null);
     } catch (e) {
-      console.error('Failed to delete token', e);
+      console.error('Failed to clear user session', e);
     }
   };
 
   return (
     <AuthContext.Provider value={{ 
-      userToken, 
+      user,
       isLoading, 
       login, 
       logout,
-      isAuthenticated: !!userToken 
+      isAuthenticated: !!user 
     }}>
       {children}
     </AuthContext.Provider>
