@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -12,10 +12,24 @@ import {
   Geist_700Bold,
   Geist_800ExtraBold,
 } from '@expo-google-fonts/geist';
-import { AuthProvider } from './src/context/AuthContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import SplashScreen from './src/components/SplashScreen';
+
+function PostLoginSplash({ colors, isDark }) {
+  const { showPostLoginSplash, finishPostLoginSplash } = useAuth();
+
+  if (!showPostLoginSplash) return null;
+
+  return (
+    <SplashScreen
+      colors={colors}
+      isDark={isDark}
+      onFinished={finishPostLoginSplash}
+    />
+  );
+}
 
 function AppContent({ fontsLoaded }) {
   const { colors, navigationTheme, isDark, isReady } = useAppTheme();
@@ -37,6 +51,7 @@ function AppContent({ fontsLoaded }) {
             <AppNavigator />
             <StatusBar style={isDark ? 'light' : 'dark'} />
           </NavigationContainer>
+          <PostLoginSplash colors={colors} isDark={isDark} />
         </AuthProvider>
       </SafeAreaProvider>
       {!splashDone && (

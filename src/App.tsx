@@ -9,7 +9,7 @@ import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
 import AppShell from './app/AppShell';
 import SplashScreen from '@/components/SplashScreen';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
 import AdminGate from '@/auth/AdminGate';
 import AdminLayout from './admin/AdminLayout';
@@ -36,6 +36,14 @@ const NotificationManagement = lazy(() => import('./admin/pages/NotificationMana
 const Reports = lazy(() => import('./admin/pages/Reports'));
 const SystemStatus = lazy(() => import('./admin/pages/SystemStatus'));
 
+function PostLoginSplash() {
+  const { showPostLoginSplash, finishPostLoginSplash } = useAuth();
+
+  if (!showPostLoginSplash) return null;
+
+  return <SplashScreen onFinished={finishPostLoginSplash} />;
+}
+
 export default function App() {
   const [splashDone, setSplashDone] = useState(false);
 
@@ -43,6 +51,7 @@ export default function App() {
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
       {!splashDone && <SplashScreen onFinished={() => setSplashDone(true)} />}
       <AuthProvider>
+        <PostLoginSplash />
         <Router>
           <Routes>
             <Route element={<AdminGate />}>

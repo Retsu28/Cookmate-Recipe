@@ -20,6 +20,7 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
+import AuthVideoBackground from '../components/AuthVideoBackground';
 
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -109,193 +110,197 @@ export default function SignupScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <AuthThemeToggle />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <AuthVideoBackground />
+      <SafeAreaView style={styles.safeArea}>
+        <AuthThemeToggle />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <AuthVisualPanel
-            collapsed={panelCollapsed}
-            onToggle={() => setPanelCollapsed((c) => !c)}
-            heading="Join CookMate."
-            subheading="Create an account to save recipes, plan meals, and cook with AI."
-          />
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <AuthVisualPanel
+              collapsed={panelCollapsed}
+              onToggle={() => setPanelCollapsed((c) => !c)}
+              heading="Join CookMate."
+              subheading="Create an account to save recipes, plan meals, and cook with AI."
+            />
 
-          <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
-            <View style={styles.brand}>
-              <View style={styles.logo}>
-                <Ionicons name="restaurant" size={26} color="#fff" />
+            <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
+              <View style={styles.brand}>
+                <View style={styles.logo}>
+                  <Ionicons name="restaurant" size={26} color="#fff" />
+                </View>
+                <Text style={styles.title}>Create your CookMate</Text>
+                <Text style={styles.subtitle}>Save recipes, plan meals, and cook with AI.</Text>
               </View>
-              <Text style={styles.title}>Create your CookMate</Text>
-              <Text style={styles.subtitle}>Save recipes, plan meals, and cook with AI.</Text>
-            </View>
 
-            <AnimatedField index={0} fieldStyle={fieldStyle}>
-              <FieldInput
-                colors={colors}
-                label="FULL NAME"
-                styles={styles}
-                value={name}
-                onChangeText={setName}
-                placeholder="Jane Doe"
-                autoCapitalize="words"
-                textContentType="name"
-                editable={!loading}
-              />
-            </AnimatedField>
-
-            <AnimatedField index={1} fieldStyle={fieldStyle}>
-              <FieldInput
-                colors={colors}
-                label="EMAIL"
-                styles={styles}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@gmail.com"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                editable={!loading}
-              />
-            </AnimatedField>
-
-            <Animated.View style={[styles.field, fieldStyle(2)]}>
-              <Text style={styles.label}>PASSWORD</Text>
-              <View style={styles.passwordWrap}>
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="At least 8 characters"
-                  placeholderTextColor={colors.textSubtle}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textContentType="newPassword"
+              <AnimatedField index={0} fieldStyle={fieldStyle}>
+                <FieldInput
+                  colors={colors}
+                  label="FULL NAME"
+                  styles={styles}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Jane Doe"
+                  autoCapitalize="words"
+                  textContentType="name"
                   editable={!loading}
-                  style={[styles.input, { paddingRight: 44 }]}
                 />
-                <Pressable
-                  onPress={() => setShowPassword((s) => !s)}
-                  style={({ pressed }) => [
-                    styles.eyeBtn,
-                    { transform: [{ scale: pressed ? 0.85 : 1 }] },
-                  ]}
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={colors.textSubtle}
+              </AnimatedField>
+
+              <AnimatedField index={1} fieldStyle={fieldStyle}>
+                <FieldInput
+                  colors={colors}
+                  label="EMAIL"
+                  styles={styles}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@gmail.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  editable={!loading}
+                />
+              </AnimatedField>
+
+              <Animated.View style={[styles.field, fieldStyle(2)]}>
+                <Text style={styles.label}>PASSWORD</Text>
+                <View style={styles.passwordWrap}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="At least 8 characters"
+                    placeholderTextColor={colors.textSubtle}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="newPassword"
+                    editable={!loading}
+                    style={[styles.input, { paddingRight: 44 }]}
                   />
-                </Pressable>
-              </View>
-              <View style={styles.strengthWrap}>
-                <View style={styles.strengthTrack}>
-                  <Animated.View
-                    style={[
-                      styles.strengthFill,
-                      {
-                        backgroundColor: strength.color,
-                        width: strengthBar.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0%', '100%'],
-                        }),
-                      },
+                  <Pressable
+                    onPress={() => setShowPassword((s) => !s)}
+                    style={({ pressed }) => [
+                      styles.eyeBtn,
+                      { transform: [{ scale: pressed ? 0.85 : 1 }] },
                     ]}
-                  />
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={colors.textSubtle}
+                    />
+                  </Pressable>
                 </View>
-                <View style={styles.requirementsHeader}>
-                  <Text style={styles.requirementsTitle}>Must contain:</Text>
-                  <Text style={styles.requirementsStatus}>
-                    {password.length === 0 ? 'Enter a password' : `${strength.score}/5 complete`}
-                  </Text>
-                </View>
-                <View style={styles.requirementsList}>
-                  {passwordRequirements.map((item) => (
+                <View style={styles.strengthWrap}>
+                  <View style={styles.strengthTrack}>
                     <Animated.View
-                      key={item.label}
                       style={[
-                        styles.requirementRow,
+                        styles.strengthFill,
                         {
-                          opacity: item.met ? 1 : 0.75,
-                          transform: [{ translateX: item.met ? 2 : 0 }],
+                          backgroundColor: strength.color,
+                          width: strengthBar.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0%', '100%'],
+                          }),
                         },
                       ]}
-                    >
-                      <Ionicons
-                        name={item.met ? 'checkmark-outline' : 'close-outline'}
-                        size={15}
-                        color={item.met ? '#16a34a' : colors.textSubtle}
-                      />
-                      <Text style={[styles.requirementText, item.met && styles.requirementTextMet]}>
-                        {item.label}
-                      </Text>
-                    </Animated.View>
-                  ))}
+                    />
+                  </View>
+                  <View style={styles.requirementsHeader}>
+                    <Text style={styles.requirementsTitle}>Must contain:</Text>
+                    <Text style={styles.requirementsStatus}>
+                      {password.length === 0 ? 'Enter a password' : `${strength.score}/5 complete`}
+                    </Text>
+                  </View>
+                  <View style={styles.requirementsList}>
+                    {passwordRequirements.map((item) => (
+                      <Animated.View
+                        key={item.label}
+                        style={[
+                          styles.requirementRow,
+                          {
+                            opacity: item.met ? 1 : 0.75,
+                            transform: [{ translateX: item.met ? 2 : 0 }],
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={item.met ? 'checkmark-outline' : 'close-outline'}
+                          size={15}
+                          color={item.met ? '#16a34a' : colors.textSubtle}
+                        />
+                        <Text style={[styles.requirementText, item.met && styles.requirementTextMet]}>
+                          {item.label}
+                        </Text>
+                      </Animated.View>
+                    ))}
+                  </View>
                 </View>
+              </Animated.View>
+
+              <AnimatedField index={3} fieldStyle={fieldStyle}>
+                <FieldInput
+                  colors={colors}
+                  label="CONFIRM PASSWORD"
+                  styles={styles}
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  placeholder="Re-enter your password"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  textContentType="newPassword"
+                  editable={!loading}
+                />
+              </AnimatedField>
+
+              {error ? (
+                <Animated.View style={[styles.errorBox, fieldStyle(4)]}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </Animated.View>
+              ) : null}
+
+              <Animated.View style={buttonStyle}>
+                <Pressable
+                  onPress={handleSubmit}
+                  onPressIn={onPressIn}
+                  onPressOut={onPressOut}
+                  disabled={loading}
+                  style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Create account</Text>
+                  )}
+                </Pressable>
+              </Animated.View>
+
+              <Text style={styles.terms}>
+                By continuing you agree to CookMate&apos;s Terms of Service and Privacy Policy.
+              </Text>
+
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>Already have an account?</Text>
+                <Pressable
+                  onPress={() => navigation.navigate('Login')}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={styles.footerLink}> Sign in</Text>
+                </Pressable>
               </View>
             </Animated.View>
-
-            <AnimatedField index={3} fieldStyle={fieldStyle}>
-              <FieldInput
-                colors={colors}
-                label="CONFIRM PASSWORD"
-                styles={styles}
-                value={confirm}
-                onChangeText={setConfirm}
-                placeholder="Re-enter your password"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                textContentType="newPassword"
-                editable={!loading}
-              />
-            </AnimatedField>
-
-            {error ? (
-              <Animated.View style={[styles.errorBox, fieldStyle(4)]}>
-                <Text style={styles.errorText}>{error}</Text>
-              </Animated.View>
-            ) : null}
-
-            <Animated.View style={buttonStyle}>
-              <Pressable
-                onPress={handleSubmit}
-                onPressIn={onPressIn}
-                onPressOut={onPressOut}
-                disabled={loading}
-                style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Create account</Text>
-                )}
-              </Pressable>
-            </Animated.View>
-
-            <Text style={styles.terms}>
-              By continuing you agree to CookMate&apos;s Terms of Service and Privacy Policy.
-            </Text>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account?</Text>
-              <Pressable
-                onPress={() => navigation.navigate('Login')}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-              >
-                <Text style={styles.footerLink}> Sign in</Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -321,10 +326,12 @@ function AnimatedField({ index, fieldStyle, children }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.primarySoft },
+    container: { flex: 1, backgroundColor: '#1c1917' },
+    safeArea: { flex: 1 },
+    scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
     card: {
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.92)' : 'rgba(255, 255, 255, 0.94)',
       borderRadius: 24,
       padding: 28,
       shadowColor: '#000',

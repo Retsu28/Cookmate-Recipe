@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
+import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -102,9 +103,11 @@ export default function Signup() {
     'w-full h-12 rounded-xl border border-stone-200 bg-white px-4 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all';
 
   return (
-    <div className="min-h-screen bg-orange-50 flex overflow-hidden">
+    <div className="relative min-h-screen bg-stone-950 flex overflow-hidden">
+      <AuthVideoBackground />
+
       {/* ── Split-screen wrapper ── */}
-      <div className="relative flex w-full min-h-screen">
+      <div className="relative z-10 flex w-full min-h-screen">
         {/* Visual panel (left) — hidden on mobile, collapsible on desktop */}
         <AuthVisualPanel
           collapsed={panelCollapsed}
@@ -129,7 +132,7 @@ export default function Signup() {
               animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}
               transition={{ duration: 0.45 }}
             >
-              <Card className="bg-white shadow-xl rounded-2xl overflow-hidden border-none">
+              <Card className="bg-white/95 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden border border-white/60">
                 <CardContent className="p-8">
               <motion.div
                 initial={{ opacity: 0, y: -8 }}

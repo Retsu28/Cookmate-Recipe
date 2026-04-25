@@ -38,20 +38,20 @@ function buildFloaters(count = 14): FloatingItem[] {
 
 // ── theme palettes ──────────────────────────────────────────────────
 const LIGHT = {
-  bg: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 30%, #fed7aa 60%, #fdba74 100%)',
+  bg: 'rgba(28,25,23,0.18)',
   blob1: 'radial-gradient(circle, rgba(249,115,22,0.25) 0%, transparent 70%)',
   blob2: 'radial-gradient(circle, rgba(251,146,60,0.20) 0%, transparent 70%)',
   blob3: 'radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)',
-  iconColor: 'text-orange-500',
-  heading: 'text-stone-900',
-  sub: 'text-stone-600',
-  pill: 'bg-white/60 text-stone-700 border-orange-200/60',
+  iconColor: 'text-white/70',
+  heading: 'text-white drop-shadow-sm',
+  sub: 'text-white/85 drop-shadow-sm',
+  pill: 'bg-white/18 text-white border-white/25',
   toggleBg: 'bg-white/80 border-stone-200',
   toggleIcon: 'text-stone-600',
 };
 
 const DARK = {
-  bg: 'linear-gradient(135deg, #0c0a09 0%, #1c1917 30%, #292524 60%, #1c1917 100%)',
+  bg: 'rgba(12,10,9,0.30)',
   blob1: 'radial-gradient(circle, rgba(249,115,22,0.12) 0%, transparent 70%)',
   blob2: 'radial-gradient(circle, rgba(251,146,60,0.08) 0%, transparent 70%)',
   blob3: 'radial-gradient(circle, rgba(245,158,11,0.06) 0%, transparent 70%)',
@@ -108,8 +108,8 @@ export function AuthVisualPanel({
             animate={{ width: '50%', opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="hidden lg:flex relative overflow-hidden rounded-3xl m-3 flex-col items-center justify-center"
-            style={{ background: t.bg }}
+            className="hidden lg:flex relative overflow-hidden rounded-3xl m-3 flex-col items-center justify-center border border-white/20 shadow-2xl"
+            style={{ background: t.bg, backdropFilter: 'blur(10px)' }}
           >
             {/* Animated gradient blobs */}
             <motion.div

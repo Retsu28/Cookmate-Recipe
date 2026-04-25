@@ -20,6 +20,7 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
+import AuthVideoBackground from '../components/AuthVideoBackground';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,125 +67,131 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <AuthThemeToggle />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <AuthVideoBackground />
+      <SafeAreaView style={styles.safeArea}>
+        <AuthThemeToggle />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <AuthVisualPanel
-            collapsed={panelCollapsed}
-            onToggle={() => setPanelCollapsed((c) => !c)}
-            heading="Cook smarter."
-            subheading="Plan meals, discover recipes, and let AI be your sous-chef."
-          />
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <AuthVisualPanel
+              collapsed={panelCollapsed}
+              onToggle={() => setPanelCollapsed((c) => !c)}
+              heading="Cook smarter."
+              subheading="Plan meals, discover recipes, and let AI be your sous-chef."
+            />
 
-          <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
-            <View style={styles.brand}>
-              <View style={styles.logo}>
-                <Ionicons name="restaurant" size={26} color="#fff" />
+            <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
+              <View style={styles.brand}>
+                <View style={styles.logo}>
+                  <Ionicons name="restaurant" size={26} color="#fff" />
+                </View>
+                <Text style={styles.title}>Welcome back</Text>
+                <Text style={styles.subtitle}>Sign in to keep cooking with CookMate.</Text>
               </View>
-              <Text style={styles.title}>Welcome back</Text>
-              <Text style={styles.subtitle}>Sign in to keep cooking with CookMate.</Text>
-            </View>
 
-            <Animated.View style={[styles.field, fieldStyle(0)]}>
-              <Text style={styles.label}>EMAIL</Text>
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                placeholderTextColor={colors.textSubtle}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                editable={!loading}
-                style={styles.input}
-              />
-            </Animated.View>
-
-            <Animated.View style={[styles.field, fieldStyle(1)]}>
-              <Text style={styles.label}>PASSWORD</Text>
-              <View style={styles.passwordWrap}>
+              <Animated.View style={[styles.field, fieldStyle(0)]}>
+                <Text style={styles.label}>EMAIL</Text>
                 <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Your password"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
                   placeholderTextColor={colors.textSubtle}
-                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType="password"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
                   editable={!loading}
-                  style={[styles.input, { paddingRight: 44 }]}
+                  style={styles.input}
                 />
-                <Pressable
-                  onPress={() => setShowPassword((s) => !s)}
-                  style={({ pressed }) => [
-                    styles.eyeBtn,
-                    { transform: [{ scale: pressed ? 0.85 : 1 }] },
-                  ]}
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={colors.textSubtle}
+              </Animated.View>
+
+              <Animated.View style={[styles.field, fieldStyle(1)]}>
+                <Text style={styles.label}>PASSWORD</Text>
+                <View style={styles.passwordWrap}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Your password"
+                    placeholderTextColor={colors.textSubtle}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="password"
+                    editable={!loading}
+                    style={[styles.input, { paddingRight: 44 }]}
                   />
+                  <Pressable
+                    onPress={() => setShowPassword((s) => !s)}
+                    style={({ pressed }) => [
+                      styles.eyeBtn,
+                      { transform: [{ scale: pressed ? 0.85 : 1 }] },
+                    ]}
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={colors.textSubtle}
+                    />
+                  </Pressable>
+                </View>
+              </Animated.View>
+
+              {error ? (
+                <Animated.View style={[styles.errorBox, fieldStyle(2)]}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </Animated.View>
+              ) : null}
+
+              <Animated.View style={buttonStyle}>
+                <Pressable
+                  onPress={handleSubmit}
+                  onPressIn={onPressIn}
+                  onPressOut={onPressOut}
+                  disabled={loading}
+                  style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Sign in</Text>
+                  )}
+                </Pressable>
+              </Animated.View>
+
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>New to CookMate?</Text>
+                <Pressable
+                  onPress={() => navigation.navigate('Signup')}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={styles.footerLink}> Create an account</Text>
                 </Pressable>
               </View>
             </Animated.View>
-
-            {error ? (
-              <Animated.View style={[styles.errorBox, fieldStyle(2)]}>
-                <Text style={styles.errorText}>{error}</Text>
-              </Animated.View>
-            ) : null}
-
-            <Animated.View style={buttonStyle}>
-              <Pressable
-                onPress={handleSubmit}
-                onPressIn={onPressIn}
-                onPressOut={onPressOut}
-                disabled={loading}
-                style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Sign in</Text>
-                )}
-              </Pressable>
-            </Animated.View>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>New to CookMate?</Text>
-              <Pressable
-                onPress={() => navigation.navigate('Signup')}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-              >
-                <Text style={styles.footerLink}> Create an account</Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.primarySoft },
+    container: { flex: 1, backgroundColor: '#1c1917' },
+    safeArea: { flex: 1 },
+    scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
     card: {
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.92)' : 'rgba(255, 255, 255, 0.94)',
       borderRadius: 24,
       padding: 28,
       shadowColor: '#000',

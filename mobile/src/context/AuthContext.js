@@ -6,6 +6,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showPostLoginSplash, setShowPostLoginSplash] = useState(false);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (nextUser) => {
     try {
       setUser(nextUser);
+      setShowPostLoginSplash(true);
     } catch (e) {
       console.error('Failed to store user session', e);
     }
@@ -44,9 +46,14 @@ export const AuthProvider = ({ children }) => {
     try {
       await authService.logout();
       setUser(null);
+      setShowPostLoginSplash(false);
     } catch (e) {
       console.error('Failed to clear user session', e);
     }
+  };
+
+  const finishPostLoginSplash = () => {
+    setShowPostLoginSplash(false);
   };
 
   return (
@@ -55,6 +62,8 @@ export const AuthProvider = ({ children }) => {
       isLoading, 
       login, 
       logout,
+      showPostLoginSplash,
+      finishPostLoginSplash,
       isAuthenticated: !!user 
     }}>
       {children}

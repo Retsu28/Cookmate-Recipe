@@ -150,7 +150,7 @@ export default function AuthVisualPanel({
     outputRange: [0, 0.5, 1],
   });
 
-  const bgGradient = isDark ? '#431407' : '#fff7ed';
+  const panelBg = isDark ? 'rgba(28, 25, 23, 0.58)' : 'rgba(255, 255, 255, 0.46)';
   const blobColor1 = isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.15)';
   const blobColor2 = isDark ? 'rgba(251,146,60,0.10)' : 'rgba(251,146,60,0.12)';
   const iconColor = isDark ? '#fb923c' : '#f97316';
@@ -190,8 +190,8 @@ export default function AuthVisualPanel({
           {
             height: panelHeight,
             opacity: panelOpacity,
-            backgroundColor: bgGradient,
-            borderColor: isDark ? colors.border : '#fed7aa',
+            backgroundColor: panelBg,
+            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.55)',
             overflow: 'hidden',
           },
         ]}
