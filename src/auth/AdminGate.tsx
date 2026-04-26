@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
+import { ContentSkeleton } from '@/components/SkeletonScreen';
 
 export default function AdminGate() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -8,13 +9,7 @@ export default function AdminGate() {
   const isAdmin = isAdminUser(user);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <div className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-500 shadow-sm">
-          Checking admin access...
-        </div>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   if (!isAuthenticated) {

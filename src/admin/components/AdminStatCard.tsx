@@ -7,10 +7,10 @@ import type { StatusTone } from '../data/adminMockData';
 import { StatusBadge } from './StatusBadge';
 
 const iconToneClasses: Record<StatusTone, string> = {
-  success: 'bg-green-100 text-green-700',
-  warning: 'bg-amber-100 text-amber-700',
-  danger: 'bg-red-100 text-red-700',
-  info: 'bg-blue-100 text-blue-700',
+  success: 'bg-orange-100 text-orange-700',
+  warning: 'bg-orange-50 text-orange-700',
+  danger: 'bg-orange-100 text-orange-800',
+  info: 'bg-orange-50 text-orange-700',
   neutral: 'bg-stone-100 text-stone-700',
 };
 
@@ -31,7 +31,7 @@ export function AdminStatCard({ label, value, description, change, tone, icon: I
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.45, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
     >
-      <Card className="rounded-[2rem] border-stone-100 bg-white shadow-lg shadow-stone-200/40 transition-shadow hover:shadow-xl">
+      <Card className="rounded-[2rem] border-orange-100 bg-white shadow-lg shadow-orange-100/50 transition-shadow hover:shadow-xl">
         <CardContent className="p-5">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl', iconToneClasses[tone])}>

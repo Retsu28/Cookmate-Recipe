@@ -9,19 +9,22 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { NotificationsPageSkeleton } from '@/components/SkeletonScreen';
+import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 
 const initialNotifications = [
-  { id: 1, type: 'Reminder', title: 'Lunch in 30 minutes', message: 'Time to prep your Quinoa Salad for lunch.', time: '10 mins ago', read: false, icon: Clock, color: 'text-blue-500 bg-blue-100/50', actionPath: '/planner' },
-  { id: 2, type: 'Expiring', title: 'Ingredient Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 hours ago', read: false, icon: AlertTriangle, color: 'text-red-500 bg-red-100/50', actionPath: '/search' },
+  { id: 1, type: 'Reminder', title: 'Lunch in 30 minutes', message: 'Time to prep your Quinoa Salad for lunch.', time: '10 mins ago', read: false, icon: Clock, color: 'text-orange-500 bg-orange-100/60', actionPath: '/planner' },
+  { id: 2, type: 'Expiring', title: 'Ingredient Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 hours ago', read: false, icon: AlertTriangle, color: 'text-orange-600 bg-orange-100/70', actionPath: '/search' },
   { id: 3, type: 'Shopping', title: 'Shopping List Update', message: '3 new items added to your list based on next week\'s plan.', time: '5 hours ago', read: true, icon: ShoppingBag, color: 'text-orange-500 bg-orange-100/50', actionPath: '/planner' },
-  { id: 4, type: 'Goal', title: 'Goal Progress', message: 'You\'ve cooked 5 healthy meals this week! Keep it up.', time: 'Yesterday', read: true, icon: Target, color: 'text-green-500 bg-green-100/50', actionPath: '/profile' },
-  { id: 5, type: 'Recommendation', title: 'New Recipe Match', message: 'A new "Creamy Tuscan Chicken" recipe matches your taste.', time: 'Yesterday', read: true, icon: Sparkles, color: 'text-purple-500 bg-purple-100/50', actionPath: '/recipe/1' },
+  { id: 4, type: 'Goal', title: 'Goal Progress', message: 'You\'ve cooked 5 healthy meals this week! Keep it up.', time: 'Yesterday', read: true, icon: Target, color: 'text-orange-500 bg-orange-100/50', actionPath: '/profile' },
+  { id: 5, type: 'Recommendation', title: 'New Recipe Match', message: 'A new "Creamy Tuscan Chicken" recipe matches your taste.', time: 'Yesterday', read: true, icon: Sparkles, color: 'text-orange-500 bg-orange-100/50', actionPath: '/recipe/1' },
 ];
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState(initialNotifications);
   const [filter, setFilter] = useState('all');
+  const isInitialLoading = useInitialContentLoading();
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const normalizeType = (value: string) => value.toLowerCase().replace(/s$/, '');
@@ -53,9 +56,17 @@ export default function NotificationsPage() {
     navigate(notification.actionPath);
   };
 
+  if (isInitialLoading) {
+    return (
+      <Layout>
+        <NotificationsPageSkeleton />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto w-full max-w-4xl px-4 py-12 animate-fade-up sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-4">
             <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight">Updates</h1>
@@ -72,7 +83,7 @@ export default function NotificationsPage() {
             <Button
               variant="ghost"
               onClick={() => setNotifications([])}
-              className="rounded-full text-red-500 hover:text-red-600 font-bold gap-2 bg-red-50 hover:bg-red-100"
+              className="rounded-full bg-orange-50 font-bold text-orange-600 gap-2 hover:bg-orange-100 hover:text-orange-700"
             >
               <Trash2 size={16} /> Clear all
             </Button>
@@ -82,7 +93,7 @@ export default function NotificationsPage() {
         <Tabs defaultValue="all" onValueChange={setFilter} className="space-y-8">
           <TabsList className="bg-white p-1.5 rounded-full border border-stone-100 shadow-sm w-full overflow-x-auto justify-start sm:justify-center scrollbar-hide flex">
             {['All', 'Reminders', 'Expiring', 'Shopping', 'Goals', 'Recommendations'].map((t) => (
-              <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-full px-6 py-2.5 data-[state=active]:bg-stone-900 data-[state=active]:text-white transition-all whitespace-nowrap">
+              <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-full px-6 py-2.5 transition-all whitespace-nowrap data-active:bg-orange-500 data-active:text-white">
                 {t}
               </TabsTrigger>
             ))}
@@ -158,7 +169,7 @@ export default function NotificationsPage() {
                       event.stopPropagation();
                       deleteNotification(n.id);
                     }}
-                    className="p-2 text-stone-300 hover:text-red-500 sm:opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-red-50"
+                    className="rounded-full p-2 text-stone-300 transition-all hover:bg-orange-50 hover:text-orange-500 sm:opacity-0 group-hover:opacity-100"
                   >
                     <Trash2 size={20} />
                   </button>

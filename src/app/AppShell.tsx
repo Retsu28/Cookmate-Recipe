@@ -3,19 +3,10 @@ import { WifiOff } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Layout, LayoutShellContext } from '@/components/Layout';
+import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup']);
-
-function RouteLoader() {
-  return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-[120] flex justify-center px-4">
-      <div className="rounded-full border border-stone-200 bg-white/95 px-3 py-2 text-xs font-medium text-stone-600 shadow-sm backdrop-blur">
-        Loading...
-      </div>
-    </div>
-  );
-}
 
 function OfflineBanner() {
   return (
@@ -44,7 +35,7 @@ export default function AppShell() {
   const shouldUsePersistentLayout = !SHELLLESS_PATHS.has(location.pathname);
 
   const routeContent = (
-    <Suspense fallback={<RouteLoader />}>
+    <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : <AuthPageSkeleton />}>
       <Outlet />
     </Suspense>
   );

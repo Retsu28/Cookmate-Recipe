@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Image,
   Dimensions,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,8 @@ import RecipeCard from '../components/RecipeCard';
 import AIAssistantWidget from '../components/AIAssistantWidget';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { HomeContentSkeleton } from '../components/SkeletonPlaceholder';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -56,8 +59,8 @@ const fallbackRecent = [
 ];
 
 const dailyPlan = [
-  { slot: 'Breakfast', recipe: 'Avocado Toast with Poached Egg', time: '10 min', dotColor: '#facc15' },
-  { slot: 'Lunch', recipe: 'Harvest Grain Salad', time: '15 min', dotColor: '#4ade80' },
+  { slot: 'Breakfast', recipe: 'Avocado Toast with Poached Egg', time: '10 min', dotColor: '#fdba74' },
+  { slot: 'Lunch', recipe: 'Harvest Grain Salad', time: '15 min', dotColor: '#fb923c' },
   { slot: 'Dinner', recipe: 'Pan-Seared Salmon & Greens', time: '25 min', dotColor: '#f97316' },
 ];
 
@@ -80,6 +83,8 @@ export default function HomeScreen({ navigation }) {
   const [featuredRecipes, setFeaturedRecipes] = useState(fallbackFeatured);
   const [recentRecipes, setRecentRecipes] = useState(fallbackRecent);
   const [refreshing, setRefreshing] = useState(false);
+  const isInitialLoading = useInitialContentLoading();
+  const introAnim = useRef(new Animated.Value(0)).current;
 
   const profileInitial = user?.name ? user.name.charAt(0).toUpperCase() : '?';
 
@@ -88,7 +93,7 @@ export default function HomeScreen({ navigation }) {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 16,
-    shadowColor: '#000',
+    shadowColor: colors.brandShadow || colors.primary,
     shadowOpacity: isDark ? 0.18 : 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -114,12 +119,33 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     fetchData();
+    Animated.timing(introAnim, {
+      toValue: 1,
+      duration: 420,
+      useNativeDriver: true,
+    }).start();
   }, []);
+
+  const introStyle = {
+    opacity: introAnim,
+    transform: [
+      {
+        translateY: introAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+    ],
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
+
+  if (isInitialLoading) {
+    return <HomeContentSkeleton colors={colors} />;
+  }
 
   return (
     <SafeAreaView style={[s.flex1, { backgroundColor: colors.background }]}>
@@ -143,8 +169,8 @@ export default function HomeScreen({ navigation }) {
             <View style={[s.notifDot, { backgroundColor: colors.primary, borderColor: colors.background }]} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={s.avatarWrap}>
-            <View style={[s.avatar, { backgroundColor: isDark ? colors.surfaceAlt : colors.text }]}>
-              <Text style={[s.avatarText, { color: isDark ? colors.text : '#fff' }]}>{profileInitial}</Text>
+            <View style={[s.avatar, { backgroundColor: colors.primary }]}>
+              <Text style={s.avatarText}>{profileInitial}</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -153,12 +179,12 @@ export default function HomeScreen({ navigation }) {
       <ScrollView
         style={s.flex1}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         }
       >
-        <View style={s.content}>
+        <Animated.View style={[s.content, introStyle]}>
           {/* Search Bar */}
           <TouchableOpacity
             onPress={() => navigation.navigate('Search')}
@@ -201,14 +227,14 @@ export default function HomeScreen({ navigation }) {
                 style={[s.quickCard, cardStyle]}
               >
                 <Text style={[s.quickCardText, { color: colors.text }]}>New Recipe</Text>
-                <Ionicons name="add" size={20} color={colors.textSubtle} />
+                <Ionicons name="add" size={20} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => navigation.navigate('Camera')}
                 style={[s.quickCard, cardStyle]}
               >
                 <Text style={[s.quickCardText, { color: colors.text }]}>Scan Pantry</Text>
-                <Ionicons name="barcode-outline" size={20} color={colors.textSubtle} />
+                <Ionicons name="barcode-outline" size={20} color={colors.primary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -234,15 +260,15 @@ export default function HomeScreen({ navigation }) {
 
           {/* Info Cards Row — matches web's Seasonal Ingredients / Cooking Skills blocks */}
           <View style={s.infoRow}>
-            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
               <Text style={[s.infoCardTitle, { color: colors.text }]}>Seasonal{'\n'}Ingredients</Text>
               <Text style={[s.infoCardDesc, { color: colors.textMuted }]}>Explore what's fresh this month: Artichokes, Asparagus, and ramps.</Text>
-              <Text style={[s.infoCardLink, { color: colors.text }]}>READ GUIDE</Text>
+              <Text style={[s.infoCardLink, { color: colors.primary }]}>READ GUIDE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
               <Text style={[s.infoCardTitle, { color: colors.text }]}>Cooking{'\n'}Skills</Text>
               <Text style={[s.infoCardDesc, { color: colors.textMuted }]}>Master the 'Julienne' cut with our new 2-minute video tutorial.</Text>
-              <Text style={[s.infoCardLink, { color: colors.text }]}>WATCH VIDEO</Text>
+              <Text style={[s.infoCardLink, { color: colors.primary }]}>WATCH VIDEO</Text>
             </TouchableOpacity>
           </View>
 
@@ -271,7 +297,7 @@ export default function HomeScreen({ navigation }) {
                 onPress={() => navigation.navigate('Planner')}
                 style={[s.genListBtn, { borderColor: colors.border }]}
               >
-                <Text style={[s.genListBtnText, { color: colors.text }]}>GENERATE SHOPPING LIST</Text>
+                <Text style={[s.genListBtnText, { color: colors.primary }]}>GENERATE SHOPPING LIST</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -296,10 +322,10 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           {/* AI Cooking Assistant — matches web right column dark AI panel */}
-          <View style={s.aiPanel}>
+          <View style={[s.aiPanel, { backgroundColor: colors.dark }]}>
             <View style={s.aiPanelHeader}>
               <View style={s.aiIconBox}>
-                <Ionicons name="restaurant" size={16} color="#0a0a0a" />
+                <Ionicons name="restaurant" size={16} color={colors.primary} />
               </View>
               <Text style={s.aiPanelTitle}>AI Cooking{'\n'}Assistant</Text>
             </View>
@@ -313,20 +339,20 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           {/* Kitchen Stats — matches web right column stats */}
-          <View style={[s.statsCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+          <View style={[s.statsCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
             <Text style={[s.sectionLabel, { color: colors.textMuted, marginBottom: 12 }]}>KITCHEN STATS</Text>
             <View style={s.statsRow}>
               <View style={[s.statCol, { borderRightWidth: 1, borderRightColor: isDark ? colors.border : '#d6d3d1' }]}>
-                <Text style={[s.statNumber, { color: colors.text }]}>12</Text>
+                <Text style={[s.statNumber, { color: colors.primary }]}>12</Text>
                 <Text style={[s.statLabel, { color: colors.textMuted }]}>RECIPES MADE</Text>
               </View>
               <View style={s.statCol}>
-                <Text style={[s.statNumber, { color: colors.text }]}>4.8</Text>
+                <Text style={[s.statNumber, { color: colors.primary }]}>4.8</Text>
                 <Text style={[s.statLabel, { color: colors.textMuted }]}>AVG RATING</Text>
               </View>
             </View>
           </View>
-        </View>
+        </Animated.View>
       </ScrollView>
 
       <AIAssistantWidget onPress={() => console.log('AI Assistant Pressed')} />
@@ -356,11 +382,11 @@ const s = StyleSheet.create({
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(28,25,23,0.42)' },
   heroContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28 },
   heroBadge: { backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 5, marginBottom: 16 },
-  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#1c1917', textTransform: 'uppercase' },
+  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#ea580c', textTransform: 'uppercase' },
   heroTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 34, color: '#fff', textAlign: 'center', letterSpacing: -0.8, lineHeight: 38, marginBottom: 10 },
   heroDesc: { fontFamily: 'Geist_500Medium', fontSize: 14, color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginBottom: 20, maxWidth: 280 },
   heroBtn: { backgroundColor: '#fff', paddingHorizontal: 24, paddingVertical: 14 },
-  heroBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#1c1917' },
+  heroBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#ea580c' },
   // Quick start
   quickRow: { flexDirection: 'row', gap: 12 },
   quickCard: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 52 },
@@ -391,7 +417,7 @@ const s = StyleSheet.create({
   recentTitle: { fontFamily: 'Geist_700Bold', fontSize: 13, lineHeight: 17 },
   recentTime: { fontFamily: 'Geist_400Regular', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginTop: 3 },
   // AI Panel
-  aiPanel: { backgroundColor: '#0a0a0a', padding: 24, alignItems: 'center' },
+  aiPanel: { backgroundColor: '#24160f', padding: 24, alignItems: 'center', borderRadius: 24 },
   aiPanelHeader: { alignItems: 'center', gap: 10, marginBottom: 14 },
   aiIconBox: { width: 36, height: 36, backgroundColor: '#fff', borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
   aiPanelTitle: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff', textAlign: 'center', lineHeight: 20 },
@@ -399,7 +425,7 @@ const s = StyleSheet.create({
   aiQuoteBox: { width: '100%', padding: 14, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 16 },
   aiQuoteText: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#d6d3d1', fontStyle: 'italic' },
   aiBtn: { width: '100%', backgroundColor: '#fff', alignItems: 'center', paddingVertical: 14 },
-  aiBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 2, color: '#0a0a0a' },
+  aiBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 2, color: '#ea580c' },
   // Stats
   statsCard: { padding: 20, alignItems: 'center', borderRadius: 0 },
   statsRow: { flexDirection: 'row', width: '100%' },

@@ -210,7 +210,7 @@ export default function AuthVisualPanel({
           <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
             <Ionicons name="restaurant" size={22} color="#fff" />
           </View>
-          <Text style={[styles.heading, { color: isDark ? colors.text : '#1c1917' }]}>
+          <Text style={[styles.heading, { color: colors.text }]}>
             {heading}
           </Text>
           <Text style={[styles.subheading, { color: isDark ? colors.textMuted : '#78716c' }]}>

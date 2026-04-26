@@ -1,9 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { useAppTheme } from '../context/ThemeContext';
+import FloatingTabBar from './FloatingTabBar';
+import TabSceneAnimator from './TabSceneAnimator';
 
-// Placeholder screens (will be created in Phase 3+)
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import MealPlannerScreen from '../screens/MealPlannerScreen';
@@ -12,59 +11,40 @@ import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-export default function BottomTabNavigator() {
-  const { colors } = useAppTheme();
+// Wrap each tab screen with the focus-triggered fade animator so every tab
+// switch plays a smooth fade-up entrance (mirrors the web Layout's
+// AnimatePresence motion.div page transition).
+const withTabFade = (Component) => {
+  const Wrapped = (props) => (
+    <TabSceneAnimator>
+      <Component {...props} />
+    </TabSceneAnimator>
+  );
+  Wrapped.displayName = `WithTabFade(${Component.displayName || Component.name || 'Component'})`;
+  return Wrapped;
+};
 
+const HomeTab = withTabFade(HomeScreen);
+const SearchTab = withTabFade(SearchScreen);
+const PlannerTab = withTabFade(MealPlannerScreen);
+const CameraTab = withTabFade(CameraScreen);
+const ProfileTab = withTabFade(ProfileScreen);
+
+export default function BottomTabNavigator() {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-
-          if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Search') {
-            iconName = focused ? 'search' : 'search-outline';
-          } else if (route.name === 'Planner') {
-            iconName = focused ? 'calendar' : 'calendar-outline';
-          } else if (route.name === 'Camera') {
-            iconName = focused ? 'camera' : 'camera-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textSubtle,
-        tabBarLabelStyle: {
-          fontSize: 8,
-          fontFamily: 'Geist_700Bold',
-          letterSpacing: 1,
-          textTransform: 'uppercase',
-          marginTop: 2,
-        },
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          elevation: 0,
-          height: 62,
-          paddingTop: 6,
-          paddingBottom: 6,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0,
-          shadowRadius: 0,
-        },
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{
         headerShown: false,
-      })}
+        // The custom FloatingTabBar handles all visuals; suppress the default bar.
+        tabBarStyle: { display: 'none', height: 0, borderTopWidth: 0 },
+      }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Planner" component={MealPlannerScreen} />
-      <Tab.Screen name="Camera" component={CameraScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Home" component={HomeTab} />
+      <Tab.Screen name="Search" component={SearchTab} />
+      <Tab.Screen name="Planner" component={PlannerTab} />
+      <Tab.Screen name="Camera" component={CameraTab} />
+      <Tab.Screen name="Profile" component={ProfileTab} />
     </Tab.Navigator>
   );
 }

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { AIChatMessagesSkeleton } from '@/components/SkeletonScreen';
 
 export function AIChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,33 +12,49 @@ export function AIChatWidget() {
     { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?" }
   ]);
   const [input, setInput] = useState('');
+  const [isReplying, setIsReplying] = useState(false);
 
   const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { role: 'user', content: input }]);
+    const question = input.trim();
+
+    if (!question) return;
+
+    setMessages((current) => [...current, { role: 'user', content: question }]);
     setInput('');
-    // AI logic will be added in later phases
+    setIsReplying(true);
+
+    window.setTimeout(() => {
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: "I can help with that. For a lighter swap, try Greek yogurt, evaporated milk, or a blended cashew cream depending on the sauce.",
+        },
+      ]);
+      setIsReplying(false);
+    }, 900);
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-24 right-4 z-50 sm:bottom-6 sm:right-6">
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="bg-white rounded-3xl shadow-2xl border border-stone-200 w-80 sm:w-96 h-[500px] flex flex-col mb-4 overflow-hidden"
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            className="mb-4 flex h-[500px] w-[calc(100vw-2rem)] max-w-96 flex-col overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-2xl shadow-orange-950/10 sm:w-96"
           >
             {/* Header */}
-            <div className="bg-stone-900 p-4 text-white flex items-center justify-between">
+            <div className="orange-gradient flex items-center justify-between p-4 text-white">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/18 ring-1 ring-white/20">
                   <Sparkles size={16} />
                 </div>
                 <div>
                   <p className="text-sm font-bold">CookMate AI</p>
-                  <p className="text-[10px] text-stone-400 font-medium">Online & Ready to help</p>
+                  <p className="text-[10px] font-medium text-orange-50">Online & ready to help</p>
                 </div>
               </div>
               <button 
@@ -59,12 +76,13 @@ export function AIChatWidget() {
                     <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
                       msg.role === 'user' 
                         ? 'bg-orange-500 text-white rounded-tr-none' 
-                        : 'bg-stone-100 text-stone-900 rounded-tl-none'
+                        : 'bg-orange-50 text-stone-900 rounded-tl-none'
                     }`}>
                       {msg.content}
                     </div>
                   </div>
                 ))}
+                {isReplying && <AIChatMessagesSkeleton />}
               </div>
             </ScrollArea>
 
@@ -75,11 +93,12 @@ export function AIChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Ask me anything..."
-                className="rounded-xl border-stone-200 focus:ring-orange-500"
+                className="rounded-xl border-orange-100 focus:border-orange-300 focus:ring-orange-500"
               />
               <Button 
                 onClick={handleSend}
-                className="bg-orange-500 hover:bg-orange-600 rounded-xl px-3"
+                disabled={isReplying}
+                className="rounded-xl px-3"
               >
                 <Send size={18} />
               </Button>
@@ -90,7 +109,7 @@ export function AIChatWidget() {
 
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 bg-stone-900 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group relative"
+        className="group relative flex h-14 w-14 items-center justify-center rounded-full orange-gradient text-white shadow-xl shadow-orange-500/30 transition-transform hover:scale-110 active:scale-95"
       >
         <MessageSquare size={24} className={isOpen ? 'hidden' : 'block'} />
         <X size={24} className={isOpen ? 'block' : 'hidden'} />

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '@/components/Layout';
+import { SettingsDetailSkeleton } from '@/components/SkeletonScreen';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { getInitial } from '@/lib/utils';
@@ -222,6 +223,14 @@ export default function AccountSettings() {
   const inputClass =
     'h-12 w-full rounded-lg border border-stone-200 bg-white px-4 text-sm font-medium text-stone-900 outline-none transition-all placeholder:text-stone-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 disabled:cursor-not-allowed disabled:opacity-70';
 
+  if (loading) {
+    return (
+      <Layout>
+        <SettingsDetailSkeleton />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <motion.div
@@ -315,7 +324,7 @@ export default function AccountSettings() {
                         disabled={loading || saving}
                         className={`h-11 rounded-lg border px-3 text-sm font-extrabold transition-all ${
                           form.cookingSkillLevel === level
-                            ? 'border-stone-900 bg-stone-900 text-white shadow-sm'
+                            ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
                             : 'border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:text-stone-900'
                         }`}
                       >
@@ -335,7 +344,7 @@ export default function AccountSettings() {
               className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm shadow-stone-200/40 sm:p-6"
             >
               <div className="mb-6 flex items-start gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-700">
                   <Mail className="size-5" />
                 </div>
                 <div>
@@ -463,7 +472,7 @@ export default function AccountSettings() {
                   className={`overflow-hidden rounded-lg border px-4 py-3 text-sm font-semibold ${
                     error
                       ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-green-200 bg-green-50 text-green-700'
+                      : 'border-orange-200 bg-orange-50 text-orange-700'
                   }`}
                   role={error ? 'alert' : 'status'}
                 >
@@ -486,7 +495,7 @@ export default function AccountSettings() {
             className="h-fit rounded-lg border border-stone-200 bg-white p-5 shadow-sm shadow-stone-200/40 lg:sticky lg:top-8"
           >
             <div className="flex items-center gap-4 border-b border-stone-100 pb-5">
-              <div className="flex size-16 items-center justify-center rounded-lg bg-stone-900 text-2xl font-extrabold text-white">
+              <div className="flex size-16 items-center justify-center rounded-lg bg-orange-500 text-2xl font-extrabold text-white shadow-lg shadow-orange-500/20">
                 {profileInitial}
               </div>
               <div className="min-w-0">

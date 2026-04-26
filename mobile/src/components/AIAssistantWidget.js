@@ -10,15 +10,23 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
+import { AIChatTypingSkeleton } from './SkeletonPlaceholder';
+
+// Sit above the FloatingTabBar (~76px tall + 12px bottom margin + safe-area inset).
+const TAB_BAR_CLEARANCE = 96;
 
 export default function AIAssistantWidget({ onPress }) {
   const { colors, isDark } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const fabBottom = TAB_BAR_CLEARANCE + Math.max(insets.bottom, 0);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
     { role: 'assistant', text: "Hi! I'm your CookMate AI. Ask me anything about cooking, substitutions, or meal ideas." },
   ]);
+  const [isReplying, setIsReplying] = useState(false);
 
   const toggle = () => setOpen(!open);
 
@@ -26,20 +34,29 @@ export default function AIAssistantWidget({ onPress }) {
     if (!input.trim()) return;
     setMessages(prev => [...prev, { role: 'user', text: input.trim() }]);
     setInput('');
+    setIsReplying(true);
     setTimeout(() => {
       setMessages(prev => [...prev, { role: 'assistant', text: "That's a great question! I'd suggest trying a lighter option like Greek yogurt instead of heavy cream." }]);
+      setIsReplying(false);
     }, 800);
   };
 
   if (!open) {
     return (
       <TouchableOpacity
-        style={[st.fab, { backgroundColor: isDark ? colors.surfaceAlt : colors.dark }]}
+        style={[
+          st.fab,
+          {
+            backgroundColor: colors.primary,
+            shadowColor: colors.brandShadow || colors.primary,
+            bottom: fabBottom,
+          },
+        ]}
         onPress={toggle}
         activeOpacity={0.85}
       >
         <Ionicons name="chatbubble-ellipses" size={21} color="#fff" />
-        <View style={[st.fabDot, { borderColor: isDark ? colors.surfaceAlt : colors.dark }]} />
+        <View style={[st.fabDot, { borderColor: colors.surface }]} />
       </TouchableOpacity>
     );
   }
@@ -47,15 +64,15 @@ export default function AIAssistantWidget({ onPress }) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={st.overlay}
+      style={[st.overlay, { paddingBottom: fabBottom }]}
       pointerEvents="box-none"
     >
       <View style={[st.panel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         {/* Header */}
-        <View style={[st.header, { borderBottomColor: colors.border }]}>
+        <View style={[st.header, { borderBottomColor: colors.border, backgroundColor: colors.primarySoft }]}>
           <View style={st.headerLeft}>
             <View style={st.headerIcon}>
-              <Ionicons name="restaurant" size={14} color="#0a0a0a" />
+              <Ionicons name="restaurant" size={14} color={colors.primary} />
             </View>
             <Text style={[st.headerTitle, { color: colors.text }]}>AI Assistant</Text>
           </View>
@@ -72,13 +89,14 @@ export default function AIAssistantWidget({ onPress }) {
               style={[
                 st.msgBubble,
                 msg.role === 'user'
-                  ? [st.userBubble, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]
-                  : [st.aiBubble, { backgroundColor: isDark ? colors.background : '#f5f5f4' }],
+                  ? [st.userBubble, { backgroundColor: colors.primary }]
+                  : [st.aiBubble, { backgroundColor: isDark ? colors.background : colors.primarySoft }],
               ]}
             >
               <Text style={[st.msgText, { color: msg.role === 'user' ? '#fff' : colors.text }]}>{msg.text}</Text>
             </View>
           ))}
+          {isReplying && <AIChatTypingSkeleton colors={colors} />}
         </ScrollView>
 
         {/* Input */}
@@ -94,7 +112,8 @@ export default function AIAssistantWidget({ onPress }) {
           />
           <TouchableOpacity
             onPress={send}
-            style={[st.sendBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
+            disabled={isReplying}
+            style={[st.sendBtn, { backgroundColor: colors.primary }]}
           >
             <Ionicons name="arrow-up" size={16} color="#fff" />
           </TouchableOpacity>
@@ -105,7 +124,7 @@ export default function AIAssistantWidget({ onPress }) {
 }
 
 const st = StyleSheet.create({
-  fab: { position: 'absolute', bottom: 20, right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  fab: { position: 'absolute', right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center', shadowColor: '#f97316', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
   fabDot: { position: 'absolute', top: 1, right: 1, width: 12, height: 12, borderRadius: 6, backgroundColor: '#f97316', borderWidth: 2 },
   overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 12 },
   panel: { borderWidth: 1, borderRadius: 20, overflow: 'hidden', maxHeight: 420, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 6 },

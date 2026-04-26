@@ -14,6 +14,8 @@ import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { profileApi } from '../api/api';
+import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const profileTabs = ['My Recipes', 'Saved', 'Activity'];
 
@@ -23,17 +25,26 @@ export default function ProfileScreen({ navigation }) {
   const [notifications, setNotifications] = useState(true);
   const [activeTab, setActiveTab] = useState('My Recipes');
   const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const isInitialLoading = useInitialContentLoading();
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       const loadProfile = async () => {
-        if (!user?.id) { setProfile(null); return; }
+        setProfileLoading(true);
+        if (!user?.id) {
+          setProfile(null);
+          setProfileLoading(false);
+          return;
+        }
         try {
           const { data } = await profileApi.getProfile(user.id);
           if (active) setProfile(data.profile);
         } catch (error) {
           console.error('Failed to load profile', error);
+        } finally {
+          if (active) setProfileLoading(false);
         }
       };
       loadProfile();
@@ -61,13 +72,17 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  if (isInitialLoading || profileLoading) {
+    return <ProfileContentSkeleton colors={colors} />;
+  }
+
   return (
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
-      <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Profile header card — matches web */}
-        <View style={[st.headerCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
-          <View style={[st.avatarLg, { backgroundColor: isDark ? colors.surface : colors.text }]}>
-            <Text style={[st.avatarLgText, { color: isDark ? colors.text : '#fff' }]}>{displayInitial}</Text>
+        <View style={[st.headerCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
+          <View style={[st.avatarLg, { backgroundColor: colors.primary }]}>
+            <Text style={st.avatarLgText}>{displayInitial}</Text>
           </View>
           <Text style={[st.nameText, { color: colors.text }]}>{displayName}</Text>
           <Text style={[st.emailText, { color: colors.textMuted }]}>{displayEmail}</Text>
@@ -80,7 +95,7 @@ export default function ProfileScreen({ navigation }) {
               { num: '4.8', label: 'AVG RATING' },
             ].map((stat, i) => (
               <View key={i} style={[st.statCol, i < 2 && { borderRightWidth: 1, borderRightColor: isDark ? colors.border : '#d6d3d1' }]}>
-                <Text style={[st.statNum, { color: colors.text }]}>{stat.num}</Text>
+                <Text style={[st.statNum, { color: colors.primary }]}>{stat.num}</Text>
                 <Text style={[st.statLabel, { color: colors.textMuted }]}>{stat.label}</Text>
               </View>
             ))}
@@ -90,7 +105,7 @@ export default function ProfileScreen({ navigation }) {
           <View style={st.actionRow}>
             <TouchableOpacity
               onPress={openAccountSettings}
-              style={[st.editBtn, { backgroundColor: isDark ? colors.surface : '#1c1917' }]}
+              style={[st.editBtn, { backgroundColor: colors.primary }]}
             >
               <Text style={st.editBtnText}>EDIT PROFILE</Text>
             </TouchableOpacity>
@@ -106,9 +121,9 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               key={tab}
               onPress={() => setActiveTab(tab)}
-              style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.text }]}
+              style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.primary }]}
             >
-              <Text style={[st.tabText, { color: activeTab === tab ? colors.text : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
+              <Text style={[st.tabText, { color: activeTab === tab ? colors.primary : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -130,7 +145,7 @@ export default function ProfileScreen({ navigation }) {
           {activeTab === 'Activity' && (
             <View style={st.activityWrap}>
               {/* Activity Heatmap placeholder — matches web */}
-              <View style={[st.heatmapCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+              <View style={[st.heatmapCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
                 <Text style={[st.miniLabel, { color: colors.textSubtle }]}>ACTIVITY HEATMAP</Text>
                 <View style={st.heatmapGrid}>
                   {Array.from({ length: 28 }, (_, i) => {
@@ -143,7 +158,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               {/* Health Score — matches web */}
-              <View style={[st.healthCard, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
+              <View style={[st.healthCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
                 <Text style={[st.miniLabel, { color: colors.textSubtle }]}>HEALTH SCORE</Text>
                 <View style={st.healthRow}>
                   <Text style={[st.healthNum, { color: colors.primary }]}>78</Text>
@@ -171,7 +186,7 @@ export default function ProfileScreen({ navigation }) {
               ].map((item, i, arr) => (
                 <View key={i} style={[st.settingRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <View style={st.settingLeft}>
-                    <Ionicons name={item.icon} size={18} color={colors.text} />
+                    <Ionicons name={item.icon} size={18} color={colors.primary} />
                     <Text style={[st.settingLabel, { color: colors.text }]}>{item.label}</Text>
                   </View>
                   {item.type === 'switch' && (

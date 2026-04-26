@@ -54,7 +54,7 @@ export default function RecipeManagement() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-full text-amber-600 hover:bg-amber-50"
+            className="rounded-full text-orange-600 hover:bg-orange-50"
             aria-label={`Toggle featured for ${recipe.name}`}
             onClick={() => toggleFeatured(recipe.id)}
           >
@@ -63,7 +63,7 @@ export default function RecipeManagement() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-full text-red-500 hover:bg-red-50"
+            className="rounded-full text-orange-500 hover:bg-orange-50"
             aria-label={`Archive ${recipe.name}`}
             onClick={() => archiveRecipe(recipe.id)}
           >

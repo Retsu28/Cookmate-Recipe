@@ -5,12 +5,12 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
+import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
 
 const fallbackRecipes = {
   1: {
@@ -74,11 +74,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
   };
 
   if (loading) {
-    return (
-      <View style={[st.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <RecipeDetailSkeleton colors={colors} />;
   }
 
   if (!recipe) return null;
@@ -226,7 +222,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
           {/* Ask AI Assistant */}
           <View style={st.aiCard}>
             <View style={st.aiRow}>
-              <View style={st.aiIcon}><Ionicons name="restaurant" size={14} color="#0a0a0a" /></View>
+              <View style={st.aiIcon}><Ionicons name="restaurant" size={14} color={colors.primary} /></View>
               <Text style={st.aiTitle}>Ask AI Assistant</Text>
             </View>
             <Text style={st.aiDesc}>Get substitution ideas, scaling tips, or wine pairings for this recipe.</Text>
@@ -241,7 +237,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => navigation.navigate('CookingMode', { recipe })}
-          style={[st.cookBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
+          style={[st.cookBtn, { backgroundColor: colors.primary }]}
         >
           <Text style={st.cookBtnText}>START COOKING</Text>
         </TouchableOpacity>
@@ -252,14 +248,13 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
 const st = StyleSheet.create({
   flex1: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroWrap: { width: '100%', height: 320, position: 'relative' },
   heroImg: { width: '100%', height: '100%' },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.12)' },
   backBtn: { position: 'absolute', top: 48, left: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   heartBtn: { position: 'absolute', top: 48, right: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   heroBadge: { position: 'absolute', bottom: 20, left: 20, backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 6 },
-  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5, color: '#1c1917', textTransform: 'uppercase' },
+  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5, color: '#ea580c', textTransform: 'uppercase' },
   body: { padding: 20, gap: 24 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   recipeTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 28, letterSpacing: -0.5, flex: 1, paddingRight: 12, lineHeight: 32 },
@@ -299,7 +294,7 @@ const st = StyleSheet.create({
   nutrBar: { height: 6, width: '100%' },
   nutrBarFill: { height: '100%' },
   // AI
-  aiCard: { backgroundColor: '#0a0a0a', padding: 20, gap: 8 },
+  aiCard: { backgroundColor: '#24160f', padding: 20, gap: 8, borderRadius: 24 },
   aiRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   aiIcon: { width: 28, height: 28, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   aiTitle: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff' },

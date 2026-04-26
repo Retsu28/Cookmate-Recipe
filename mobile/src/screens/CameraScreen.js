@@ -4,13 +4,14 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Image,
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
+import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/SkeletonPlaceholder';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const detectedIngredients = ['Chicken', 'Sun-dried Tomatoes', 'Spinach', 'Cream'];
 
@@ -22,6 +23,7 @@ export default function CameraScreen({ navigation }) {
   const [capturedImage, setCapturedImage] = useState(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const cameraRef = useRef(null);
+  const isInitialLoading = useInitialContentLoading();
 
   useEffect(() => {
     (async () => {
@@ -48,8 +50,8 @@ export default function CameraScreen({ navigation }) {
     }
   };
 
-  if (hasPermission === null) {
-    return <View style={st.permWrap}><ActivityIndicator color="#f97316" /></View>;
+  if (isInitialLoading || hasPermission === null) {
+    return <CameraPermissionSkeleton colors={colors} />;
   }
   if (hasPermission === false) {
     return (
@@ -66,8 +68,9 @@ export default function CameraScreen({ navigation }) {
           <Image source={{ uri: capturedImage }} style={StyleSheet.absoluteFillObject} />
           {loading && (
             <View style={st.loadingOverlay}>
-              <ActivityIndicator size="large" color="#f97316" />
-              <Text style={st.loadingText}>Analyzing image...</Text>
+              <View style={st.loadingCardWrap}>
+                <CameraAnalysisSkeleton colors={colors} />
+              </View>
             </View>
           )}
           {analysisComplete && (
@@ -76,7 +79,7 @@ export default function CameraScreen({ navigation }) {
               <View style={[st.resultCard, { backgroundColor: colors.surface }]}>
                 <View style={st.resultHeader}>
                   <View style={st.resultIconBox}>
-                    <Ionicons name="restaurant" size={16} color="#0a0a0a" />
+                    <Ionicons name="restaurant" size={16} color={colors.primary} />
                   </View>
                   <View style={st.resultHeaderText}>
                     <Text style={st.resultTitle}>Analysis Complete</Text>
@@ -103,7 +106,7 @@ export default function CameraScreen({ navigation }) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
-                    style={[st.viewBtn, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}
+                    style={[st.viewBtn, { backgroundColor: colors.primary }]}
                   >
                     <Text style={st.viewBtnText}>VIEW RECIPE</Text>
                   </TouchableOpacity>
@@ -161,11 +164,12 @@ const st = StyleSheet.create({
   permText: { fontFamily: 'Geist_400Regular', fontSize: 14, color: '#fff', textAlign: 'center' },
   // Loading
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  loadingCardWrap: { position: 'absolute', left: 12, right: 12, bottom: 100 },
   loadingText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff', marginTop: 14 },
   // Result
-  resultSafe: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', padding: 12 },
+  resultSafe: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 },
   resultCard: { overflow: 'hidden', borderRadius: 0 },
-  resultHeader: { backgroundColor: '#0a0a0a', flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
+  resultHeader: { backgroundColor: '#24160f', flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
   resultIconBox: { width: 36, height: 36, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   resultHeaderText: { flex: 1 },
   resultTitle: { fontFamily: 'Geist_700Bold', fontSize: 16, color: '#fff' },
@@ -179,7 +183,7 @@ const st = StyleSheet.create({
   viewBtn: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
   viewBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#fff' },
   // Camera
-  cameraSafe: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
+  cameraSafe: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 100 },
   topBar: { flexDirection: 'row', justifyContent: 'space-between' },
   camBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
   bottomBar: { alignItems: 'center', gap: 20 },

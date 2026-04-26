@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import { Badge } from '../components/ui/badge';
 import { Link } from 'react-router-dom';
+import { AICameraPageSkeleton, CameraAnalysisSkeleton } from '@/components/SkeletonScreen';
+import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
@@ -16,6 +18,7 @@ export default function AICamera() {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isInitialLoading = useInitialContentLoading();
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,9 +77,17 @@ export default function AICamera() {
     }
   };
 
+  if (isInitialLoading) {
+    return (
+      <Layout>
+        <AICameraPageSkeleton />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto w-full max-w-6xl px-4 py-12 animate-fade-up sm:px-6 lg:px-8">
         <div className="text-center space-y-4 mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4">
             <Sparkles size={16} /> Powered by Gemini AI
@@ -134,17 +145,7 @@ export default function AICamera() {
           {/* Analysis Section */}
           <div className="w-full h-full">
             {loading ? (
-              <div className="h-full min-h-[400px] flex flex-col items-center justify-center space-y-6 bg-white rounded-[2.5rem] border border-stone-100 shadow-lg p-12">
-                <div className="relative w-24 h-24 flex items-center justify-center">
-                  <div className="absolute inset-0 border-4 border-stone-100 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-orange-500 rounded-full border-t-transparent animate-spin"></div>
-                  <Sparkles size={32} className="text-orange-500 animate-pulse" />
-                </div>
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-stone-900 mb-2">AI is analyzing...</h3>
-                  <p className="text-stone-500">Identifying ingredients and calculating nutritional information</p>
-                </div>
-              </div>
+              <CameraAnalysisSkeleton />
             ) : analysis ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -152,14 +153,14 @@ export default function AICamera() {
                 className="h-full"
               >
                 <Card className="rounded-[2.5rem] border-stone-100 shadow-xl shadow-stone-200/50 overflow-hidden bg-white h-full flex flex-col">
-                  <div className="bg-stone-900 p-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="orange-gradient flex flex-col justify-between gap-4 p-6 text-white sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-orange-500/20 rounded-xl">
                         <Sparkles size={24} className="text-orange-400" />
                       </div>
                       <h3 className="text-xl font-bold">Analysis Complete</h3>
                     </div>
-                    <Badge className="bg-green-500 hover:bg-green-600 border-none font-bold py-1.5 px-3">
+                    <Badge className="border border-white/20 bg-white/20 px-3 py-1.5 font-bold text-white hover:bg-white/25">
                       High Confidence
                     </Badge>
                   </div>
@@ -221,8 +222,8 @@ export default function AICamera() {
                 </Card>
               </motion.div>
             ) : (
-              <div className="h-full min-h-[400px] flex flex-col items-center justify-center space-y-6 bg-stone-50 rounded-[2.5rem] border border-stone-200 border-dashed p-12 text-center">
-                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-sm text-stone-300">
+              <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-6 rounded-[2.5rem] border border-dashed border-orange-200 bg-orange-50/60 p-12 text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-orange-300 shadow-sm">
                   <Sparkles size={40} />
                 </div>
                 <div className="max-w-xs">

@@ -46,11 +46,11 @@ function getPasswordRequirements(pw: string) {
 function scorePassword(requirements: Array<{ met: boolean }>): { score: number; color: string } {
   const score = requirements.filter((item) => item.met).length;
   if (score === 0) return { score, color: 'bg-stone-200' };
-  if (score <= 1) return { score, color: 'bg-red-500' };
+  if (score <= 1) return { score, color: 'bg-orange-300' };
   if (score <= 2) return { score, color: 'bg-orange-400' };
-  if (score <= 3) return { score, color: 'bg-yellow-500' };
-  if (score <= 4) return { score, color: 'bg-lime-500' };
-  return { score, color: 'bg-green-500' };
+  if (score <= 3) return { score, color: 'bg-orange-500' };
+  if (score <= 4) return { score, color: 'bg-orange-600' };
+  return { score, color: 'bg-orange-700' };
 }
 
 export default function Signup() {
@@ -248,7 +248,7 @@ export default function Signup() {
                             animate={{ opacity: item.met ? 1 : 0.75, x: item.met ? 2 : 0 }}
                             transition={{ duration: 0.18, ease: 'easeOut' }}
                             className={`flex items-center gap-2 text-[12px] font-semibold ${
-                              item.met ? 'text-green-600' : 'text-stone-400'
+                              item.met ? 'text-orange-600' : 'text-stone-400'
                             }`}
                           >
                             {item.met ? <Check size={14} /> : <X size={14} />}
@@ -275,7 +275,7 @@ export default function Signup() {
                       confirmMismatch
                         ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
                         : confirmMatches
-                        ? 'border-green-300 focus:border-green-500 focus:ring-green-500/20'
+                        ? 'border-orange-300 focus:border-orange-500 focus:ring-orange-500/20'
                         : ''
                     }`}
                     disabled={loading}
@@ -300,7 +300,7 @@ export default function Signup() {
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="flex items-center gap-1.5 text-[11px] font-semibold text-green-600"
+                        className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-600"
                       >
                         <Check size={12} /> Passwords match.
                       </motion.p>

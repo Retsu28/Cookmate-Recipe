@@ -4,10 +4,10 @@ import { cn } from '@/lib/utils';
 import type { StatusTone } from '../data/adminMockData';
 
 const toneClasses: Record<StatusTone, string> = {
-  success: 'bg-green-100 text-green-700 border-green-200',
-  warning: 'bg-amber-100 text-amber-700 border-amber-200',
-  danger: 'bg-red-100 text-red-700 border-red-200',
-  info: 'bg-blue-100 text-blue-700 border-blue-200',
+  success: 'bg-orange-100 text-orange-700 border-orange-200',
+  warning: 'bg-orange-50 text-orange-700 border-orange-200',
+  danger: 'bg-orange-100 text-orange-800 border-orange-300',
+  info: 'bg-orange-50 text-orange-700 border-orange-200',
   neutral: 'bg-stone-100 text-stone-600 border-stone-200',
 };
 

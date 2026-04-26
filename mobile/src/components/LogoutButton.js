@@ -14,9 +14,9 @@ import { useAppTheme } from '../context/ThemeContext';
  */
 export default function LogoutButton({ label = 'Sign out', style }) {
   const { logout } = useAuth();
-  const { isDark } = useAppTheme();
+  const { colors, isDark } = useAppTheme();
   const [busy, setBusy] = useState(false);
-  const styles = createStyles(isDark);
+  const styles = createStyles(colors, isDark);
 
   const handlePress = async () => {
     if (busy) return;
@@ -36,10 +36,10 @@ export default function LogoutButton({ label = 'Sign out', style }) {
       style={[styles.btn, busy && { opacity: 0.6 }, style]}
     >
       {busy ? (
-        <ActivityIndicator color="#b91c1c" size="small" />
+        <ActivityIndicator color={colors.primary} size="small" />
       ) : (
         <>
-          <Ionicons name="log-out-outline" size={18} color="#b91c1c" />
+          <Ionicons name="log-out-outline" size={18} color={colors.primary} />
           <Text style={styles.label}>{label}</Text>
         </>
       )}
@@ -47,7 +47,7 @@ export default function LogoutButton({ label = 'Sign out', style }) {
   );
 }
 
-function createStyles(isDark) {
+function createStyles(colors, isDark) {
   return StyleSheet.create({
     btn: {
       flexDirection: 'row',
@@ -58,12 +58,12 @@ function createStyles(isDark) {
       height: 48,
       borderRadius: 0,
       borderWidth: 1,
-      borderColor: isDark ? '#292524' : '#e7e5e4',
-      backgroundColor: 'transparent',
+      borderColor: colors.primarySoftBorder,
+      backgroundColor: isDark ? 'transparent' : colors.primarySoft,
       paddingHorizontal: 16,
     },
     label: {
-      color: '#b91c1c',
+      color: colors.primary,
       fontFamily: 'Geist_700Bold',
       fontSize: 10,
       letterSpacing: 1.5,

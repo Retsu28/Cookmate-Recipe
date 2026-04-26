@@ -3,17 +3,12 @@ import { Outlet } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ContentSkeleton } from '@/components/SkeletonScreen';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
 
 function AdminRouteLoader() {
-  return (
-    <div className="flex min-h-[320px] items-center justify-center">
-      <div className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-500 shadow-sm">
-        Loading admin section...
-      </div>
-    </div>
-  );
+  return <ContentSkeleton />;
 }
 
 export default function AdminLayout() {

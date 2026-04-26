@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import BottomTabNavigator from './BottomTabNavigator';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { ContentSkeleton } from '../components/SkeletonPlaceholder';
 
 // Protected stack screens
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
@@ -95,11 +95,7 @@ export default function AppNavigator() {
   const { colors } = useAppTheme();
 
   if (isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <ContentSkeleton colors={colors} />;
   }
 
   return isAuthenticated ? <AppStack colors={colors} /> : <AuthStack />;

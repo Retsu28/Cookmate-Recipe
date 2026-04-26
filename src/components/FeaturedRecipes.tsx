@@ -80,8 +80,8 @@ export function FeaturedRecipes() {
               <div className="flex items-center gap-2">
                 <span className={cn(
                   "w-2.5 h-2.5 rounded-full",
-                  recipe.difficulty === 'Easy' ? 'bg-green-400' :
-                    recipe.difficulty === 'Medium' ? 'bg-orange-400' : 'bg-red-400'
+                  recipe.difficulty === 'Easy' ? 'bg-orange-300' :
+                    recipe.difficulty === 'Medium' ? 'bg-orange-400' : 'bg-orange-500'
                 )} />
                 <span className="text-sm font-medium">{recipe.difficulty}</span>
               </div>

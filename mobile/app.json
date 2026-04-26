@@ -13,7 +13,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fafaf9"
+      "backgroundColor": "#fff8f1"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#fafaf9"
+        "backgroundColor": "#fff8f1"
       },
       "package": "com.cookmate.app",
       "permissions": [

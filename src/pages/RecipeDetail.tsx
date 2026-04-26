@@ -65,7 +65,7 @@ export default function RecipeDetail() {
 
   return (
     <Layout>
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+      <div className="mx-auto w-full max-w-7xl space-y-12 px-4 py-8 animate-fade-up sm:px-6 lg:px-8">
 
         {/* Back button */}
         <button
@@ -95,7 +95,7 @@ export default function RecipeDetail() {
               <div className="flex items-center gap-3 mb-4">
                 <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-200 border-none px-3 py-1 text-sm font-semibold">Italian</Badge>
                 <div className="flex items-center gap-1.5 text-stone-500 font-medium">
-                  <Star size={18} className="text-amber-400" fill="currentColor" />
+                  <Star size={18} className="text-orange-400" fill="currentColor" />
                   <span>4.8 (124 reviews)</span>
                 </div>
               </div>
@@ -195,7 +195,7 @@ export default function RecipeDetail() {
                 {recipeData.steps.map((step, idx) => (
                   <div key={idx} className="flex gap-6">
                     <div className="flex flex-col items-center shrink-0">
-                      <div className="w-10 h-10 bg-stone-900 text-white rounded-full flex items-center justify-center font-bold text-lg">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white shadow-lg shadow-orange-500/20">
                         {step.number}
                       </div>
                       {idx !== recipeData.steps.length - 1 && (
@@ -220,7 +220,7 @@ export default function RecipeDetail() {
           <div className="hidden lg:block lg:w-1/3">
             <div className="sticky top-24 space-y-6">
 
-              <Card className="rounded-[2rem] border-stone-200 shadow-xl shadow-stone-200/50 overflow-hidden bg-white">
+              <Card className="overflow-hidden rounded-[2rem] border-orange-100 bg-white shadow-xl shadow-orange-100/60">
                 <div className="bg-stone-50 p-6 border-b border-stone-100 flex items-center gap-3">
                   <Flame size={24} className="text-orange-500" />
                   <h3 className="font-bold text-xl text-stone-900">Nutrition per serving</h3>
@@ -269,7 +269,7 @@ function GuidedCooking({ mode, step, setStep, onExit }: any) {
   const progress = ((step + 1) / mode.steps.length) * 100;
 
   return (
-    <div className="fixed inset-0 bg-stone-900 z-[100] flex flex-col text-white font-sans">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-stone-950 text-white font-sans">
       {/* Header */}
       <div className="p-6 flex items-center justify-between border-b border-white/10">
         <div className="flex items-center gap-4">
@@ -335,7 +335,7 @@ function GuidedCooking({ mode, step, setStep, onExit }: any) {
           {step === mode.steps.length - 1 ? (
             <Button
               onClick={onExit}
-              className="bg-green-500 hover:bg-green-600 text-white rounded-full h-16 px-8 sm:px-12 font-bold text-xl shadow-lg shadow-green-500/20"
+              className="h-16 rounded-full px-8 text-xl font-bold text-white shadow-lg shadow-orange-500/20 sm:px-12"
             >
               FINISH
             </Button>

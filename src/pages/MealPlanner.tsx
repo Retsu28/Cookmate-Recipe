@@ -11,10 +11,12 @@ import {
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { MealPlannerPageSkeleton } from '@/components/SkeletonScreen';
+import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 
 const mealSlots = [
-  { id: 'breakfast', label: 'Breakfast', color: 'bg-yellow-500' },
-  { id: 'lunch', label: 'Lunch', color: 'bg-green-500' },
+  { id: 'breakfast', label: 'Breakfast', color: 'bg-orange-300' },
+  { id: 'lunch', label: 'Lunch', color: 'bg-orange-400' },
   { id: 'dinner', label: 'Dinner', color: 'bg-orange-500' },
 ];
 
@@ -25,14 +27,23 @@ export default function MealPlanner() {
     { date: new Date(), slot: 'breakfast', recipe: 'Avocado Toast', id: 10 },
     { date: new Date(), slot: 'lunch', recipe: 'Quinoa Salad', id: 11 },
   ]);
+  const isInitialLoading = useInitialContentLoading();
 
   const startDate = startOfWeek(currentDate);
   const endDate = endOfWeek(currentDate);
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+  if (isInitialLoading) {
+    return (
+      <Layout>
+        <MealPlannerPageSkeleton />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 flex flex-col xl:flex-row gap-8 items-start">
+      <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-8 px-4 py-8 animate-fade-up sm:px-6 md:py-12 lg:px-8 xl:flex-row">
 
         {/* Calendar Content */}
         <div className="flex-1 w-full space-y-8">
@@ -108,7 +119,7 @@ export default function MealPlanner() {
                             <div className="p-3 space-y-3 h-full flex flex-col">
                               <div className="flex items-center justify-between">
                                 <div className={cn("w-2 h-2 rounded-full", slot.color)} />
-                                <button className="p-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-md hover:bg-red-50">
+                                <button className="rounded-md p-1 text-stone-300 opacity-0 transition-opacity hover:bg-orange-50 hover:text-orange-500 group-hover:opacity-100">
                                   <Trash2 size={16} />
                                 </button>
                               </div>

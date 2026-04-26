@@ -14,6 +14,8 @@ import { mlApi } from '../api/api';
 import IngredientTag from '../components/IngredientTag';
 import RecipeCard from '../components/RecipeCard';
 import { useAppTheme } from '../context/ThemeContext';
+import { SearchContentSkeleton, SearchResultsSkeleton } from '../components/SkeletonPlaceholder';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const suggestedCombinations = [
   { title: 'Mediterranean Pantry', items: 'Olives, Feta, Tomatoes, Cucumber', icon: 'restaurant' },
@@ -34,6 +36,7 @@ export default function SearchScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const isInitialLoading = useInitialContentLoading();
 
   const addIngredient = () => {
     if (ingredient.trim() && !ingredients.includes(ingredient.trim())) {
@@ -87,7 +90,7 @@ export default function SearchScreen({ navigation }) {
           disabled={loading}
           style={[
             st.processBtn,
-            { backgroundColor: ingredients.length === 0 ? colors.border : (isDark ? colors.surfaceAlt : '#1c1917') },
+            { backgroundColor: ingredients.length === 0 ? colors.border : colors.primary },
           ]}
         >
           {loading ? (
@@ -120,7 +123,7 @@ export default function SearchScreen({ navigation }) {
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name={combo.icon} size={28} color={isDark ? colors.textSubtle : '#d6d3d1'} style={{ marginBottom: 16 }} />
+              <Ionicons name={combo.icon} size={28} color={colors.primaryLight || colors.primary} style={{ marginBottom: 16 }} />
               <Text style={[st.comboTitle, { color: colors.text }]}>{combo.title}</Text>
               <Text style={[st.comboItems, { color: colors.textMuted }]}>{combo.items}</Text>
             </TouchableOpacity>
@@ -133,8 +136,8 @@ export default function SearchScreen({ navigation }) {
         <View style={[st.resultsHeader, { borderBottomColor: colors.border }]}>
           <Text style={[st.resultsLabel, { color: colors.textSubtle }]}>RECIPE BLUEPRINTS ({results.length} RESULTS)</Text>
           <View style={st.filterRow}>
-            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.text }]}>
-              <Text style={[st.filterBtnText, { color: colors.text }]}>SORT: RELEVANCE</Text>
+            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.primary }]}>
+              <Text style={[st.filterBtnText, { color: colors.primary }]}>SORT: RELEVANCE</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[st.filterBtn, { borderColor: colors.border }]}>
               <Text style={[st.filterBtnText, { color: colors.textMuted }]}>FILTER: TIME</Text>
@@ -146,14 +149,26 @@ export default function SearchScreen({ navigation }) {
   );
 
   const renderEmpty = () => {
-    if (loading || results.length > 0) return null;
+    if (loading) {
+      return (
+        <View style={{ paddingHorizontal: 16 }}>
+          <SearchResultsSkeleton colors={colors} />
+        </View>
+      );
+    }
+
+    if (results.length > 0) return null;
     return null;
   };
+
+  if (isInitialLoading) {
+    return <SearchContentSkeleton colors={colors} />;
+  }
 
   return (
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       <FlatList
-        data={results}
+        data={loading ? [] : results}
         keyExtractor={(item, index) => index.toString()}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
@@ -165,7 +180,7 @@ export default function SearchScreen({ navigation }) {
             onPress={() => navigation.navigate('RecipeDetail', { id: (item.recipe || item).id || 1 })}
           />
         )}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 86 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
       />
     </SafeAreaView>
   );

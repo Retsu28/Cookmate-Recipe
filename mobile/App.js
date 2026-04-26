@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,6 +16,37 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import SplashScreen from './src/components/SplashScreen';
+import {
+  AccountSettingsSkeleton,
+  CameraPermissionSkeleton,
+  ContentSkeleton,
+  HomeContentSkeleton,
+  MealPlannerContentSkeleton,
+  NotificationsContentSkeleton,
+  ProfileContentSkeleton,
+  RecipeDetailSkeleton,
+  SearchContentSkeleton,
+} from './src/components/SkeletonPlaceholder';
+
+const navigationRef = createNavigationContainerRef();
+const TRANSITION_SKELETON_MS = 450;
+
+// Bottom-tab routes get a smooth focus-fade via TabSceneAnimator instead of the
+// full-screen transition skeleton, so we exclude them here. Stack pushes (e.g.,
+// RecipeDetail, Notifications, AccountSettings) still get the skeleton overlay.
+const TAB_ROUTE_NAMES = new Set(['Home', 'Search', 'Planner', 'Camera', 'Profile', 'Main']);
+
+const transitionSkeletons = {
+  AccountSettings: AccountSettingsSkeleton,
+  Camera: CameraPermissionSkeleton,
+  Home: HomeContentSkeleton,
+  Main: HomeContentSkeleton,
+  Notifications: NotificationsContentSkeleton,
+  Planner: MealPlannerContentSkeleton,
+  Profile: ProfileContentSkeleton,
+  RecipeDetail: RecipeDetailSkeleton,
+  Search: SearchContentSkeleton,
+};
 
 function PostLoginSplash({ colors, isDark }) {
   const { showPostLoginSplash, finishPostLoginSplash } = useAuth();
@@ -49,14 +80,71 @@ function SignOutSplash({ colors, isDark }) {
   );
 }
 
+function NavigationTransitionSkeleton({ colors, routeName }) {
+  const Skeleton = transitionSkeletons[routeName] || ContentSkeleton;
+
+  return (
+    <View style={styles.transitionSkeleton} pointerEvents="auto">
+      <Skeleton colors={colors} />
+    </View>
+  );
+}
+
 function AppContent({ fontsLoaded }) {
   const { colors, navigationTheme, isDark, isReady } = useAppTheme();
   const [splashDone, setSplashDone] = useState(false);
+  const [transitionRouteName, setTransitionRouteName] = useState(null);
+  const previousRouteKey = useRef(null);
+  const transitionTimer = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimer.current) {
+        clearTimeout(transitionTimer.current);
+      }
+    };
+  }, []);
+
+  const showTransitionSkeleton = (route) => {
+    if (!route?.name) {
+      return;
+    }
+
+    if (transitionTimer.current) {
+      clearTimeout(transitionTimer.current);
+    }
+
+    setTransitionRouteName(route.name);
+    transitionTimer.current = setTimeout(() => {
+      setTransitionRouteName(null);
+      transitionTimer.current = null;
+    }, TRANSITION_SKELETON_MS);
+  };
+
+  const handleNavigationReady = () => {
+    const route = navigationRef.getCurrentRoute();
+    previousRouteKey.current = route?.key || null;
+  };
+
+  const handleNavigationStateChange = () => {
+    const route = navigationRef.getCurrentRoute();
+
+    if (route?.key && previousRouteKey.current && route.key !== previousRouteKey.current) {
+      // Tab switches are handled by TabSceneAnimator's focus-triggered fade —
+      // skip the full-screen skeleton overlay so the transition stays smooth.
+      if (!TAB_ROUTE_NAMES.has(route.name)) {
+        showTransitionSkeleton(route);
+      }
+    }
+
+    previousRouteKey.current = route?.key || null;
+  };
 
   if (!fontsLoaded || !isReady) {
     return (
-      <View style={[styles.root, styles.loading, { backgroundColor: colors.background }]}>
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ContentSkeleton colors={colors} />
       </View>
     );
   }
@@ -65,10 +153,18 @@ function AppContent({ fontsLoaded }) {
     <GestureHandlerRootView style={[styles.root, { backgroundColor: colors.background }]}>
       <SafeAreaProvider style={styles.safeArea}>
         <AuthProvider>
-          <NavigationContainer theme={navigationTheme}>
+          <NavigationContainer
+            ref={navigationRef}
+            theme={navigationTheme}
+            onReady={handleNavigationReady}
+            onStateChange={handleNavigationStateChange}
+          >
             <AppNavigator />
             <StatusBar style={isDark ? 'light' : 'dark'} />
           </NavigationContainer>
+          {transitionRouteName && splashDone && (
+            <NavigationTransitionSkeleton colors={colors} routeName={transitionRouteName} />
+          )}
           <PostLoginSplash colors={colors} isDark={isDark} />
           <SignOutSplash colors={colors} isDark={isDark} />
         </AuthProvider>
@@ -107,8 +203,8 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  loading: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  transitionSkeleton: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
   },
 });

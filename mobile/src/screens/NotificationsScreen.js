@@ -11,18 +11,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import NotificationCard from '../components/NotificationCard';
 import { useAppTheme } from '../context/ThemeContext';
+import { NotificationsContentSkeleton } from '../components/SkeletonPlaceholder';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const initialNotifications = [
-  { id: 1, type: 'Reminder', title: 'Lunch Prep in 30 Minutes', message: 'Time to start your Quinoa Salad for lunch today.', time: '10 MINS AGO', read: false, icon: 'time', iconColor: '#3b82f6' },
-  { id: 2, type: 'Expiring', title: 'Chicken Breast Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 HRS AGO', read: false, icon: 'alert-circle', iconColor: '#ef4444' },
+  { id: 1, type: 'Reminder', title: 'Lunch Prep in 30 Minutes', message: 'Time to start your Quinoa Salad for lunch today.', time: '10 MINS AGO', read: false, icon: 'time', iconColor: '#f97316' },
+  { id: 2, type: 'Expiring', title: 'Chicken Breast Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 HRS AGO', read: false, icon: 'alert-circle', iconColor: '#ea580c' },
   { id: 3, type: 'Shopping', title: 'Shopping List Updated', message: '3 new items added to your list based on next week\'s meal plan.', time: '5 HRS AGO', read: true, icon: 'cart', iconColor: '#f97316' },
-  { id: 4, type: 'Tip', title: 'Cooking Tip of the Day', message: 'Add a splash of vinegar when poaching eggs for a perfect shape.', time: '1 DAY AGO', read: true, icon: 'bulb', iconColor: '#f59e0b' },
+  { id: 4, type: 'Tip', title: 'Cooking Tip of the Day', message: 'Add a splash of vinegar when poaching eggs for a perfect shape.', time: '1 DAY AGO', read: true, icon: 'bulb', iconColor: '#fb923c' },
 ];
 
 export default function NotificationsScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
   const [notifications, setNotifications] = useState(initialNotifications);
   const [filter, setFilter] = useState('All');
+  const isInitialLoading = useInitialContentLoading();
 
   const filters = ['All', 'Reminders', 'Expiring', 'Shopping', 'Tips'];
   const selectedType = filter.replace(/s$/, '');
@@ -55,6 +58,10 @@ export default function NotificationsScreen({ navigation }) {
     navigation.navigate('Main', { screen: 'Home' });
   };
 
+  if (isInitialLoading) {
+    return <NotificationsContentSkeleton colors={colors} />;
+  }
+
   return (
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       {/* Header — matches web */}
@@ -65,7 +72,7 @@ export default function NotificationsScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={[st.pageTitle, { color: colors.text }]}>Updates</Text>
           {unreadCount > 0 && (
-            <View style={[st.badge, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}>
+            <View style={[st.badge, { backgroundColor: colors.primary }]}>
               <Text style={st.badgeText}>{unreadCount}</Text>
             </View>
           )}
@@ -91,7 +98,7 @@ export default function NotificationsScreen({ navigation }) {
               style={[
                 st.filterPill,
                 active
-                  ? { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }
+                  ? { backgroundColor: colors.primary }
                   : { borderWidth: 1, borderColor: colors.border },
               ]}
             >

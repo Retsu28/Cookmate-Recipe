@@ -17,6 +17,8 @@ export default defineConfig(({mode}) => {
         // Workbox auto-generates the service worker
         strategies: 'generateSW',
         registerType: 'autoUpdate',
+        injectRegister: false,
+        manifestFilename: 'manifest.json',
         // Include all built assets in the precache manifest
         includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
 
@@ -25,8 +27,8 @@ export default defineConfig(({mode}) => {
           name: 'CookMate',
           short_name: 'CookMate',
           description: 'Your AI-powered recipe and meal planning assistant.',
-          theme_color: '#E8642C',
-          background_color: '#1a0f0a',
+          theme_color: '#f97316',
+          background_color: '#fff8f1',
           display: 'standalone',
           scope: '/',
           start_url: '/',
@@ -89,6 +91,10 @@ export default defineConfig(({mode}) => {
               handler: 'NetworkOnly',
             },
           ],
+        },
+
+        devOptions: {
+          enabled: true,
         },
       }),
     ],

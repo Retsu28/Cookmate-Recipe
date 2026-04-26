@@ -6,6 +6,7 @@ mobile/node_modules/
 # Build outputs
 build/
 dist/
+dev-dist/
 mobile/dist/
 coverage/
 

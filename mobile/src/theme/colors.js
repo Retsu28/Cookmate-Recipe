@@ -1,53 +1,56 @@
-// Shared color palette aligned with the Web React app (src/index.css + tailwind).
-// Web source-of-truth: stone-50 bg, stone-200 borders, orange-500 primary.
+// Shared orange-first palette aligned with the Web React app.
 export const lightColors = {
   // Base surfaces
-  background: '#fafaf9',      // stone-50 (web bg)
-  surface: '#ffffff',         // cards
-  surfaceAlt: '#f5f5f4',      // stone-100 (hover/section)
+  background: '#fff8f1',
+  surface: '#ffffff',
+  surfaceAlt: '#fff1e6',
 
   // Text
-  text: '#1c1917',            // stone-900
-  textMuted: '#78716c',       // stone-500
-  textSubtle: '#a8a29e',      // stone-400
+  text: '#24160f',
+  textMuted: '#7a5a46',
+  textSubtle: '#b78b70',
 
   // Borders
-  border: '#e7e5e4',          // stone-200
-  borderSoft: '#f5f5f4',      // stone-100
+  border: '#fed7aa',
+  borderSoft: '#ffedd5',
 
   // Brand
-  primary: '#f97316',         // orange-500
-  primaryDark: '#ea580c',     // orange-600
-  primarySoft: '#fff7ed',     // orange-50
-  primarySoftBorder: '#fed7aa', // orange-200
+  primary: '#f97316',
+  primaryDark: '#ea580c',
+  primaryLight: '#fb923c',
+  primarySoft: '#fff7ed',
+  primarySoftBorder: '#fed7aa',
+  brandShadow: '#f97316',
 
   // Accents
-  amber: '#f59e0b',           // star / rating fills
-  success: '#22c55e',
+  amber: '#f97316',
+  success: '#f97316',
   danger: '#ef4444',
-  info: '#3b82f6',
+  info: '#f97316',
 
-  dark: '#0a0a0a',            // cooking-mode / AI dark panel (web)
+  dark: '#24160f',
 };
 
 export const darkColors = {
-  background: '#0c0a09',
-  surface: '#1c1917',
-  surfaceAlt: '#292524',
+  background: '#120b07',
+  surface: '#24160f',
+  surfaceAlt: '#3b2417',
   text: '#fafaf9',
-  textMuted: '#d6d3d1',
-  textSubtle: '#a8a29e',
-  border: '#292524',
-  borderSoft: '#1c1917',
+  textMuted: '#f1d6c4',
+  textSubtle: '#d6a98c',
+  border: '#4a2d1c',
+  borderSoft: '#3b2417',
   primary: '#f97316',
   primaryDark: '#fb923c',
+  primaryLight: '#fdba74',
   primarySoft: '#431407',
   primarySoftBorder: '#7c2d12',
-  amber: '#f59e0b',
-  success: '#22c55e',
+  brandShadow: '#f97316',
+  amber: '#fb923c',
+  success: '#fb923c',
   danger: '#ef4444',
-  info: '#3b82f6',
-  dark: '#0a0a0a',
+  info: '#fb923c',
+  dark: '#120b07',
 };
 
 export function getColors(mode = 'light') {

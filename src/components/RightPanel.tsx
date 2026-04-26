@@ -3,10 +3,10 @@ import { ShoppingCart, ChevronRight, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const dailyPlan = [
-  { slot: 'Breakfast', recipe: 'Avocado Toast', time: '10 min', color: 'bg-yellow-500' },
-  { slot: 'Lunch', recipe: 'Quinoa Salad', time: '15 min', color: 'bg-green-500' },
+  { slot: 'Breakfast', recipe: 'Avocado Toast', time: '10 min', color: 'bg-orange-300' },
+  { slot: 'Lunch', recipe: 'Quinoa Salad', time: '15 min', color: 'bg-orange-400' },
   { slot: 'Dinner', recipe: 'Grilled Salmon', time: '25 min', color: 'bg-orange-500' },
-  { slot: 'Snack', recipe: 'Greek Yogurt', time: '5 min', color: 'bg-blue-500' },
+  { slot: 'Snack', recipe: 'Greek Yogurt', time: '5 min', color: 'bg-orange-600' },
 ];
 
 const shoppingList = [

@@ -7,7 +7,7 @@ export default function IngredientTag({ name, onRemove }) {
   const { colors, isDark } = useAppTheme();
 
   return (
-    <View style={[st.tag, { backgroundColor: isDark ? colors.surfaceAlt : '#1c1917' }]}>
+    <View style={[st.tag, { backgroundColor: colors.primary }]}>
       <Text style={st.tagText}>{name.toUpperCase()}</Text>
       <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
         <Ionicons name="close" size={12} color="rgba(255,255,255,0.6)" />

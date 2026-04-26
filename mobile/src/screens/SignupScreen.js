@@ -46,11 +46,11 @@ function getPasswordRequirements(pw) {
 function scorePassword(requirements) {
   const score = requirements.filter((item) => item.met).length;
   if (score === 0) return { score, color: '#e7e5e4' };
-  if (score <= 1) return { score, color: '#ef4444' };
+  if (score <= 1) return { score, color: '#fdba74' };
   if (score <= 2) return { score, color: '#fb923c' };
-  if (score <= 3) return { score, color: '#eab308' };
-  if (score <= 4) return { score, color: '#84cc16' };
-  return { score, color: '#22c55e' };
+  if (score <= 3) return { score, color: '#f97316' };
+  if (score <= 4) return { score, color: '#ea580c' };
+  return { score, color: '#c2410c' };
 }
 
 export default function SignupScreen({ navigation }) {
@@ -235,7 +235,7 @@ export default function SignupScreen({ navigation }) {
                         <Ionicons
                           name={item.met ? 'checkmark-outline' : 'close-outline'}
                           size={15}
-                          color={item.met ? '#16a34a' : colors.textSubtle}
+                          color={item.met ? colors.primary : colors.textSubtle}
                         />
                         <Text style={[styles.requirementText, item.met && styles.requirementTextMet]}>
                           {item.label}
@@ -326,7 +326,7 @@ function AnimatedField({ index, fieldStyle, children }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? colors.background : '#1c1917' },
+    container: { flex: 1, backgroundColor: isDark ? colors.background : colors.primary },
     safeArea: { flex: 1 },
     scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
@@ -431,7 +431,7 @@ function createStyles(colors, isDark) {
       fontSize: 12,
     },
     requirementTextMet: {
-      color: '#16a34a',
+      color: '#f97316',
       fontFamily: 'Geist_700Bold',
     },
     errorBox: {

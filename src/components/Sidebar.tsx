@@ -34,12 +34,12 @@ export function Sidebar() {
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
                 isActive 
-                  ? "bg-orange-50 text-orange-600 font-medium" 
-                  : "text-stone-500 hover:bg-stone-50 hover:text-stone-900"
+                  ? "bg-orange-500 text-white font-medium shadow-lg shadow-orange-500/20"
+                  : "text-stone-500 hover:bg-orange-50 hover:text-orange-700"
               )}
             >
               <item.icon size={20} className={cn(
-                isActive ? "text-orange-600" : "text-stone-400 group-hover:text-stone-900"
+                isActive ? "text-white" : "text-stone-400 group-hover:text-orange-600"
               )} />
               <span>{item.label}</span>
               {item.badge && (

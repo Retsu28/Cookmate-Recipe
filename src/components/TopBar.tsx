@@ -4,17 +4,17 @@ import { Input } from '@/components/ui/input';
 
 export function TopBar() {
   return (
-    <header className="h-20 bg-white border-bottom border-stone-200 px-8 flex items-center justify-between sticky top-0 z-30">
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-orange-100 bg-white/90 px-8 backdrop-blur">
       <div className="flex-1 max-w-2xl relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-        <Input 
-          className="pl-10 bg-stone-50 border-stone-200 focus:ring-orange-500 rounded-xl h-11"
+        <Input
+          className="h-11 rounded-xl border-orange-100 bg-orange-50/50 pl-10 focus:border-orange-300 focus:ring-orange-500"
           placeholder="Search recipes, ingredients, or cuisines..."
         />
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="p-2.5 text-stone-500 hover:bg-stone-50 rounded-xl border border-stone-200 transition-colors">
+        <button className="rounded-xl border border-orange-100 p-2.5 text-stone-500 transition-colors hover:bg-orange-50 hover:text-orange-600">
           <SlidersHorizontal size={20} />
         </button>
         

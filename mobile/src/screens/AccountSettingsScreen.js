@@ -15,8 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { profileApi } from '../api/api';
+import { AccountSettingsSkeleton } from '../components/SkeletonPlaceholder';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
+import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -78,6 +80,7 @@ export default function AccountSettingsScreen({ navigation }) {
   const mount = useRef(new Animated.Value(0)).current;
   const sectionAnims = useRef(Array.from({ length: 5 }, () => new Animated.Value(0))).current;
   const saveScale = useRef(new Animated.Value(1)).current;
+  const isInitialLoading = useInitialContentLoading();
 
   const userBaseline = useMemo(
     () => ({
@@ -265,6 +268,10 @@ export default function AccountSettingsScreen({ navigation }) {
     },
   ];
 
+  if (isInitialLoading || loading) {
+    return <AccountSettingsSkeleton colors={colors} />;
+  }
+
   return (
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
@@ -315,7 +322,7 @@ export default function AccountSettingsScreen({ navigation }) {
                   { backgroundColor: colors.surface, borderColor: colors.border },
                 ]}
               >
-                <View style={[st.avatar, { backgroundColor: colors.text }]}>
+                <View style={[st.avatar, { backgroundColor: colors.primary }]}>
                   <Text style={[st.avatarText, { color: isDark ? colors.background : '#fff' }]}>
                     {displayInitial}
                   </Text>

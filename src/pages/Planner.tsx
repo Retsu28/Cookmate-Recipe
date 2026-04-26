@@ -32,7 +32,7 @@ export default function PlannerPage() {
 
   return (
     <Layout>
-      <div className="w-full h-full py-6">
+      <div className="h-full w-full py-6 animate-fade-up">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 pb-4 border-b border-stone-200 gap-4">
@@ -84,8 +84,8 @@ export default function PlannerPage() {
           {/* Center Column - Calendar */}
           <div className="lg:col-span-6 h-full flex flex-col bg-white border border-stone-200 overflow-hidden">
             <div className="p-4 border-b border-stone-200 flex items-center justify-between shrink-0">
-              <div className="flex border border-stone-900">
-                <button className="bg-stone-900 text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest">Monthly</button>
+              <div className="flex rounded-xl border border-orange-300 overflow-hidden">
+                <button className="bg-orange-500 text-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest">Monthly</button>
                 <button className="bg-stone-100 text-stone-500 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest hover:bg-stone-200">Weekly</button>
               </div>
               <div className="flex items-center gap-4">
@@ -115,25 +115,25 @@ export default function PlannerPage() {
                     onClick={() => setSelectedDay(dayNum)}
                     className={cn(
                       "bg-white p-2 min-h-[120px] transition-colors cursor-pointer",
-                      isToday ? "ring-2 ring-inset ring-stone-900 bg-stone-50" : "hover:bg-stone-50",
+                      isToday ? "ring-2 ring-inset ring-orange-500 bg-orange-50" : "hover:bg-orange-50/60",
                       i < 5 ? "opacity-50" : ""
                     )}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className={cn(
                         "text-xs font-bold w-6 h-6 flex items-center justify-center",
-                        isToday ? "bg-stone-900 text-white rounded-full" : "text-stone-700"
+                        isToday ? "bg-orange-500 text-white rounded-full" : "text-stone-700"
                       )}>
                         {dayNum}
                       </span>
-                      {isToday && <span className="bg-stone-900 text-white text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5">Today</span>}
+                      {isToday && <span className="bg-orange-500 text-white text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">Today</span>}
                     </div>
 
                     {/* Render mock recipe pills */}
-                    {dayNum === 1 && <div className="bg-stone-900 text-white text-[10px] px-1.5 py-1 mb-1 truncate">Pesto...</div>}
-                    {dayNum === 1 && <div className="bg-stone-200 text-stone-900 text-[10px] px-1.5 py-1 truncate">Greens...</div>}
-                    {dayNum === 3 && <div className="bg-stone-600 text-white text-[10px] px-1.5 py-1 truncate">Chicken...</div>}
-                    {dayNum === 4 && <div className="bg-stone-900 text-white text-[10px] px-1.5 py-1 mb-2 truncate">Steak...</div>}
+                    {dayNum === 1 && <div className="mb-1 truncate rounded bg-orange-500 px-1.5 py-1 text-[10px] text-white">Pesto...</div>}
+                    {dayNum === 1 && <div className="truncate rounded bg-orange-100 px-1.5 py-1 text-[10px] text-orange-800">Greens...</div>}
+                    {dayNum === 3 && <div className="truncate rounded bg-orange-400 px-1.5 py-1 text-[10px] text-white">Chicken...</div>}
+                    {dayNum === 4 && <div className="mb-2 truncate rounded bg-orange-500 px-1.5 py-1 text-[10px] text-white">Steak...</div>}
 
                     {/* Drop zone placeholder */}
                     {isToday && (
@@ -163,7 +163,7 @@ export default function PlannerPage() {
                       <label key={j} className="flex items-start gap-3 cursor-pointer group">
                         <div className={cn(
                           "w-4 h-4 mt-0.5 flex items-center justify-center border transition-colors shrink-0",
-                          item.checked ? "bg-stone-900 border-stone-900" : "border-stone-300 bg-white group-hover:border-stone-500"
+                          item.checked ? "border-orange-500 bg-orange-500" : "border-stone-300 bg-white group-hover:border-orange-400"
                         )}>
                           {item.checked && <Check size={12} className="text-white" />}
                         </div>
@@ -182,13 +182,13 @@ export default function PlannerPage() {
               <Button variant="outline" className="w-full border-stone-200 border-dashed text-stone-600 hover:text-stone-900 hover:bg-stone-50 font-bold uppercase tracking-widest text-[10px] rounded-none py-6">
                 + Add Manual Item
               </Button>
-              <Button className="w-full bg-stone-900 hover:bg-orange-600 text-white font-bold uppercase tracking-widest text-[10px] rounded-none py-6 transition-colors">
+              <Button className="w-full rounded-2xl py-6 text-[10px] font-bold uppercase tracking-widest">
                 Sync to Phone
               </Button>
             </div>
 
             {/* Floating Action Button from wireframe */}
-            <div className="absolute bottom-5 right-5 w-12 h-12 bg-stone-900 shadow-xl flex items-center justify-center cursor-pointer hover:scale-105 hover:bg-orange-600 transition-all">
+            <div className="absolute bottom-5 right-5 flex h-12 w-12 cursor-pointer items-center justify-center rounded-2xl bg-orange-500 shadow-xl shadow-orange-500/20 transition-all hover:scale-105 hover:bg-orange-600">
               <Star size={20} className="text-white" />
             </div>
           </div>

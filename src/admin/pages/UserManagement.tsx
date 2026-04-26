@@ -37,13 +37,13 @@ export default function UserManagement() {
       />
 
       <motion.div
-        className="mb-6 rounded-[2rem] border border-amber-200 bg-amber-50 p-5"
+        className="mb-6 rounded-[2rem] border border-orange-200 bg-orange-50 p-5"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="flex gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-600">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-600">
             <Users size={18} />
           </div>
           <div>

@@ -74,7 +74,7 @@ export default function CookingModeScreen({ route, navigation }) {
           </TouchableOpacity>
 
           {currentStep === steps.length - 1 ? (
-            <TouchableOpacity onPress={() => navigation.goBack()} style={[st.nextBtn, { backgroundColor: '#22c55e' }]}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={[st.nextBtn, { backgroundColor: '#f97316' }]}>
               <Text style={st.nextBtnText}>FINISH</Text>
             </TouchableOpacity>
           ) : (
@@ -89,7 +89,7 @@ export default function CookingModeScreen({ route, navigation }) {
 }
 
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#1c1917' },
+  root: { flex: 1, backgroundColor: '#24160f' },
   flex1: { flex: 1 },
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
@@ -110,7 +110,7 @@ const st = StyleSheet.create({
   timerText: { fontFamily: 'Geist_800ExtraBold', fontSize: 32, color: '#fff' },
   timerLabel: { fontFamily: 'Geist_400Regular', fontSize: 12, color: '#a8a29e' },
   timerBtn: { marginTop: 10, backgroundColor: '#fff', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
-  timerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#1c1917' },
+  timerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#ea580c' },
   // Footer
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', backgroundColor: '#0c0a09' },
   prevBtn: { paddingHorizontal: 20, paddingVertical: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 999 },

@@ -25,13 +25,13 @@ export default function ReviewsFeedback() {
       header: 'Actions',
       render: (review) => (
         <div className="flex gap-2">
-          <Button variant="ghost" size="icon-sm" className="rounded-full text-green-700" aria-label="Approve review" onClick={() => setStatus(review.id, 'Approved')}>
+          <Button variant="ghost" size="icon-sm" className="rounded-full text-orange-700" aria-label="Approve review" onClick={() => setStatus(review.id, 'Approved')}>
             <Check size={14} />
           </Button>
           <Button variant="ghost" size="icon-sm" className="rounded-full text-stone-500" aria-label="Hide review" onClick={() => setStatus(review.id, 'Hidden')}>
             <EyeOff size={14} />
           </Button>
-          <Button variant="ghost" size="icon-sm" className="rounded-full text-red-500" aria-label="Flag review" onClick={() => setStatus(review.id, 'Flagged')}>
+          <Button variant="ghost" size="icon-sm" className="rounded-full text-orange-500" aria-label="Flag review" onClick={() => setStatus(review.id, 'Flagged')}>
             <Flag size={14} />
           </Button>
         </div>
