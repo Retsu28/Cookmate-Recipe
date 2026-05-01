@@ -83,6 +83,7 @@ export const recipeApi = {
 
 export const mlApi = {
   recommendByIngredients: (ingredients) => api.post('/api/ml/recommend', { ingredients }),
+  getImageAnalysisQueue: () => api.get('/api/ml/image-analysis/queue'),
   analyzeCameraImage: (image) => api.post('/api/ml/camera/analyze', { image }, { timeout: 130000 }),
   analyzeIngredients: (image) => api.post('/api/ml/analyze-ingredients', { image }, { timeout: 130000 }),
   removeCameraBackground: (image) => api.post('/api/ml/camera/remove-bg', { image }, { timeout: 100000 }),

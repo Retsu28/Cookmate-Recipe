@@ -24,37 +24,92 @@ const BG_REMOVAL_TIMEOUT_MS = Number(process.env.BG_REMOVAL_TIMEOUT_MS || 90000)
 const ML_LOOKUP_CACHE_TTL_MS = Number(process.env.ML_LOOKUP_CACHE_TTL_MS || 5 * 60 * 1000);
 const AI_ANALYSIS_UNAVAILABLE = 'AI analysis is temporarily unavailable. Please try again.';
 const MAX_AI_CAMERA_QUEUE_SIZE = 50;
+const CONFIGURED_AI_CAMERA_ACTIVE_REQUESTS = Number(process.env.GEMINI_IMAGE_ANALYSIS_ACTIVE_LIMIT || 1);
+const MAX_AI_CAMERA_ACTIVE_REQUESTS = Number.isFinite(CONFIGURED_AI_CAMERA_ACTIVE_REQUESTS)
+  ? Math.max(1, Math.min(CONFIGURED_AI_CAMERA_ACTIVE_REQUESTS, MAX_AI_CAMERA_QUEUE_SIZE))
+  : 1;
 const AI_CAMERA_QUEUE_WARNING = 'AI Camera is busy. Your image is queued and will be analyzed automatically.';
-const AI_CAMERA_QUEUE_FULL = 'AI Camera queue is full. Please wait a moment and try again.';
+const AI_CAMERA_BUSY_WARNING = 'Image analysis is currently busy. Many users are analyzing images right now. Please wait and try again shortly.';
+const AI_CAMERA_QUEUE_FULL = `Queue is full (${MAX_AI_CAMERA_QUEUE_SIZE}/${MAX_AI_CAMERA_QUEUE_SIZE}). Please wait until a slot becomes available.`;
 const BG_REMOVAL_QUEUE_WARNING = 'AI Camera background removal is busy. Your image is queued.';
 
 const lookupCache = {
   recipes: { expiresAt: 0, rows: null },
   knownIngredients: { expiresAt: 0, rows: null },
 };
-let aiCameraQueue = Promise.resolve();
-let aiCameraQueueSize = 0;
+const aiCameraQueue = [];
+let aiCameraActiveRequests = 0;
 let bgRemovalQueue = Promise.resolve();
 let bgRemovalQueueSize = 0;
 
+function getAiCameraQueueSnapshot() {
+  const queueCount = aiCameraActiveRequests + aiCameraQueue.length;
+
+  return {
+    queueCount,
+    queueLimit: MAX_AI_CAMERA_QUEUE_SIZE,
+    queueLabel: `Queue: ${queueCount}/${MAX_AI_CAMERA_QUEUE_SIZE}`,
+    activeCount: aiCameraActiveRequests,
+    waitingCount: aiCameraQueue.length,
+  };
+}
+
+function buildQueueFullError() {
+  const snapshot = getAiCameraQueueSnapshot();
+  const err = new Error(AI_CAMERA_BUSY_WARNING);
+  err.code = 'AI_IMAGE_ANALYSIS_QUEUE_FULL';
+  err.status = 429;
+  err.queueCount = snapshot.queueCount;
+  err.queueLimit = snapshot.queueLimit;
+  err.queueLabel = `Queue: ${snapshot.queueLimit}/${snapshot.queueLimit}`;
+  err.queueFullMessage = AI_CAMERA_QUEUE_FULL;
+  return err;
+}
+
 function enqueueAiCameraAnalysis(task) {
-  if (aiCameraQueueSize >= MAX_AI_CAMERA_QUEUE_SIZE) {
-    return Promise.reject(new Error(AI_CAMERA_QUEUE_FULL));
-  }
-  const queuePosition = aiCameraQueueSize;
-  aiCameraQueueSize += 1;
+  const startNextQueuedAnalysis = () => {
+    if (aiCameraActiveRequests >= MAX_AI_CAMERA_ACTIVE_REQUESTS) return;
 
-  const run = aiCameraQueue
-    .catch(() => {})
-    .then(() => task({ queuePosition }));
+    const next = aiCameraQueue.shift();
+    if (next) next();
+  };
 
-  aiCameraQueue = run
-    .finally(() => {
-      aiCameraQueueSize = Math.max(0, aiCameraQueueSize - 1);
-    })
-    .catch(() => {});
+  return new Promise((resolve, reject) => {
+    const currentQueueCount = aiCameraActiveRequests + aiCameraQueue.length;
+    if (currentQueueCount >= MAX_AI_CAMERA_QUEUE_SIZE) {
+      reject(buildQueueFullError());
+      return;
+    }
 
-  return run;
+    const queuePosition = currentQueueCount + 1;
+    const queueInfo = {
+      queuePosition,
+      queueCount: queuePosition,
+      queueLimit: MAX_AI_CAMERA_QUEUE_SIZE,
+      queueLabel: `Queue: ${queuePosition}/${MAX_AI_CAMERA_QUEUE_SIZE}`,
+      queued: aiCameraActiveRequests >= MAX_AI_CAMERA_ACTIVE_REQUESTS,
+      queueWarning: queuePosition > 1 ? AI_CAMERA_QUEUE_WARNING : null,
+    };
+
+    const run = () => {
+      aiCameraActiveRequests += 1;
+
+      Promise.resolve()
+        .then(() => task(queueInfo))
+        .then(resolve, reject)
+        .finally(() => {
+          aiCameraActiveRequests = Math.max(0, aiCameraActiveRequests - 1);
+          startNextQueuedAnalysis();
+        });
+    };
+
+    if (aiCameraActiveRequests < MAX_AI_CAMERA_ACTIVE_REQUESTS) {
+      run();
+      return;
+    }
+
+    aiCameraQueue.push(run);
+  });
 }
 
 function enqueueBackgroundRemoval(task) {
@@ -269,8 +324,16 @@ function isGeminiQuotaError(err) {
 
 function geminiErrorPayload(err) {
   const message = String(err?.message || '');
-  if (message === AI_CAMERA_QUEUE_FULL) {
-    return { status: 429, error: AI_CAMERA_QUEUE_FULL };
+  if (err?.code === 'AI_IMAGE_ANALYSIS_QUEUE_FULL') {
+    return {
+      status: 429,
+      error: AI_CAMERA_BUSY_WARNING,
+      message: AI_CAMERA_BUSY_WARNING,
+      queueFullMessage: err.queueFullMessage || AI_CAMERA_QUEUE_FULL,
+      queueCount: err.queueLimit || MAX_AI_CAMERA_QUEUE_SIZE,
+      queueLimit: err.queueLimit || MAX_AI_CAMERA_QUEUE_SIZE,
+      queueLabel: `Queue: ${err.queueLimit || MAX_AI_CAMERA_QUEUE_SIZE}/${err.queueLimit || MAX_AI_CAMERA_QUEUE_SIZE}`,
+    };
   }
   if (isGeminiQuotaError(err)) {
     return {
@@ -778,8 +841,8 @@ Rules:
 - Do not recommend recipes; the app will choose recipes from its own database
 - Only return valid JSON, no markdown or extra text`;
 
-    const { result, queuePosition, modelName } = await enqueueAiCameraAnalysis(async ({ queuePosition }) => {
-      if (queuePosition > 0) {
+    const { result, modelName, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
+      if (queueInfo.queued) {
         console.warn(`[ml/camera/analyze] ${AI_CAMERA_QUEUE_WARNING}`);
       }
 
@@ -791,11 +854,10 @@ Rules:
       });
 
       return {
-        queuePosition,
+        ...queueInfo,
         ...geminiResponse,
       };
     });
-    const wasQueued = queuePosition > 0;
 
     const responseText = result.response.text();
 
@@ -807,6 +869,7 @@ Rules:
       console.error('[ml/camera/analyze] Failed to parse Gemini response:', responseText);
       return res.status(502).json({
         error: 'AI returned an invalid response. Please try again.',
+        ...queueInfo,
       });
     }
 
@@ -881,8 +944,7 @@ Rules:
       recommendedRecipe,
       suggestedRecipe: recommendedRecipe,
       modelUsed: modelName,
-      queued: wasQueued,
-      queueWarning: wasQueued ? AI_CAMERA_QUEUE_WARNING : null,
+      ...queueInfo,
     });
   } catch (err) {
     const payload = geminiErrorPayload(err);
@@ -975,8 +1037,8 @@ Rules:
 - normalizedName should be singular form: "tomato" not "tomatoes", "egg" not "eggs"
 - Only return valid JSON, no markdown or extra text`;
 
-    const { result } = await enqueueAiCameraAnalysis(async ({ queuePosition }) => {
-      if (queuePosition > 0) {
+    const { result, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
+      if (queueInfo.queued) {
         console.warn(`[ml/analyze-ingredients] ${AI_CAMERA_QUEUE_WARNING}`);
       }
       const geminiResponse = await generateGeminiContent({
@@ -985,7 +1047,7 @@ Rules:
         mimeType,
         base64Data,
       });
-      return { queuePosition, ...geminiResponse };
+      return { ...queueInfo, ...geminiResponse };
     });
 
     const responseText = result.response.text();
@@ -1000,6 +1062,7 @@ Rules:
         detectedIngredients: [],
         matchedRecipes: [],
         message: 'AI returned an invalid response. Please try again.',
+        ...queueInfo,
       });
     }
 
@@ -1013,6 +1076,7 @@ Rules:
         detectedIngredients: [],
         matchedRecipes: [],
         message: 'No recognizable cooking ingredient was detected. Please retake or upload a clearer ingredient photo.',
+        ...queueInfo,
       });
     }
 
@@ -1042,6 +1106,7 @@ Rules:
         detectedIngredients: [],
         matchedRecipes: [],
         message: 'No recognizable cooking ingredient was detected. Please retake or upload a clearer ingredient photo.',
+        ...queueInfo,
       });
     }
 
@@ -1129,6 +1194,7 @@ Rules:
       detectedIngredients: detectedIngredients.map(({ normalizedName, ...rest }) => rest),
       matchedRecipes,
       message,
+      ...queueInfo,
     });
   } catch (err) {
     const payload = geminiErrorPayload(err);
@@ -1137,7 +1203,8 @@ Rules:
       success: false,
       detectedIngredients: [],
       matchedRecipes: [],
-      message: payload.error,
+      ...payload,
+      message: payload.message || payload.error,
     });
   }
 };
@@ -1145,6 +1212,10 @@ Rules:
 // ── Legacy stub (kept for backwards compatibility) ──
 exports.camera = (_req, res) => {
   res.json({ message: 'ML Camera endpoint. Use POST /api/ml/camera/analyze to analyze images.' });
+};
+
+exports.imageAnalysisQueueStatus = (_req, res) => {
+  res.json(getAiCameraQueueSnapshot());
 };
 
 // ─── POST /api/ml/camera/remove-bg ─────────────────────────────────────────

@@ -31,6 +31,9 @@ const aiAnalyzeLimiter = rateLimit({
 router.post('/recommend', mlController.recommendByIngredients);
 router.post('/recommend/by-ingredients', mlController.recommendByIngredients);
 
+// AI Camera queue counter shared by web and mobile image analysis
+router.get('/image-analysis/queue', mlController.imageAnalysisQueueStatus);
+
 // AI Camera — image analysis endpoint
 router.post('/camera/analyze', aiCameraLimiter, mlController.analyzeImage);
 

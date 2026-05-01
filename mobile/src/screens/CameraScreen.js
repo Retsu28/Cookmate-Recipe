@@ -67,7 +67,29 @@ function chooseFastPictureSize(sizes) {
   return parsed.sort((a, b) => a.maxEdge - b.maxEdge)[0].size;
 }
 
+function normalizeQueueStatus(data) {
+  if (!data || typeof data !== 'object') return null;
+  const queueCount = Number(data.queueCount);
+  const queueLimit = Number(data.queueLimit || 50);
+  if (!Number.isFinite(queueCount) || queueCount <= 0 || !Number.isFinite(queueLimit) || queueLimit <= 0) {
+    return null;
+  }
+  return {
+    queueCount,
+    queueLimit,
+    queueLabel: data.queueLabel || `Queue: ${queueCount}/${queueLimit}`,
+    queuePosition: data.queuePosition,
+    queueFullMessage: data.queueFullMessage,
+  };
+}
+
 function apiErrorMessage(err, fallback) {
+  const queueStatus = normalizeQueueStatus(err.response?.data);
+  if (queueStatus && err.response?.data?.queueFullMessage) {
+    const busyMessage = err.response?.data?.message || err.response?.data?.error || fallback;
+    return `${busyMessage} ${err.response.data.queueFullMessage}`;
+  }
+
   const serverError =
     typeof err.response?.data?.error === 'string' ? err.response.data.error : '';
   if (serverError) return serverError;
@@ -94,9 +116,11 @@ export default function CameraScreen({ navigation }) {
   const [cutoutUri, setCutoutUri] = useState(null);
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
+  const [queueStatus, setQueueStatus] = useState(null);
   const [cooldown, setCooldown] = useState(0);
   const [showMoreRecipes, setShowMoreRecipes] = useState(false);
   const cooldownRef = useRef(null);
+  const queuePollRef = useRef(null);
   const cameraRef = useRef(null);
   const requestIdRef = useRef(0);
   const isInitialLoading = useInitialContentLoading();
@@ -131,6 +155,31 @@ export default function CameraScreen({ navigation }) {
     }, 1000);
   };
 
+  const stopQueuePolling = () => {
+    if (queuePollRef.current) {
+      clearInterval(queuePollRef.current);
+      queuePollRef.current = null;
+    }
+  };
+
+  const startQueuePolling = (requestId) => {
+    stopQueuePolling();
+
+    const refresh = async () => {
+      try {
+        const response = await mlApi.getImageAnalysisQueue();
+        if (isCurrentRequest(requestId)) {
+          setQueueStatus(normalizeQueueStatus(response.data));
+        }
+      } catch {
+        // Queue status is only user-facing context; analysis should continue.
+      }
+    };
+
+    refresh();
+    queuePollRef.current = setInterval(refresh, 1500);
+  };
+
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -138,6 +187,7 @@ export default function CameraScreen({ navigation }) {
     })();
     return () => {
       if (cooldownRef.current) clearInterval(cooldownRef.current);
+      stopQueuePolling();
     };
   }, []);
 
@@ -175,19 +225,27 @@ export default function CameraScreen({ navigation }) {
   /* ── Call backend API ── */
   const analyzeImage = async (base64, requestId) => {
     setLoading(true);
+    startQueuePolling(requestId);
     try {
       const response = await mlApi.analyzeIngredients(base64);
       if (!isCurrentRequest(requestId)) return false;
       setAnalysisResult(response.data);
       setAnalysisError(null);
+      setQueueStatus(normalizeQueueStatus(response.data));
       startCooldown();
       return true;
     } catch (err) {
       if (!isCurrentRequest(requestId)) return false;
       console.warn('[CameraScreen] analyzeImage warning:', err);
+      const nextQueueStatus = normalizeQueueStatus(err.response?.data);
+      setQueueStatus(nextQueueStatus);
       const serverMessage = err.response?.data?.message;
       if (serverMessage) {
-        setAnalysisError(serverMessage);
+        const nextMessage = apiErrorMessage(err, serverMessage);
+        setAnalysisError(nextMessage);
+        if (nextQueueStatus?.queueFullMessage) {
+          Alert.alert('AI Camera Busy', nextMessage);
+        }
       } else {
         setAnalysisError(apiErrorMessage(err, 'Failed to analyze image.'));
       }
@@ -195,6 +253,7 @@ export default function CameraScreen({ navigation }) {
       startCooldown();
       return false;
     } finally {
+      stopQueuePolling();
       if (isCurrentRequest(requestId)) setLoading(false);
     }
   };
@@ -319,6 +378,7 @@ export default function CameraScreen({ navigation }) {
         setCutoutUri(null);
         setBgRemovalDone(false);
         setBgRemovalProgress('');
+        setQueueStatus(null);
         reset();
         const photo = await cameraRef.current.takePictureAsync({
           base64: true,
@@ -364,6 +424,7 @@ export default function CameraScreen({ navigation }) {
     setCutoutUri(null);
     setBgRemovalDone(false);
     setBgRemovalProgress('');
+    setQueueStatus(null);
     setShowMoreRecipes(false);
     setPhase(P.IDLE);
     reset();
@@ -456,7 +517,17 @@ export default function CameraScreen({ navigation }) {
           {/* Loading overlay during AI analysis */}
           {loading && phase === P.DONE && (
             <View style={st.loadingOverlay}>
-              <View style={st.loadingCardWrap}><CameraAnalysisSkeleton colors={colors} /></View>
+              <View style={st.loadingCardWrap}>
+                {queueStatus && (
+                  <View style={st.queueBadge}>
+                    <Text style={st.queueBadgeText}>
+                      {queueStatus.queueLabel}
+                      {queueStatus.queuePosition ? ` - Position ${queueStatus.queuePosition}` : ''}
+                    </Text>
+                  </View>
+                )}
+                <CameraAnalysisSkeleton colors={colors} />
+              </View>
             </View>
           )}
 
@@ -496,6 +567,7 @@ export default function CameraScreen({ navigation }) {
                       {hasDetectedIngredients
                         ? `${detectedIngredients.length} ingredient${detectedIngredients.length !== 1 ? 's' : ''} detected`
                         : 'No ingredients detected'}
+                      {queueStatus?.queueLabel ? ` - ${queueStatus.queueLabel}` : ''}
                     </Text>
                   </View>
                 </View>
@@ -678,6 +750,8 @@ const st = StyleSheet.create({
   permWrap: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: 40 },
   permText: { fontFamily: 'Geist_400Regular', fontSize: 14, color: '#fff', textAlign: 'center' },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  queueBadge: { marginBottom: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa' },
+  queueBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 12, color: '#c2410c', textAlign: 'center' },
   loadingCardWrap: { position: 'absolute', left: 12, right: 12, bottom: 100 },
   resultSafe: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 },
   resultCard: { overflow: 'hidden', borderRadius: 0 },

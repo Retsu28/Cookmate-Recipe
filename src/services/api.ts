@@ -51,7 +51,13 @@ async function request<T = unknown>(
       typeof (data as { error: unknown }).error === 'string'
         ? (data as { error: string }).error
         : `Request failed (${res.status})`;
-    throw new Error(msg);
+    const error = new Error(msg) as Error & {
+      data?: unknown;
+      status?: number;
+    };
+    error.data = data;
+    error.status = res.status;
+    throw error;
   }
 
   return data as T;

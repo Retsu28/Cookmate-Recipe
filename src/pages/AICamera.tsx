@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import api from '@/services/api';
 import { Badge } from '../components/ui/badge';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { AICameraPageSkeleton, CameraAnalysisSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 
@@ -35,6 +36,19 @@ interface AnalysisResult {
   detectedIngredients: DetectedIngredient[];
   matchedRecipes: MatchedRecipe[];
   message: string | null;
+  queueCount?: number;
+  queueLimit?: number;
+  queueLabel?: string;
+  queuePosition?: number;
+  queueWarning?: string | null;
+}
+
+interface QueueStatus {
+  queueCount: number;
+  queueLimit: number;
+  queueLabel: string;
+  queuePosition?: number;
+  queueFullMessage?: string;
 }
 
 const MAX_UPLOAD_FILE_SIZE = 12 * 1024 * 1024;
@@ -193,7 +207,40 @@ function isAbortError(err: unknown) {
   );
 }
 
+function normalizeQueueStatus(value: unknown): QueueStatus | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const data = value as Partial<QueueStatus>;
+  const queueCount = Number(data.queueCount);
+  const queueLimit = Number(data.queueLimit || 50);
+
+  if (!Number.isFinite(queueCount) || queueCount <= 0 || !Number.isFinite(queueLimit) || queueLimit <= 0) {
+    return null;
+  }
+
+  return {
+    queueCount,
+    queueLimit,
+    queueLabel: data.queueLabel || `Queue: ${queueCount}/${queueLimit}`,
+    queuePosition: data.queuePosition,
+    queueFullMessage: data.queueFullMessage,
+  };
+}
+
 function cameraWarningMessage(err: unknown, fallback: string) {
+  const data = err && typeof err === 'object' && 'data' in err
+    ? (err as { data?: unknown }).data
+    : null;
+  const queueStatus = normalizeQueueStatus(data);
+  const queueMessage = data && typeof data === 'object' && 'queueFullMessage' in data
+    ? String((data as { queueFullMessage?: unknown }).queueFullMessage || '')
+    : '';
+  if (queueStatus && queueMessage) {
+    return `${(err as Error).message || fallback} ${queueMessage}`;
+  }
+
   const message = err instanceof Error ? err.message : '';
   if (/failed to fetch|networkerror|network request failed/i.test(message)) {
     return 'Cannot reach the CookMate API. Make sure the API server is running and the web app can access it.';
@@ -214,8 +261,10 @@ export default function AICamera() {
   const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const queuePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activePreviewUrlRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
@@ -255,16 +304,42 @@ export default function AICamera() {
     bgRemovalAbortRef.current = null;
   }, []);
 
+  const stopQueuePolling = useCallback(() => {
+    if (queuePollRef.current) {
+      clearInterval(queuePollRef.current);
+      queuePollRef.current = null;
+    }
+  }, []);
+
+  const startQueuePolling = useCallback((requestId: number) => {
+    stopQueuePolling();
+
+    const refresh = async () => {
+      try {
+        const status = await api.get<QueueStatus>('/api/ml/image-analysis/queue');
+        if (requestIdRef.current === requestId) {
+          setQueueStatus(normalizeQueueStatus(status));
+        }
+      } catch {
+        // Queue status is helpful context, not a blocker for analysis.
+      }
+    };
+
+    refresh();
+    queuePollRef.current = setInterval(refresh, 1500);
+  }, [stopQueuePolling]);
+
   useEffect(() => {
     return () => {
       requestIdRef.current += 1;
       abortInFlightRequests();
+      stopQueuePolling();
       if (cooldownRef.current) clearInterval(cooldownRef.current);
       if (activePreviewUrlRef.current) {
         URL.revokeObjectURL(activePreviewUrlRef.current);
       }
     };
-  }, [abortInFlightRequests]);
+  }, [abortInFlightRequests, stopQueuePolling]);
 
   /* Phase sequencer - keeps the sticker animation quick while bg removal finishes in the background */
   useEffect(() => {
@@ -351,6 +426,7 @@ export default function AICamera() {
     setCutoutUrl(null);
     setBgRemovalDone(false);
     setBgRemovalProgress('');
+    setQueueStatus(null);
     setLoading(true);
     setPhase('scanning');
 
@@ -380,6 +456,7 @@ export default function AICamera() {
     analysisAbortRef.current = controller;
     setLoading(true);
     setError(null);
+    startQueuePolling(requestId);
     try {
       const result = await api.post<AnalysisResult>(
         '/api/ml/analyze-ingredients',
@@ -389,19 +466,29 @@ export default function AICamera() {
       );
       if (requestIdRef.current === requestId) {
         setAnalysis(result);
+        setQueueStatus(normalizeQueueStatus(result));
         startCooldown();
       }
     } catch (err: any) {
       if (isAbortError(err)) return;
       if (requestIdRef.current !== requestId) return;
       console.warn('Analysis warning:', err);
-      setError(cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.'));
+      const nextQueueStatus = normalizeQueueStatus(err?.data);
+      const nextMessage = cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.');
+      setQueueStatus(nextQueueStatus);
+      setError(nextMessage);
+      if (nextQueueStatus?.queueFullMessage) {
+        toast.warning('AI Camera Busy', {
+          description: nextMessage,
+        });
+      }
       startCooldown();
     } finally {
       if (analysisAbortRef.current === controller) {
         analysisAbortRef.current = null;
       }
       if (requestIdRef.current === requestId) {
+        stopQueuePolling();
         setLoading(false);
       }
     }
@@ -410,8 +497,9 @@ export default function AICamera() {
   const handleReset = () => {
     requestIdRef.current += 1;
     abortInFlightRequests();
+    stopQueuePolling();
     replacePreviewImage(null); setAnalysis(null); setError(null); setPhase('idle');
-    setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setLoading(false);
+    setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setQueueStatus(null); setLoading(false);
     fileInputRef.current?.click();
   };
 
@@ -431,6 +519,7 @@ export default function AICamera() {
   const otherRecipes = matchedRecipes.slice(1, 8);
   const noFoodDetected = analysis?.success === false || !hasDetectedIngredients;
   const confidenceColor = (c: string) => c === 'high' ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : c === 'medium' ? 'bg-amber-500/20 text-amber-200 border-amber-400/30' : 'bg-red-500/20 text-red-200 border-red-400/30';
+  const visibleQueueStatus = queueStatus || normalizeQueueStatus(analysis);
 
   return (
     <Layout>
@@ -597,7 +686,15 @@ export default function AICamera() {
                 </Card>
               </motion.div>
             ) : showAnalysisSkeleton ? (
-              <CameraAnalysisSkeleton />
+              <div className="space-y-3">
+                {visibleQueueStatus && (
+                  <div className="rounded-[1.5rem] border border-orange-100 bg-white px-5 py-3 text-sm font-bold text-orange-700 shadow-sm dark:border-orange-500/20 dark:bg-stone-900 dark:text-orange-300">
+                    {visibleQueueStatus.queueLabel}
+                    {visibleQueueStatus.queuePosition ? ` - Position ${visibleQueueStatus.queuePosition}` : ''}
+                  </div>
+                )}
+                <CameraAnalysisSkeleton />
+              </div>
             ) : showAnalysisResult && analysis ? (
               <>
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -607,11 +704,18 @@ export default function AICamera() {
                       <div className="p-2 bg-orange-500/20 rounded-xl"><Sparkles size={24} className="text-orange-400" /></div>
                       <h3 className="text-xl font-bold">Analysis Complete</h3>
                     </div>
-                    {hasDetectedIngredients && (
-                      <Badge className={cn("border px-3 py-1.5 font-bold capitalize", confidenceColor(analysis.detectedIngredients[0]?.confidence || 'medium'))}>
-                        {analysis.detectedIngredients.length} ingredient{analysis.detectedIngredients.length !== 1 ? 's' : ''} detected
-                      </Badge>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {visibleQueueStatus && (
+                        <Badge className="border border-white/20 bg-white/15 px-3 py-1.5 font-bold text-white">
+                          {visibleQueueStatus.queueLabel}
+                        </Badge>
+                      )}
+                      {hasDetectedIngredients && (
+                        <Badge className={cn("border px-3 py-1.5 font-bold capitalize", confidenceColor(analysis.detectedIngredients[0]?.confidence || 'medium'))}>
+                          {analysis.detectedIngredients.length} ingredient{analysis.detectedIngredients.length !== 1 ? 's' : ''} detected
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <CardContent className="p-8 flex-1 flex flex-col justify-between">
                     <div className="space-y-8">
