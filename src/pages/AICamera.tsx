@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle } from 'lucide-react';
+import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import api from '@/services/api';
@@ -214,11 +214,14 @@ export default function AICamera() {
   const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activePreviewUrlRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const bgRemovalAbortRef = useRef<AbortController | null>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
   const isInitialLoading = useInitialContentLoading();
 
   const replacePreviewImage = useCallback((nextUrl: string | null) => {
@@ -228,6 +231,21 @@ export default function AICamera() {
     }
     activePreviewUrlRef.current = nextUrl;
     setImage(nextUrl);
+  }, []);
+
+  const startCooldown = useCallback(() => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setCooldown(20);
+    cooldownRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          if (cooldownRef.current) clearInterval(cooldownRef.current);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   }, []);
 
   const abortInFlightRequests = useCallback(() => {
@@ -241,6 +259,7 @@ export default function AICamera() {
     return () => {
       requestIdRef.current += 1;
       abortInFlightRequests();
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
       if (activePreviewUrlRef.current) {
         URL.revokeObjectURL(activePreviewUrlRef.current);
       }
@@ -305,6 +324,11 @@ export default function AICamera() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (cooldown > 0) {
+      setError(`Please wait ${cooldown}s before analyzing another image.`);
+      e.target.value = '';
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setError('Please upload a valid image file.');
       e.target.value = '';
@@ -365,12 +389,14 @@ export default function AICamera() {
       );
       if (requestIdRef.current === requestId) {
         setAnalysis(result);
+        startCooldown();
       }
     } catch (err: any) {
       if (isAbortError(err)) return;
       if (requestIdRef.current !== requestId) return;
       console.warn('Analysis warning:', err);
       setError(cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.'));
+      startCooldown();
     } finally {
       if (analysisAbortRef.current === controller) {
         analysisAbortRef.current = null;
@@ -402,6 +428,7 @@ export default function AICamera() {
   const hasDetectedIngredients = Boolean(analysis?.detectedIngredients?.length);
   const matchedRecipes = showAnalysisResult ? (analysis?.matchedRecipes || []) : [];
   const topRecipe = matchedRecipes[0] || undefined;
+  const otherRecipes = matchedRecipes.slice(1, 8);
   const noFoodDetected = analysis?.success === false || !hasDetectedIngredients;
   const confidenceColor = (c: string) => c === 'high' ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : c === 'medium' ? 'bg-amber-500/20 text-amber-200 border-amber-400/30' : 'bg-red-500/20 text-red-200 border-red-400/30';
 
@@ -414,11 +441,11 @@ export default function AICamera() {
 
       <div className="mx-auto w-full max-w-6xl px-4 py-12 animate-fade-up sm:px-6 lg:px-8">
         <div className="text-center space-y-4 mb-12">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4 dark:bg-emerald-500/10 dark:border dark:border-emerald-500/20 dark:text-emerald-400">
             <Sparkles size={16} /> Powered by Gemini AI
           </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight">AI Kitchen Camera</h1>
-          <p className="text-lg text-stone-500 max-w-2xl mx-auto">Snap a photo of your fridge or a prepared dish, and we'll instantly identify the ingredients and suggest recipes.</p>
+          <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight dark:text-white">AI Kitchen Camera</h1>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto dark:text-stone-400">Snap a photo of your fridge or a prepared dish, and we'll instantly identify the ingredients and suggest recipes.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
@@ -426,7 +453,7 @@ export default function AICamera() {
           <div className="w-full">
             <div onClick={() => !image && fileInputRef.current?.click()} className={cn(
               "aspect-[4/5] sm:aspect-square w-full rounded-[2.5rem] overflow-hidden relative transition-all shadow-xl",
-              image ? "border-none shadow-stone-200/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group"
+              image ? "border-none shadow-stone-200/50 dark:shadow-black/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group dark:border-stone-700 dark:bg-stone-900/50 dark:hover:border-orange-500/60"
             )}>
               {image ? (
                 <div className="relative w-full h-full overflow-hidden bg-stone-900">
@@ -536,8 +563,8 @@ export default function AICamera() {
                     {phase === 'done' && (
                       <motion.div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-900/80 via-stone-900/20 to-transparent flex flex-col justify-end p-8 z-30"
                         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                        <Button onClick={handleReset} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg">
-                          <RefreshCcw size={20} className="mr-2" /> Retake Photo
+                        <Button onClick={handleReset} disabled={cooldown > 0} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg disabled:opacity-50">
+                          <RefreshCcw size={20} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : 'Retake Photo'}
                         </Button>
                       </motion.div>
                     )}
@@ -545,8 +572,8 @@ export default function AICamera() {
                 </div>
               ) : (
                 <div className="text-center space-y-6 p-8 relative z-10">
-                  <div className="w-24 h-24 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300 shadow-inner"><Camera size={48} /></div>
-                  <div><h3 className="text-2xl font-bold text-stone-900 mb-2">Tap to take a photo</h3><p className="text-stone-500">or browse files from your device</p></div>
+                  <div className="w-24 h-24 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300 shadow-inner dark:bg-stone-800 dark:border dark:border-stone-700"><Camera size={48} /></div>
+                  <div><h3 className="text-2xl font-bold text-stone-900 mb-2 dark:text-white">{cooldown > 0 ? `Please wait ${cooldown}s` : 'Tap to take a photo'}</h3><p className="text-stone-500">{cooldown > 0 ? 'Cooldown active before next analysis' : 'or browse files from your device'}</p></div>
                   <div className="inline-flex items-center gap-2 text-orange-500 font-bold mt-4"><Upload size={20} /> Upload Image</div>
                 </div>
               )}
@@ -558,22 +585,23 @@ export default function AICamera() {
           <div className="w-full h-full">
             {showAnalysisError ? (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                <Card className="rounded-[2.5rem] border-red-100 shadow-xl overflow-hidden bg-white">
+                <Card className="rounded-[2.5rem] border-red-100 shadow-xl overflow-hidden bg-white dark:bg-stone-900 dark:border-red-500/20">
                   <div className="bg-gradient-to-r from-red-600 to-red-500 flex items-center gap-3 p-6 text-white">
                     <div className="p-2 bg-white/20 rounded-xl"><AlertTriangle size={24} /></div>
                     <h3 className="text-xl font-bold">AI Camera Warning</h3>
                   </div>
                   <CardContent className="p-8 space-y-6">
-                    <p className="text-stone-600">{error}</p>
-                    <Button onClick={handleReset} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-full py-6 font-bold"><RefreshCcw size={18} className="mr-2" /> Try Again</Button>
+                    <p className="text-stone-600 dark:text-stone-300">{error}</p>
+                    <Button onClick={handleReset} disabled={cooldown > 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-full py-6 font-bold disabled:opacity-50"><RefreshCcw size={18} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : 'Try Again'}</Button>
                   </CardContent>
                 </Card>
               </motion.div>
             ) : showAnalysisSkeleton ? (
               <CameraAnalysisSkeleton />
             ) : showAnalysisResult && analysis ? (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="h-full">
-                <Card className="rounded-[2.5rem] border-stone-100 shadow-xl shadow-stone-200/50 overflow-hidden bg-white h-full flex flex-col">
+              <>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                <Card className="rounded-[2.5rem] border-stone-100 shadow-xl shadow-stone-200/50 overflow-hidden bg-white flex flex-col dark:bg-stone-900 dark:border-stone-800 dark:shadow-black/50">
                   <div className="orange-gradient flex flex-col justify-between gap-4 p-6 text-white sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-orange-500/20 rounded-xl"><Sparkles size={24} className="text-orange-400" /></div>
@@ -588,60 +616,63 @@ export default function AICamera() {
                   <CardContent className="p-8 flex-1 flex flex-col justify-between">
                     <div className="space-y-8">
                       <div>
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 flex items-center gap-2"><ChefHat size={16} /> Detected Ingredients</p>
+                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 flex items-center gap-2 dark:text-stone-500"><ChefHat size={16} /> Detected Ingredients</p>
                         {analysis.detectedIngredients.length > 0 ? (
                           <div className="space-y-3">
                             {analysis.detectedIngredients.map((ing) => (
-                              <div key={ing.name} className="bg-stone-50 border border-stone-100 rounded-2xl p-4">
+                              <div key={ing.name} className="bg-stone-50 border border-stone-100 rounded-2xl p-4 dark:bg-stone-800/60 dark:border-stone-700/50">
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="font-bold text-stone-900 capitalize">{ing.name}</span>
+                                  <span className="font-bold text-stone-900 capitalize dark:text-white">{ing.name}</span>
                                   <Badge className={cn("border px-2 py-0.5 text-xs font-bold capitalize", confidenceColor(ing.confidence))}>{ing.confidence}</Badge>
                                 </div>
-                                <p className="text-sm text-stone-500 leading-relaxed">{ing.description}</p>
+                                <p className="text-sm text-stone-500 leading-relaxed dark:text-stone-400">{ing.description}</p>
                               </div>
                             ))}
                           </div>
-                        ) : <p className="text-stone-400 italic">No ingredients detected</p>}
+                        ) : <p className="text-stone-400 italic dark:text-stone-500">No ingredients detected</p>}
                       </div>
                     </div>
                     {topRecipe ? (
-                      <div className="mt-8 pt-8 border-t border-stone-100">
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Suggested Recipes ({matchedRecipes.length})</p>
-                        <div className="space-y-3">
-                          {matchedRecipes.slice(0, 5).map((recipe) => (
-                            <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="block group">
-                              <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-5 rounded-[1.5rem] border border-orange-100 transition-all group-hover:shadow-lg group-hover:shadow-orange-100">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <h5 className="font-bold text-lg text-stone-900 mb-1 group-hover:text-orange-600 transition-colors truncate">{recipe.title}</h5>
-                                    {recipe.description && <p className="text-stone-600 text-sm leading-relaxed mb-2 line-clamp-1">{recipe.description}</p>}
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {recipe.matchedIngredients.map((mi) => (
-                                        <span key={mi} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium capitalize">{mi}</span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <ArrowRight size={18} className="text-orange-500 mt-1 shrink-0 group-hover:translate-x-1 transition-transform" />
-                                </div>
-                                {(recipe.difficulty || recipe.cook_time || recipe.category) && (
-                                  <div className="flex items-center gap-3 mt-2 text-xs text-stone-500">
-                                    {recipe.difficulty && <span>{recipe.difficulty}</span>}
-                                    {recipe.cook_time && <span>{recipe.cook_time}</span>}
-                                    {recipe.category && <span>{recipe.category}</span>}
-                                  </div>
-                                )}
+                      <div className="mt-8 pt-8 border-t border-stone-100 dark:border-stone-800">
+                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4 dark:text-stone-500">Suggested Recipe</p>
+                        <Link to={`/recipe/${topRecipe.id}`} className="block group">
+                          <div className="flex gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-3 transition-all group-hover:shadow-lg dark:border-stone-700/50 dark:bg-stone-800/60 dark:group-hover:border-orange-500/30">
+                            <div className="w-24 h-24 shrink-0 rounded-xl overflow-hidden bg-stone-200 dark:bg-stone-700">
+                              {topRecipe.image_url ? (
+                                <img src={topRecipe.image_url} alt={topRecipe.title} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-stone-400 dark:text-stone-500"><ChefHat size={28} /></div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0 py-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <h5 className="font-bold text-base text-stone-900 truncate group-hover:text-orange-600 transition-colors dark:text-white dark:group-hover:text-orange-400">{topRecipe.title}</h5>
+                                <ArrowRight size={16} className="text-orange-500 mt-0.5 shrink-0 group-hover:translate-x-1 transition-transform" />
                               </div>
-                            </Link>
-                          ))}
-                        </div>
+                              {topRecipe.description && <p className="text-stone-500 text-sm leading-relaxed line-clamp-2 mt-1 dark:text-stone-400">{topRecipe.description}</p>}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                {topRecipe.matchedIngredients.map((mi) => (
+                                  <span key={mi} className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold capitalize dark:bg-orange-500/15 dark:text-orange-400">{mi}</span>
+                                ))}
+                              </div>
+                              {(topRecipe.difficulty || topRecipe.cook_time || topRecipe.category) && (
+                                <div className="flex items-center gap-3 mt-2 text-xs text-stone-400 dark:text-stone-500">
+                                  {topRecipe.difficulty && <span>{topRecipe.difficulty}</span>}
+                                  {topRecipe.cook_time && <span>{topRecipe.cook_time}</span>}
+                                  {topRecipe.category && <span>{topRecipe.category}</span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
                       </div>
                     ) : (
-                      <div className="mt-8 border-t border-stone-100 pt-8">
-                        <div className="rounded-[2rem] border border-stone-200 bg-stone-50 p-6">
-                          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400">
+                      <div className="mt-8 border-t border-stone-100 pt-8 dark:border-stone-800">
+                        <div className="rounded-[2rem] border border-stone-200 bg-stone-50 p-6 dark:border-stone-700/50 dark:bg-stone-800/40">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
                             {noFoodDetected ? 'No Food Items Detected' : 'No Database Match Yet'}
                           </p>
-                          <p className="text-sm leading-relaxed text-stone-600">
+                          <p className="text-sm leading-relaxed text-stone-600 dark:text-stone-400">
                             {analysis.message || (noFoodDetected
                               ? 'No recognizable cooking ingredient was detected. Please retake or upload a clearer ingredient photo.'
                               : 'CookMate found ingredients, but no published recipe in the database matches them yet.')}
@@ -652,11 +683,59 @@ export default function AICamera() {
                   </CardContent>
                 </Card>
               </motion.div>
+
+              {/* ════ More Recipes Carousel ════ */}
+              {otherRecipes.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-xs font-bold text-stone-400 uppercase tracking-widest dark:text-stone-500">More Recipes ({otherRecipes.length})</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => carouselRef.current?.scrollBy({ left: -280, behavior: 'smooth' })} className="w-8 h-8 flex items-center justify-center rounded-full border border-stone-200 text-stone-400 hover:border-orange-400 hover:text-orange-500 transition-colors dark:border-stone-700 dark:text-stone-500 dark:hover:border-orange-500 dark:hover:text-orange-400"><ChevronLeft size={16} /></button>
+                      <button onClick={() => carouselRef.current?.scrollBy({ left: 280, behavior: 'smooth' })} className="w-8 h-8 flex items-center justify-center rounded-full border border-stone-200 text-stone-400 hover:border-orange-400 hover:text-orange-500 transition-colors dark:border-stone-700 dark:text-stone-500 dark:hover:border-orange-500 dark:hover:text-orange-400"><ChevronRight size={16} /></button>
+                    </div>
+                  </div>
+                  <div ref={carouselRef} className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {otherRecipes.map((recipe) => (
+                      <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="block group shrink-0 w-[240px]">
+                        <div className="rounded-2xl border border-stone-200 bg-stone-50 overflow-hidden transition-all group-hover:shadow-lg group-hover:border-orange-300 dark:border-stone-700/50 dark:bg-stone-800/60 dark:group-hover:border-orange-500/30 h-full flex flex-col">
+                          <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-200 dark:bg-stone-700">
+                            {recipe.image_url ? (
+                              <img src={recipe.image_url} alt={recipe.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-stone-400 dark:text-stone-500"><ChefHat size={32} /></div>
+                            )}
+                          </div>
+                          <div className="p-4 flex-1 flex flex-col">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <h5 className="font-bold text-sm text-stone-900 truncate group-hover:text-orange-600 transition-colors dark:text-white dark:group-hover:text-orange-400">{recipe.title}</h5>
+                              <ArrowRight size={14} className="text-orange-500 mt-0.5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                            </div>
+                            {recipe.description && <p className="text-stone-500 text-xs leading-relaxed line-clamp-2 mb-2 dark:text-stone-400">{recipe.description}</p>}
+                            <div className="flex flex-wrap gap-1 mt-auto">
+                              {recipe.matchedIngredients.slice(0, 2).map((mi) => (
+                                <span key={mi} className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold capitalize dark:bg-orange-500/15 dark:text-orange-400">{mi}</span>
+                              ))}
+                            </div>
+                            {(recipe.difficulty || recipe.cook_time || recipe.category) && (
+                              <div className="flex items-center gap-2 mt-2 text-[10px] text-stone-400 dark:text-stone-500">
+                                {recipe.difficulty && <span>{recipe.difficulty}</span>}
+                                {recipe.cook_time && <span>{recipe.cook_time}</span>}
+                                {recipe.category && <span>{recipe.category}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+              </>
             ) : (
-              <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-6 rounded-[2.5rem] border border-dashed border-orange-200 bg-orange-50/60 p-12 text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-orange-300 shadow-sm"><Sparkles size={40} /></div>
+              <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-6 rounded-[2.5rem] border border-dashed border-orange-200 bg-orange-50/60 p-12 text-center dark:border-stone-700 dark:bg-stone-900/30">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-orange-300 shadow-sm dark:bg-stone-800 dark:text-orange-400 dark:border dark:border-stone-700"><Sparkles size={40} /></div>
                 <div className="max-w-xs">
-                  <h3 className="text-xl font-bold text-stone-900 mb-2">Waiting for Image</h3>
+                  <h3 className="text-xl font-bold text-stone-900 mb-2 dark:text-white">Waiting for Image</h3>
                   <p className="text-stone-500">Upload a photo to let CookMate's AI analyze your ingredients and suggest recipes.</p>
                 </div>
               </div>

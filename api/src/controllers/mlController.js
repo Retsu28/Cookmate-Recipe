@@ -13,17 +13,19 @@ const STOP_WORDS = new Set([
 ]);
 
 const DEFAULT_GEMINI_MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
   'gemini-2.0-flash-lite',
   'gemini-2.0-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
 ];
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45000);
 const MAX_BASE64_LENGTH = 7 * 1024 * 1024; // roughly a 5MB image
 const BG_REMOVAL_TIMEOUT_MS = Number(process.env.BG_REMOVAL_TIMEOUT_MS || 90000);
 const ML_LOOKUP_CACHE_TTL_MS = Number(process.env.ML_LOOKUP_CACHE_TTL_MS || 5 * 60 * 1000);
 const AI_ANALYSIS_UNAVAILABLE = 'AI analysis is temporarily unavailable. Please try again.';
+const MAX_AI_CAMERA_QUEUE_SIZE = 50;
 const AI_CAMERA_QUEUE_WARNING = 'AI Camera is busy. Your image is queued and will be analyzed automatically.';
+const AI_CAMERA_QUEUE_FULL = 'AI Camera queue is full. Please wait a moment and try again.';
 const BG_REMOVAL_QUEUE_WARNING = 'AI Camera background removal is busy. Your image is queued.';
 
 const lookupCache = {
@@ -36,6 +38,9 @@ let bgRemovalQueue = Promise.resolve();
 let bgRemovalQueueSize = 0;
 
 function enqueueAiCameraAnalysis(task) {
+  if (aiCameraQueueSize >= MAX_AI_CAMERA_QUEUE_SIZE) {
+    return Promise.reject(new Error(AI_CAMERA_QUEUE_FULL));
+  }
   const queuePosition = aiCameraQueueSize;
   aiCameraQueueSize += 1;
 
@@ -264,6 +269,9 @@ function isGeminiQuotaError(err) {
 
 function geminiErrorPayload(err) {
   const message = String(err?.message || '');
+  if (message === AI_CAMERA_QUEUE_FULL) {
+    return { status: 429, error: AI_CAMERA_QUEUE_FULL };
+  }
   if (isGeminiQuotaError(err)) {
     return {
       status: 503,
@@ -933,15 +941,21 @@ exports.analyzeIngredients = async (req, res) => {
     const { GoogleGenerativeAI } = require('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    const prompt = `You are a cooking ingredient recognition AI. Analyze this image and identify ONLY the single main/primary cooking ingredient visible.
+    const prompt = `You are a cooking ingredient recognition AI. Analyze this image and identify ALL visible cooking ingredients or food items.
 
 Return a JSON object with exactly these fields:
 {
   "ingredients": [
     {
-      "name": "Pork Belly",
-      "normalizedName": "pork belly",
-      "description": "A cut of pork from the underside of the pig, known for its layers of fat and meat.",
+      "name": "Watermelon",
+      "normalizedName": "watermelon",
+      "description": "A large, sweet fruit with red or pink flesh and green rind, often eaten fresh or in fruit salads.",
+      "confidence": "high"
+    },
+    {
+      "name": "Kiwi",
+      "normalizedName": "kiwi",
+      "description": "A small, oval fruit with fuzzy brown skin and bright green flesh, known for its sweet-tart flavor.",
       "confidence": "high"
     }
   ],
@@ -949,13 +963,14 @@ Return a JSON object with exactly these fields:
 }
 
 Rules:
-- Identify ONLY ONE main ingredient — the primary food item in the image
-- Do NOT list seasonings, spices, oils, garnishes, or background items as separate ingredients
+- Identify ALL distinct food items or cooking ingredients visible in the image (up to 10)
+- Each ingredient must have: name (display name, capitalized), normalizedName (lowercase singular form for database matching), description (1 sentence about culinary use), confidence ("high", "medium", or "low")
+- Do NOT list seasonings, spices, oils, or garnishes as separate ingredients unless they are the main subject
 - If you see meat with herbs/spices on it, only identify the meat (e.g., "Pork Belly" not "Pork Belly, Salt, Pepper, Rosemary")
-- The ingredient must have: name (display name, capitalized), normalizedName (lowercase singular form for database matching), description (1 sentence about culinary use), confidence ("high", "medium", or "low")
-- If the image shows a prepared dish, identify it as one item (e.g., "Fried Rice" or "Chicken Adobo")
+- If the image shows a single prepared dish, identify it as one item (e.g., "Fried Rice" or "Chicken Adobo")
+- If the image shows multiple distinct food items (e.g., fruits, vegetables, raw ingredients), list each one separately
 - If no cooking ingredient is visible, set ingredients to [] and isFoodImage to false
-- Do NOT suggest recipes — only identify the ingredient
+- Do NOT suggest recipes — only identify ingredients
 - Do NOT invent ingredients that are not visible
 - normalizedName should be singular form: "tomato" not "tomatoes", "egg" not "eggs"
 - Only return valid JSON, no markdown or extra text`;
@@ -1030,19 +1045,7 @@ Rules:
       });
     }
 
-    // ── Single-ingredient enforcement ──
-    // If Gemini returned multiple ingredients, keep only the first (main) one
-    // and skip recipe suggestions — tell the user to focus on one ingredient.
-    if (detectedIngredients.length > 1) {
-      return res.json({
-        success: true,
-        detectedIngredients: [detectedIngredients[0]].map(({ normalizedName, ...rest }) => rest),
-        matchedRecipes: [],
-        message: 'Multiple ingredients were detected. Please take a photo of one ingredient at a time for recipe suggestions.',
-      });
-    }
-
-    // ── Enforce exact match: verify the single ingredient exists in the database ──
+    // ── Enforce exact match: verify detected ingredients exist in the database ──
     const ingredientNames = detectedIngredients.map((item) => item.normalizedName);
     let verifiedIngredients = [];
     try {

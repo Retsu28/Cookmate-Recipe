@@ -7,6 +7,10 @@ import {
   Image,
   Dimensions,
   Alert,
+  ScrollView,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +32,9 @@ import Animated, {
 
 const { width: SW } = Dimensions.get('window');
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 /* Phases: idle → scanning → selecting → selected → sticker → done */
 const P = { IDLE: 0, SCAN: 1, SELECTING: 2, SELECTED: 3, STICKER: 4, DONE: 5 };
@@ -87,6 +94,9 @@ export default function CameraScreen({ navigation }) {
   const [cutoutUri, setCutoutUri] = useState(null);
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [showMoreRecipes, setShowMoreRecipes] = useState(false);
+  const cooldownRef = useRef(null);
   const cameraRef = useRef(null);
   const requestIdRef = useRef(0);
   const isInitialLoading = useInitialContentLoading();
@@ -106,11 +116,29 @@ export default function CameraScreen({ navigation }) {
   const sparkle2 = useSharedValue(0);
   const badgeOp = useSharedValue(0);
 
+  const startCooldown = () => {
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setCooldown(20);
+    cooldownRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          if (cooldownRef.current) clearInterval(cooldownRef.current);
+          cooldownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
   }, []);
 
   const configurePictureSize = async () => {
@@ -152,6 +180,7 @@ export default function CameraScreen({ navigation }) {
       if (!isCurrentRequest(requestId)) return false;
       setAnalysisResult(response.data);
       setAnalysisError(null);
+      startCooldown();
       return true;
     } catch (err) {
       if (!isCurrentRequest(requestId)) return false;
@@ -163,6 +192,7 @@ export default function CameraScreen({ navigation }) {
         setAnalysisError(apiErrorMessage(err, 'Failed to analyze image.'));
       }
       setAnalysisResult(null);
+      startCooldown();
       return false;
     } finally {
       if (isCurrentRequest(requestId)) setLoading(false);
@@ -275,6 +305,10 @@ export default function CameraScreen({ navigation }) {
 
   /* ── Capture photo ── */
   const takePicture = async () => {
+    if (cooldown > 0) {
+      Alert.alert('Cooldown', `Please wait ${cooldown}s before taking another photo.`);
+      return;
+    }
     if (cameraRef.current) {
       try {
         const requestId = requestIdRef.current + 1;
@@ -330,6 +364,7 @@ export default function CameraScreen({ navigation }) {
     setCutoutUri(null);
     setBgRemovalDone(false);
     setBgRemovalProgress('');
+    setShowMoreRecipes(false);
     setPhase(P.IDLE);
     reset();
   };
@@ -352,7 +387,13 @@ export default function CameraScreen({ navigation }) {
   const hasDetectedIngredients = detectedIngredients.length > 0;
   const matchedRecipes = analysisResult?.matchedRecipes || [];
   const topRecipe = matchedRecipes[0] || null;
+  const otherRecipes = matchedRecipes.slice(1, 5);
   const noFoodDetected = analysisResult?.success === false || !hasDetectedIngredients;
+
+  const toggleMoreRecipes = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowMoreRecipes((prev) => !prev);
+  };
 
   return (
     <View style={st.root}>
@@ -433,8 +474,8 @@ export default function CameraScreen({ navigation }) {
                   </View>
                 </View>
                 <View style={st.resultActions}>
-                  <TouchableOpacity onPress={handleRetake} style={[st.retakeBtn, { borderColor: colors.border }]}>
-                    <Text style={[st.retakeBtnText, { color: colors.text }]}>TRY AGAIN</Text>
+                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0} style={[st.retakeBtn, { borderColor: colors.border }, cooldown > 0 && { opacity: 0.5 }]}>
+                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : 'TRY AGAIN'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -484,18 +525,80 @@ export default function CameraScreen({ navigation }) {
                 )}
 
                 {topRecipe ? (
-                  <View style={[st.recommendationBox, { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed', borderColor: colors.border }]}>
-                    <Text style={[st.recommendationLabel, { color: colors.textSubtle }]}>SUGGESTED RECIPES ({matchedRecipes.length})</Text>
-                    <Text style={[st.recommendationTitle, { color: colors.text }]} numberOfLines={1}>{topRecipe.title}</Text>
-                    {!!topRecipe.description && (
-                      <Text style={[st.recommendationDesc, { color: colors.textMuted }]} numberOfLines={2}>
-                        {topRecipe.description}
-                      </Text>
-                    )}
-                    {topRecipe.matchedIngredients?.length > 0 && (
-                      <Text style={[st.ingredMatchText, { color: colors.primary }]}>
-                        Matched: {topRecipe.matchedIngredients.join(', ')}
-                      </Text>
+                  <View>
+                    <View style={[st.recommendationBox, { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed', borderColor: colors.border }]}>
+                      <Text style={[st.recommendationLabel, { color: colors.textSubtle }]}>SUGGESTED RECIPE</Text>
+                      <View style={st.recipeRowWithImage}>
+                        {topRecipe.image_url ? (
+                          <Image source={{ uri: topRecipe.image_url }} style={st.recipeThumb} resizeMode="cover" />
+                        ) : (
+                          <View style={[st.recipeThumb, st.recipeThumbPlaceholder]}><Ionicons name="restaurant" size={20} color={colors.textMuted} /></View>
+                        )}
+                        <View style={st.recipeRowDetails}>
+                          <Text style={[st.recommendationTitle, { color: colors.text }]} numberOfLines={1}>{topRecipe.title}</Text>
+                          {!!topRecipe.description && (
+                            <Text style={[st.recommendationDesc, { color: colors.textMuted }]} numberOfLines={2}>
+                              {topRecipe.description}
+                            </Text>
+                          )}
+                          {topRecipe.matchedIngredients?.length > 0 && (
+                            <Text style={[st.ingredMatchText, { color: colors.primary }]}>
+                              Matched: {topRecipe.matchedIngredients.join(', ')}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                    {otherRecipes.length > 0 && (
+                      <View>
+                        <TouchableOpacity onPress={toggleMoreRecipes} style={st.moreRecipesToggle}>
+                          <Ionicons
+                            name={showMoreRecipes ? 'chevron-down' : 'chevron-up'}
+                            size={18}
+                            color={colors.primary}
+                          />
+                          <Text style={[st.moreRecipesToggleText, { color: colors.primary }]}>
+                            {showMoreRecipes ? 'Hide' : `More Recipes (${otherRecipes.length})`}
+                          </Text>
+                          <Ionicons
+                            name={showMoreRecipes ? 'chevron-down' : 'chevron-up'}
+                            size={18}
+                            color={colors.primary}
+                          />
+                        </TouchableOpacity>
+                        {showMoreRecipes && (
+                          <ScrollView style={st.moreRecipesScroll} nestedScrollEnabled>
+                            {otherRecipes.map((recipe) => (
+                              <TouchableOpacity
+                                key={recipe.id}
+                                onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id })}
+                                style={[st.moreRecipeItem, { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed', borderColor: colors.border }]}
+                              >
+                                <View style={st.recipeRowWithImage}>
+                                  {recipe.image_url ? (
+                                    <Image source={{ uri: recipe.image_url }} style={st.recipeThumbSmall} resizeMode="cover" />
+                                  ) : (
+                                    <View style={[st.recipeThumbSmall, st.recipeThumbPlaceholder]}><Ionicons name="restaurant" size={16} color={colors.textMuted} /></View>
+                                  )}
+                                  <View style={st.recipeRowDetails}>
+                                    <Text style={[st.recommendationTitle, { color: colors.text }]} numberOfLines={1}>{recipe.title}</Text>
+                                    {!!recipe.description && (
+                                      <Text style={[st.recommendationDesc, { color: colors.textMuted }]} numberOfLines={1}>
+                                        {recipe.description}
+                                      </Text>
+                                    )}
+                                    {recipe.matchedIngredients?.length > 0 && (
+                                      <Text style={[st.ingredMatchText, { color: colors.primary }]}>
+                                        Matched: {recipe.matchedIngredients.join(', ')}
+                                      </Text>
+                                    )}
+                                  </View>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        )}
+                      </View>
                     )}
                   </View>
                 ) : (
@@ -513,8 +616,8 @@ export default function CameraScreen({ navigation }) {
 
                 {/* Actions */}
                 <View style={st.resultActions}>
-                  <TouchableOpacity onPress={handleRetake} style={[st.retakeBtn, { borderColor: colors.border }]}>
-                    <Text style={[st.retakeBtnText, { color: colors.text }]}>RETAKE</Text>
+                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0} style={[st.retakeBtn, { borderColor: colors.border }, cooldown > 0 && { opacity: 0.5 }]}>
+                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : 'RETAKE'}</Text>
                   </TouchableOpacity>
                   {topRecipe ? (
                     <TouchableOpacity
@@ -554,11 +657,11 @@ export default function CameraScreen({ navigation }) {
             </View>
             <View style={st.bottomBar}>
               <View style={st.hintPill}>
-                <Text style={st.hintText}>Point at ingredients or a dish</Text>
+                <Text style={st.hintText}>{cooldown > 0 ? `Please wait ${cooldown}s` : 'Point at ingredients or a dish'}</Text>
               </View>
               <View style={st.captureRow}>
                 <TouchableOpacity style={st.sideBtn}><Ionicons name="images-outline" size={20} color="#fff" /></TouchableOpacity>
-                <TouchableOpacity onPress={takePicture} style={st.captureOuter}><View style={st.captureInner} /></TouchableOpacity>
+                <TouchableOpacity onPress={takePicture} disabled={cooldown > 0} style={[st.captureOuter, cooldown > 0 && { opacity: 0.4 }]}><View style={st.captureInner} /></TouchableOpacity>
                 <TouchableOpacity style={st.sideBtn}><Ionicons name="flash-outline" size={20} color="#fff" /></TouchableOpacity>
               </View>
             </View>
@@ -645,4 +748,14 @@ const st = StyleSheet.create({
   badgeWrap: { position: 'absolute', top: 50, left: 0, right: 0, alignItems: 'center' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
   badgeText: { fontFamily: 'Geist_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.5 },
+  // ── More Recipes expandable
+  moreRecipesToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginHorizontal: 16 },
+  moreRecipesToggleText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1 },
+  moreRecipesScroll: { maxHeight: 200, marginHorizontal: 16, marginBottom: 8 },
+  moreRecipeItem: { padding: 10, borderWidth: 1, marginBottom: 8 },
+  recipeRowWithImage: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  recipeRowDetails: { flex: 1 },
+  recipeThumb: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#e7e5e4' },
+  recipeThumbSmall: { width: 48, height: 48, borderRadius: 8, backgroundColor: '#e7e5e4' },
+  recipeThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
 });

@@ -9,6 +9,7 @@ import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
 import AppShell from './app/AppShell';
 import SplashScreen from '@/components/SplashScreen';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
 import AdminGate from '@/auth/AdminGate';
@@ -117,6 +118,7 @@ export default function App() {
             </Route>
           </Routes>
           <Toaster position="top-right" />
+          <InstallPrompt />
         </Router>
       </AuthProvider>
     </ThemeProvider>

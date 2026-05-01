@@ -2,6 +2,38 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 
+// ─── Sync recipe_ingredients join table ──────────────────────────────────────
+// ingredients: [{ name }, ...]
+async function syncRecipeIngredients(recipeId, ingredients) {
+  if (!Array.isArray(ingredients)) return;
+
+  // Remove existing links
+  await pool.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [recipeId]);
+
+  for (const ing of ingredients) {
+    const name = (ing.name || '').trim();
+    if (!name) continue;
+
+    // Upsert into ingredients table
+    const upsert = await pool.query(
+      `INSERT INTO ingredients (name)
+       VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [name]
+    );
+    const ingredientId = upsert.rows[0].id;
+
+    // Link to recipe
+    await pool.query(
+      `INSERT INTO recipe_ingredients (recipe_id, ingredient_id)
+       VALUES ($1, $2)
+       ON CONFLICT (recipe_id, ingredient_id) DO NOTHING`,
+      [recipeId, ingredientId]
+    );
+  }
+}
+
 // ─── Shared column list ──────────────────────────────────────────────────────
 const RECIPE_COLS = `
   id, source_recipe_id, title, description, instructions,
@@ -350,7 +382,7 @@ exports.createRecipe = async (req, res) => {
       title, description, instructions,
       prep_time_minutes, cook_time_minutes, servings, calories,
       difficulty, region_or_origin, category, tags,
-      normalized_ingredients,
+      normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
     } = req.body;
 
@@ -394,6 +426,11 @@ exports.createRecipe = async (req, res) => {
       ]
     );
 
+    // Sync relational ingredients (recipe_ingredients join table)
+    if (Array.isArray(ingredients) && ingredients.length > 0) {
+      await syncRecipeIngredients(result.rows[0].id, ingredients);
+    }
+
     res.status(201).json({ recipe: result.rows[0] });
   } catch (err) {
     console.error('[recipes/createRecipe]', err);
@@ -413,7 +450,7 @@ exports.updateRecipe = async (req, res) => {
       title, description, instructions,
       prep_time_minutes, cook_time_minutes, servings, calories,
       difficulty, region_or_origin, category, tags,
-      normalized_ingredients,
+      normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
     } = req.body;
 
@@ -460,6 +497,12 @@ exports.updateRecipe = async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Recipe not found.' });
     }
+
+    // Sync relational ingredients (recipe_ingredients join table)
+    if (Array.isArray(ingredients)) {
+      await syncRecipeIngredients(id, ingredients);
+    }
+
     res.json({ recipe: result.rows[0] });
   } catch (err) {
     console.error('[recipes/updateRecipe]', err);

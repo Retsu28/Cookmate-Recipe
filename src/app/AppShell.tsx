@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { WifiOff } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { InstallPrompt } from '@/components/InstallPrompt';
 import { Layout, LayoutShellContext } from '@/components/Layout';
 import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -68,7 +67,6 @@ export default function AppShell() {
       )}
 
       {!isOnline && <OfflineBanner />}
-      {shouldUsePersistentLayout && <InstallPrompt />}
       <ShellBottomNav />
     </>
   );

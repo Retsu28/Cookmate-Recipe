@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Upload, Search, Filter, Loader2 } from 'lucide-react';
+import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Upload, Search, Filter, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
@@ -30,6 +30,12 @@ interface DbRecipe {
   updated_at: string;
 }
 
+interface IngredientRow {
+  name: string;
+}
+
+const emptyIngredientRow = (): IngredientRow => ({ name: '' });
+
 const emptyForm = {
   title: '', description: '', instructions: '',
   region_or_origin: '', category: '', difficulty: 'Easy',
@@ -49,6 +55,7 @@ export default function RecipeManagement() {
   const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyIngredientRow()]);
   const [saving, setSaving] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -76,10 +83,11 @@ export default function RecipeManagement() {
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setIngredientRows([emptyIngredientRow()]);
     setShowForm(true);
   };
 
-  const openEdit = (r: DbRecipe) => {
+  const openEdit = async (r: DbRecipe) => {
     setEditingId(r.id);
     setForm({
       title: r.title,
@@ -98,18 +106,53 @@ export default function RecipeManagement() {
       is_featured: r.is_featured,
       is_published: r.is_published,
     });
+    // Fetch relational ingredients from the join table
+    try {
+      const detail = await api.get<{ recipe: any }>(`/api/recipes/${r.id}`);
+      const ings: any[] = detail.recipe?.ingredients || [];
+      if (ings.length > 0) {
+        setIngredientRows(ings.map((i: any) => ({
+          name: i.name || '',
+        })));
+      } else {
+        setIngredientRows([emptyIngredientRow()]);
+      }
+    } catch {
+      setIngredientRows([emptyIngredientRow()]);
+    }
     setShowForm(true);
+  };
+
+  const updateIngredientRow = (index: number, field: keyof IngredientRow, value: string) => {
+    setIngredientRows((prev) => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
+  };
+
+  const addIngredientRow = () => setIngredientRows((prev) => [...prev, emptyIngredientRow()]);
+
+  const removeIngredientRow = (index: number) => {
+    setIngredientRows((prev) => prev.length <= 1 ? [emptyIngredientRow()] : prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
     if (!form.title.trim()) { toast.error('Recipe title is required.'); return; }
     setSaving(true);
     try {
+      // Build ingredients array from rows (filter empty names)
+      const ingredients = ingredientRows.filter((r) => r.name.trim()).map((r) => ({
+        name: r.name.trim(),
+      }));
+
+      // Auto-generate normalized_ingredients from ingredient names
+      const autoNormalized = ingredients.map((i) => i.name.toLowerCase());
+      const manualNormalized = form.normalized_ingredients.split(';').map(t => t.trim().toLowerCase()).filter(Boolean);
+      const mergedNormalized = [...new Set([...autoNormalized, ...manualNormalized])];
+
       const body = {
         ...form,
         instructions: form.instructions.split('\n').map(s => s.trim()).filter(Boolean),
         tags: form.tags.split(';').map(t => t.trim()).filter(Boolean),
-        normalized_ingredients: form.normalized_ingredients.split(';').map(t => t.trim().toLowerCase()).filter(Boolean),
+        normalized_ingredients: mergedNormalized,
+        ingredients,
       };
       if (editingId) {
         await api.put(`/api/recipes/${editingId}`, body);
@@ -349,8 +392,33 @@ export default function RecipeManagement() {
               <input value={form.tags} onChange={e => setForm({...form, tags: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="savory; braised; rice meal" />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Ingredients (semicolon-separated)</label>
-              <textarea value={form.normalized_ingredients} onChange={e => setForm({...form, normalized_ingredients: e.target.value})} rows={2} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="chicken; garlic; soy sauce" />
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Ingredients</label>
+              <div className="space-y-2">
+                {ingredientRows.map((row, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      value={row.name}
+                      onChange={e => updateIngredientRow(idx, 'name', e.target.value)}
+                      placeholder="Ingredient name"
+                      className="flex-1 rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-orange-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeIngredientRow(idx)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addIngredientRow} className="mt-2 flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-600">
+                <Plus size={14} /> Add Ingredient
+              </button>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Extra Normalized Ingredients (optional, semicolon-separated)</label>
+              <input value={form.normalized_ingredients} onChange={e => setForm({...form, normalized_ingredients: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="additional keywords; alternate names" />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Instructions (one step per line)</label>
