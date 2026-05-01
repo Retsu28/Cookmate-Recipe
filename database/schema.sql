@@ -30,27 +30,39 @@ CREATE TABLE ingredients (
 -- Recipes table
 CREATE TABLE recipes (
     id SERIAL PRIMARY KEY,
+    source_recipe_id VARCHAR(50),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     instructions TEXT[],
     prep_time_minutes INTEGER,
     cook_time_minutes INTEGER,
+    total_time_minutes INTEGER,
     difficulty VARCHAR(50),
     servings INTEGER,
     calories INTEGER,
     protein_g DECIMAL,
     carbs_g DECIMAL,
     fat_g DECIMAL,
+    region_or_origin VARCHAR(100),
+    category VARCHAR(100),
+    tags TEXT[],
+    normalized_ingredients TEXT[],
     image_url TEXT,
+    is_featured BOOLEAN DEFAULT FALSE,
+    is_published BOOLEAN DEFAULT TRUE,
     author_id INTEGER REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX recipes_title_unique_idx ON recipes (LOWER(BTRIM(title)));
+CREATE UNIQUE INDEX recipes_source_recipe_id_unique_idx ON recipes (source_recipe_id) WHERE source_recipe_id IS NOT NULL;
 
 -- Recipe Ingredients junction table
 CREATE TABLE recipe_ingredients (
     recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
     ingredient_id INTEGER REFERENCES ingredients(id),
-    quantity DECIMAL NOT NULL,
+    quantity DECIMAL,
     unit VARCHAR(50),
     PRIMARY KEY (recipe_id, ingredient_id)
 );

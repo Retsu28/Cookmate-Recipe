@@ -10,7 +10,7 @@ export default function RecipeCard({ recipe, horizontal, onPress }) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[st.hCard, { borderColor: colors.border }]}>
         <Image
-          source={{ uri: recipe.image || 'https://picsum.photos/seed/placeholder/400/200' }}
+          source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/placeholder/400/200' }}
           style={st.hImage}
           resizeMode="cover"
         />
@@ -31,7 +31,7 @@ export default function RecipeCard({ recipe, horizontal, onPress }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={st.vCard}>
       <Image
-        source={{ uri: recipe.image || 'https://picsum.photos/seed/placeholder/400/400' }}
+        source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/placeholder/400/400' }}
         style={[st.vImage, { borderColor: colors.border }]}
         resizeMode="cover"
       />

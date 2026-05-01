@@ -42,18 +42,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const bottomNavLinks = navLinks.filter((link) => ['Home', 'Search', 'Planner', 'AI Camera', 'Profile'].includes(link.name));
 
   return (
-    <div className="flex h-screen overflow-hidden bg-orange-50/50 font-sans text-stone-900">
+    <div className="flex h-screen overflow-hidden bg-orange-50/50 font-sans text-stone-900 dark:bg-stone-950 dark:text-stone-100">
 
       {/* Desktop Sidebar */}
-      <aside className="relative z-20 hidden w-64 shrink-0 flex-col border-r border-orange-100 bg-white/90 shadow-xl shadow-orange-100/30 backdrop-blur md:flex">
+      <aside className="relative z-20 hidden w-64 shrink-0 flex-col border-r border-orange-100 bg-white/90 shadow-xl shadow-orange-100/30 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90 dark:shadow-black/20 md:flex">
         <div className="p-8">
           <Link to="/" className="group flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl orange-gradient text-white shadow-lg shadow-orange-500/25 transition-transform group-hover:scale-105">
               <UtensilsCrossed size={22} />
             </div>
             <span className="flex flex-col">
-              <span className="text-2xl font-extrabold tracking-tight text-stone-900">CookMate</span>
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600">Kitchen Assistant</span>
+              <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
+              <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
             </span>
           </Link>
         </div>
@@ -68,13 +68,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 to={link.path}
                 className={cn(
                   "group relative flex items-center gap-4 overflow-hidden rounded-2xl px-4 py-3 font-bold transition-all duration-200",
-                  isActive ? "orange-gradient text-white shadow-lg shadow-orange-500/20" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700"
+                  isActive ? "orange-gradient text-white shadow-lg shadow-orange-500/20" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                 )}
               >
                 {isActive && (
-                  <motion.div layoutId="activeNavIndicator" className="absolute inset-y-2 left-1 w-1 rounded-full bg-white/80" />
+                  <motion.div layoutId="activeNavIndicator" className="absolute inset-y-2 left-1 w-1 rounded-full bg-white/80 dark:bg-stone-800/80" />
                 )}
-                <Icon size={20} className={cn("transition-transform group-hover:scale-110", isActive ? "text-white" : "text-stone-400 group-hover:text-orange-600")} />
+                <Icon size={20} className={cn("transition-transform group-hover:scale-110", isActive ? "text-white" : "text-stone-400 group-hover:text-orange-600 dark:group-hover:text-orange-500")} />
                 {link.name}
               </Link>
             );
@@ -89,7 +89,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-orange-950/20 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-orange-950/20 backdrop-blur-sm dark:bg-black/40 md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
@@ -103,14 +103,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-orange-100 bg-white shadow-2xl md:hidden"
+            className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-orange-100 bg-white shadow-2xl dark:border-stone-800 dark:bg-stone-900 md:hidden"
           >
             <div className="flex items-center justify-between p-6">
               <Link to="/" className="flex flex-col" onClick={() => setMobileMenuOpen(false)}>
-                <span className="text-2xl font-extrabold tracking-tight text-stone-900">CookMate</span>
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600">Kitchen Assistant</span>
+                <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
+                <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
               </Link>
-              <button onClick={() => setMobileMenuOpen(false)} className="rounded-full bg-orange-50 p-2 text-orange-600 transition-colors hover:bg-orange-100">
+              <button onClick={() => setMobileMenuOpen(false)} className="rounded-full bg-orange-50 p-2 text-orange-600 transition-colors hover:bg-orange-100 dark:bg-stone-800 dark:hover:bg-stone-700">
                 <X size={20} />
               </button>
             </div>
@@ -125,7 +125,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
                       "flex items-center gap-4 rounded-2xl px-4 py-4 font-bold transition-all",
-                      isActive ? "orange-gradient text-white shadow-lg shadow-orange-500/20" : "text-stone-600 hover:bg-orange-50 hover:text-orange-700"
+                      isActive ? "orange-gradient text-white shadow-lg shadow-orange-500/20" : "text-stone-600 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                     )}
                   >
                     <Icon size={22} className={cn(isActive ? "text-white" : "text-stone-400")} />
@@ -139,24 +139,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="relative flex h-screen flex-1 flex-col overflow-hidden bg-orange-50/40">
+      <div className="relative flex h-screen flex-1 flex-col overflow-hidden bg-orange-50/40 dark:bg-stone-950/40">
 
         {/* Topbar */}
-        <header className="z-10 flex h-20 shrink-0 items-center justify-between border-b border-orange-100/60 bg-orange-50/85 px-4 backdrop-blur-xl sm:px-8">
+        <header className="z-10 flex h-20 shrink-0 items-center justify-between border-b border-orange-100/60 bg-orange-50/85 px-4 backdrop-blur-xl dark:border-stone-800/60 dark:bg-stone-900/85 sm:px-8">
           <div className="flex items-center gap-4 flex-1">
             <button
-              className="-ml-2 rounded-xl p-2 text-orange-600 transition-colors hover:bg-orange-100 md:hidden"
+              className="-ml-2 rounded-xl p-2 text-orange-600 transition-colors hover:bg-orange-100 dark:text-orange-500 dark:hover:bg-stone-800 md:hidden"
               onClick={() => setMobileMenuOpen(true)}
             >
               <Menu size={24} />
             </button>
 
             <div className="max-w-md w-full relative hidden sm:block">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
               <input
                 type="text"
                 placeholder="Search recipes, ingredients..."
-                className="w-full rounded-full border border-orange-100 bg-white/75 py-2.5 pl-12 pr-4 font-medium text-stone-700 outline-none shadow-sm placeholder:text-stone-400 transition-all focus:border-orange-300 focus:ring-2 focus:ring-orange-500/20"
+                className="w-full rounded-full border border-orange-100 bg-white/75 py-2.5 pl-12 pr-4 font-medium text-stone-700 outline-none shadow-sm placeholder:text-stone-400 transition-all focus:border-orange-300 focus:ring-2 focus:ring-orange-500/20 dark:border-stone-700 dark:bg-stone-800/75 dark:text-stone-200 dark:placeholder:text-stone-500"
               />
             </div>
           </div>
@@ -167,7 +167,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link
               to="/admin"
               aria-label="Back to admin dashboard"
-                className="inline-flex h-10 items-center gap-2 rounded-full border border-orange-200 bg-white px-3 text-xs font-extrabold uppercase tracking-[0.12em] text-orange-700 shadow-sm transition-colors hover:bg-orange-50"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-orange-200 bg-white px-3 text-xs font-extrabold uppercase tracking-[0.12em] text-orange-700 shadow-sm transition-colors hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400 dark:hover:bg-stone-700"
               >
                 <ShieldCheck size={16} />
                 <span className="hidden sm:inline">Admin</span>
@@ -176,10 +176,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link
               to="/notifications"
               aria-label="Notifications"
-              className="relative rounded-full bg-white p-2.5 text-stone-500 shadow-sm ring-1 ring-orange-100 transition-colors hover:bg-orange-50 hover:text-orange-600"
+              className="relative rounded-full bg-white p-2.5 text-stone-500 shadow-sm ring-1 ring-orange-100 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:bg-stone-800 dark:ring-stone-700 dark:hover:bg-stone-700 dark:hover:text-orange-400"
             >
               <Bell size={20} />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-stone-800" />
             </Link>
             <Link
               to="/profile"
@@ -211,7 +211,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </AnimatePresence>
         </main>
 
-        <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.5rem] border border-orange-100 bg-white/95 p-1.5 shadow-2xl shadow-orange-950/10 backdrop-blur md:hidden">
+        <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.5rem] border border-orange-100 bg-white/95 p-1.5 shadow-2xl shadow-orange-950/10 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 dark:shadow-black/20 md:hidden">
           {bottomNavLinks.map((link) => {
             const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search'));
             const Icon = link.icon;
@@ -223,7 +223,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label={link.name}
                 className={cn(
                   "flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-extrabold transition-all",
-                  isActive ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700"
+                  isActive ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                 )}
               >
                 <Icon size={18} />

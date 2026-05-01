@@ -16,6 +16,7 @@ import AdminLayout from './admin/AdminLayout';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const SearchPage = lazy(() => import('./pages/Search'));
+const AllRecipesPage = lazy(() => import('./pages/AllRecipes'));
 const RecipeDetail = lazy(() => import('./pages/RecipeDetail'));
 const MealPlanner = lazy(() => import('./pages/MealPlanner'));
 const ProfilePage = lazy(() => import('./pages/Profile'));
@@ -101,6 +102,7 @@ export default function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="onboarding" element={<Onboarding />} />
                 <Route path="search" element={<SearchPage />} />
+                <Route path="recipes" element={<AllRecipesPage />} />
                 <Route path="recipe/:id" element={<RecipeDetail />} />
                 <Route path="planner" element={<MealPlanner />} />
                 <Route path="profile" element={<ProfilePage />} />

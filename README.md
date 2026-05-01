@@ -8,7 +8,7 @@ CookMate is a monorepo with three apps:
 
 - `./` — React + Vite web app
 - `api/` — Express API backed by PostgreSQL
-- `mobile/` — Expo React Native mobile app
+- `mobile/` — Expo React Native mobile app\n\nSee [ARCHITECTURE.md](./ARCHITECTURE.md) and [cookmate_system_structure.md](./cookmate_system_structure.md) for full architecture and system details.
 
 ## Prerequisites
 

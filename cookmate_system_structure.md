@@ -1,101 +1,126 @@
-# CookMate — Full System Structure
+﻿# CookMate — Full System Structure
 
-> **CookMate** is an AI-powered recipe platform organized as a monorepo with three active applications: a **React web app (PWA-capable)**, an **Express API backend**, and a **React Native mobile app built with Expo**. Shared product capabilities include authentication, recipe browsing, meal planning, profile data, notifications, admin tooling, and AI-assisted cooking features backed by **PostgreSQL** and **Google Gemini**.
+> **Project root:** `Cookmate-Recipe/`  
+> **Purpose:** Detailed structure reference for the current web, API, database, and mobile codebase  
+> **See also:** [System Architecture](./ARCHITECTURE.md)
 
 ---
 
-## Project Root — `Cookmate-Recipe/`
+## Root Project
 
 ```text
 Cookmate-Recipe/
-├── .env                      # Root web environment variables
-├── .env.example             # Environment template
-├── .gitignore               # Git ignore rules
-├── README.md                # Setup and usage overview
-├── ARCHITECTURE.md          # High-level architecture reference
+├── .env                         # Root web environment variables
+├── .env.example                 # Environment template
+├── .gitignore
+├── README.md
+├── ARCHITECTURE.md
 ├── cookmate_system_structure.md
-├── metadata.json            # Project metadata
-├── index.html               # Vite HTML entry
-├── package.json             # Web app dependencies and scripts
-├── package-lock.json        # Root lockfile
-├── tsconfig.json            # TypeScript config for the web app
-├── vite.config.ts           # Vite config, aliases, PWA, API proxy
-├── vercel.json              # SPA rewrites for web deployment
-├── components.json          # shadcn/ui generator config
-├── public/                  # Static web assets
-├── src/                     # Web application source
-├── api/                     # Express backend source and package
-├── database/                # PostgreSQL schema
-├── mobile/                  # Expo mobile application
-├── dist/                    # Web production build output
-└── node_modules/            # Installed dependencies
+├── components.json              # shadcn/ui generator config
+├── index.html                   # Vite HTML entry
+├── metadata.json
+├── package.json                 # Root React/Vite web package
+├── package-lock.json
+├── postcss.config.js
+├── tsconfig.json
+├── vite.config.ts               # Vite, aliases, PWA, and API proxy
+├── vercel.json                  # SPA rewrites for web deployment
+├── public/                      # Static web assets
+├── src/                         # Web app source
+├── api/                         # Express API package
+├── database/                    # PostgreSQL schema/migrations/seeds
+├── mobile/                      # Expo React Native app
+├── dist/                        # Web production build output
+└── dev-dist/                    # Development build/runtime output
 ```
 
----
+The repository is organized as one project with three runnable app surfaces:
 
-## Technology Stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| Web frontend | React 19 + TypeScript | SPA UI and routing |
-| Web tooling | Vite 6 | Fast dev server and production bundling |
-| Web routing | React Router 7 | Protected and public route composition |
-| Web styling | Tailwind CSS 4 | Utility-first styling |
-| Web UI primitives | shadcn/ui-style components in `src/components/ui` | Reusable UI building blocks |
-| Animation | Motion | Page and component animation |
-| Theming | `next-themes` | Web theme control |
-| API backend | Express 4 | REST API for web and mobile clients |
-| Auth | `bcryptjs` + `jsonwebtoken` | Password hashing and token-based auth |
-| Database | PostgreSQL + `pg` | Persistent application data |
-| AI / ML | Google Gemini + `natural` | AI features and recommendation logic |
-| Mobile app | Expo SDK 55 + React Native 0.83 | Native mobile client |
-| Mobile navigation | React Navigation | Stack and tab flows |
-| Mobile session storage | `expo-secure-store` | Persisted auth state |
-| Deployment | Vercel for web, separate backend runtime | Web hosting plus API runtime |
+- **Root package:** web frontend
+- **`api/` package:** backend API
+- **`mobile/` package:** Expo mobile client
 
 ---
 
-## Web Application — `src/`
+## Root Web Package
 
-The root web app is the browser client. It owns the main user-facing experience, route protection, admin entry, and web-specific UI structure.
+### Root scripts
+
+| Script | Command purpose |
+|---|---|
+| `dev` | Starts Vite for the web app |
+| `dev:api` | Starts the API development script from `api/` |
+| `build` | Builds the web app into `dist/` |
+| `preview` | Previews the production web build |
+| `clean` | Removes `dist/` |
+| `lint` | Runs TypeScript with `--noEmit` |
+
+### Main root dependencies
+
+- React 19
+- React DOM 19
+- React Router DOM 7
+- Vite 6
+- TypeScript
+- Tailwind CSS 4
+- `@tailwindcss/vite`
+- shadcn CLI/config
+- `@base-ui/react`
+- `lucide-react`
+- `motion`
+- `next-themes`
+- `sonner`
+- `vite-plugin-pwa`
+- `@google/genai`
+
+---
+
+## Web Source — `src/`
 
 ```text
 src/
-├── main.tsx                 # Web entry point
-├── App.tsx                  # Root app component and route tree
-├── index.css                # Global styles
-├── app/                     # Shared shell/layout wiring
-├── admin/                   # Admin layout, admin pages, admin data/hooks
-├── auth/                    # AuthGate and AdminGate wrappers
-├── components/              # Shared web UI components
-│   └── ui/                  # UI primitives used across the web app
-├── context/                 # React context providers, including auth
-├── hooks/                   # Reusable web hooks
-├── lib/                     # Utility helpers
-├── pages/                   # Route-level page components
-└── services/                # API client and service-layer helpers
+├── main.tsx                     # Web entry point
+├── App.tsx                      # Route tree and providers
+├── index.css                    # Global styles
+├── app/                         # App shell/layout wiring
+├── admin/                       # Admin layout and admin pages
+├── auth/                        # AuthGate, GuestGate, AdminGate
+├── components/                  # Shared web components
+│   └── ui/                      # Shared UI primitives
+├── context/                     # React providers, including auth
+├── hooks/                       # Web hooks
+├── lib/                         # Web utility helpers
+├── pages/                       # Route-level user pages
+└── services/                    # Web API/auth service helpers
 ```
 
-### Main web route groups
+### Web route structure
 
-Public guest routes:
+`src/App.tsx` defines the current route tree.
+
+#### Guest routes
 
 - `/login`
 - `/signup`
-- `/onboarding`
 
-Authenticated app routes:
+#### Authenticated user routes
 
 - `/`
+- `/onboarding`
 - `/search`
+- `/recipes`
 - `/recipe/:id`
 - `/planner`
 - `/profile`
 - `/notifications`
 - `/camera`
 - `/settings`
+- `/settings/account`
+- `/settings/appearance`
+- `/settings/notifications`
+- `/settings/privacy-security`
 
-Admin routes:
+#### Admin routes
 
 - `/admin`
 - `/admin/recipes`
@@ -108,44 +133,76 @@ Admin routes:
 - `/admin/reports`
 - `/admin/system-status`
 
-### Key web responsibilities
+### Web auth structure
 
-- `App.tsx` composes public, authenticated, and admin route trees.
-- `src/auth/AuthGate.tsx` blocks unauthenticated users from protected app routes.
-- `src/auth/AdminGate.tsx` blocks non-admin users from admin routes.
-- `src/context/AuthContext.tsx` hydrates cached session state and refreshes it via `/api/auth/me`.
-- `src/services/authService.ts` performs login, signup, logout, token persistence, and current-user refresh.
+- `AuthProvider` stores and refreshes the web session.
+- `GuestGate` redirects signed-in users away from guest-only routes.
+- `AuthGate` protects authenticated app pages.
+- `AdminGate` protects the admin route tree.
+- `authService` handles login, signup, logout, token persistence, and `/api/auth/me`.
+
+### Web API access
+
+The web client uses `src/services/api.ts` as its central fetch wrapper. In development, the root Vite config proxies `/api` requests to the Express backend. Production can use `VITE_API_BASE_URL` when a separate API host is needed.
 
 ---
 
-## Backend API — `api/`
-
-The backend is a standalone Express app inside `api/`. It is the shared integration point for both the web app and the mobile app.
+## API Package — `api/`
 
 ```text
 api/
-├── package.json             # API dependencies and scripts
+├── package.json                 # API dependencies and scripts
+├── package-lock.json
+├── dataset/                     # API-side dataset files if used by scripts/features
+├── api/                         # Additional API-side folder present in the project
 └── src/
-    ├── server.js            # Express bootstrap
-    ├── config/              # Runtime config and DB setup
-    ├── controllers/         # Request handlers and application logic
-    ├── middleware/          # Auth and error middleware
-    ├── models/              # Database/model helpers
-    └── routes/              # API route modules mounted under /api
+    ├── server.js                # Express bootstrap
+    ├── config/                  # Runtime config and database setup
+    ├── controllers/             # Request handlers
+    ├── middleware/              # Auth and error middleware
+    ├── models/                  # Database/model helpers
+    ├── routes/                  # Express routers
+    └── scripts/                 # API scripts such as CSV import
 ```
 
-### Backend startup flow
+### API scripts
 
-- loads environment variables with `dotenv`
-- tests the PostgreSQL connection
-- attempts admin-account bootstrap on startup
-- applies CORS, JSON parsing, and cookie parsing middleware
-- mounts the shared router under `/api`
-- uses centralized error handling middleware
+| Script | Command purpose |
+|---|---|
+| `dev` | Runs `node --watch src/server.js` |
+| `start` | Runs `node src/server.js` |
+| `seed:recipes` | Runs the recipe CSV import script |
 
-### Mounted API route groups
+### API dependencies
 
-The main router currently mounts:
+- `express`
+- `cors`
+- `cookie-parser`
+- `dotenv`
+- `pg`
+- `bcryptjs`
+- `jsonwebtoken`
+- `csv-parse`
+- `natural`
+- `@google/generative-ai`
+
+### API startup flow
+
+`api/src/server.js` performs the backend bootstrap:
+
+1. Loads environment variables.
+2. Tests the PostgreSQL connection.
+3. Attempts admin account bootstrap.
+4. Creates the Express app.
+5. Enables CORS with configured origins.
+6. Enables JSON parsing and cookie parsing.
+7. Mounts the API router at `/api`.
+8. Registers centralized error handling.
+9. Starts listening on the configured port.
+
+### Mounted route modules
+
+The central router in `api/src/routes/index.js` mounts:
 
 - `/api/health`
 - `/api/auth`
@@ -158,22 +215,37 @@ The main router currently mounts:
 - `/api/inventory`
 - `/api/ml`
 
-### Backend responsibilities
+### API responsibility map
 
-- authentication and identity lookup
-- recipe, ingredient, and meal-planner APIs
-- notification and profile APIs
-- inventory and shopping-list APIs
-- recommendation/ML integration points
-- database-backed user roles, including admin authorization
+| Area | Route/module |
+|---|---|
+| Auth/session | `/api/auth` |
+| Recipes | `/api/recipes` |
+| Ingredients | `/api/ingredients` |
+| Meal planner | `/api/meal-planner` |
+| Shopping list | `/api/shopping-list` |
+| Notifications | `/api/notifications` |
+| Profile | `/api/profile` |
+| Inventory | `/api/inventory` |
+| ML/recommendations | `/api/ml` |
+| Health check | `/api/health` |
 
 ---
 
-## Database Layer — `database/schema.sql`
+## Database — `database/`
 
-The database is PostgreSQL-backed, with the schema defined in `database/schema.sql`.
+```text
+database/
+├── schema.sql
+├── migrations/
+│   ├── 20260425_unique_user_auth_fields.sql
+│   ├── 20260426_recipes_csv_fields.sql
+│   └── 20260426_recipes_full_fields.sql
+└── seeds/
+    └── philippine_food_recipes_100.csv
+```
 
-### Core tables
+### Main database tables
 
 - `users`
 - `ingredients`
@@ -185,185 +257,152 @@ The database is PostgreSQL-backed, with the schema defined in `database/schema.s
 - `reviews`
 - `notifications`
 
-### Important schema notes
+### Important data model notes
 
-- `users.role` supports both `user` and `admin` values.
-- recipes and ingredients are connected through `recipe_ingredients`.
-- meal plans, shopping lists, kitchen inventory, reviews, and notifications are user-linked tables.
-- the schema is designed to support both normal user flows and admin monitoring flows.
+- `users.email` and `users.full_name` have normalized uniqueness rules.
+- `users.role` supports role-based access with `user` and `admin`.
+- `recipes` includes source IDs, metadata, instructions, tags, normalized ingredients, image URLs, featured flags, and published flags.
+- `recipe_ingredients` connects recipes to ingredients.
+- Meal plans, shopping lists, inventory, reviews, and notifications are linked to users.
+- Recipe seed data is stored in `database/seeds/philippine_food_recipes_100.csv`.
 
 ---
 
-## Mobile Application — `mobile/`
-
-The mobile app is a separate Expo client that consumes the same Express API as the web app.
+## Mobile Package — `mobile/`
 
 ```text
 mobile/
-├── App.js                   # App entry, providers, font loading, navigation root
-├── app.json                 # Expo config and runtime extras
-├── babel.config.js          # Babel config
-├── eas.json                 # Build profiles
-├── package.json             # Mobile dependencies and scripts
-├── tailwind.config.js       # Native styling config
+├── App.js                       # Mobile app entry
+├── app.json                     # Expo config and extra API base URL
+├── babel.config.js
+├── eas.json
+├── package.json                 # Mobile dependencies and scripts
+├── package-lock.json
+├── tailwind.config.js
+├── assets/                      # Mobile assets
 └── src/
-    ├── api/                 # Axios client configuration
-    ├── components/          # Reusable native components
-    ├── context/             # Auth and theme context providers
-    ├── hooks/               # Mobile hooks
-    ├── lib/                 # Utility helpers and storage helpers
-    ├── navigation/          # AppNavigator and BottomTabNavigator
-    ├── screens/             # Screen components
-    ├── services/            # Mobile auth and app services
-    └── theme/               # Shared mobile design tokens
+    ├── api/                     # Axios API client
+    ├── components/              # Reusable native components
+    ├── context/                 # Auth/theme context providers
+    ├── hooks/                   # Mobile hooks
+    ├── lib/                     # Mobile utility/storage helpers
+    ├── navigation/              # App and tab navigators
+    ├── screens/                 # Mobile screens
+    ├── services/                # Mobile auth/app services
+    └── theme/                   # Mobile colors, spacing, typography
 ```
 
-### Mobile navigation structure
+### Mobile scripts
 
-- `App.js` sets up theme, fonts, navigation container, and auth provider.
-- `AppNavigator.js` switches between the auth stack and the main app stack.
-- `BottomTabNavigator.js` provides the main tab experience.
+| Script | Command purpose |
+|---|---|
+| `start` | Starts Expo |
+| `android` | Starts Expo Android flow |
+| `ios` | Starts Expo iOS flow |
 
-### Main mobile screens
+### Mobile dependencies
 
-- `LoginScreen`
-- `SignupScreen`
-- `OnboardingScreen`
-- `HomeScreen`
-- `SearchScreen`
-- `MealPlannerScreen`
-- `CameraScreen`
-- `ProfileScreen`
-- `RecipeDetailScreen`
-- `NotificationsScreen`
-- `CookingModeScreen`
+- Expo SDK 55
+- React Native 0.83
+- React 19.2
+- React Navigation stack and bottom tabs
+- Axios
+- Expo Secure Store
+- Expo Camera
+- Expo Notifications
+- Expo Font
+- Expo Splash Screen
+- NativeWind
+- Geist Expo fonts
 
-### Mobile authentication behavior
+### Mobile API structure
 
-- tokens are stored in SecureStore
-- the cached user object is stored alongside the token
-- the app refreshes the session with `/api/auth/me`
-- invalid sessions are cleared automatically on `401` and `404`
+`mobile/src/api/api.js` creates the Axios client and exports API helper groups:
+
+- `recipeApi`
+- `mlApi`
+- `plannerApi`
+- `shoppingApi`
+- `notificationApi`
+- `profileApi`
+- `inventoryApi`
+
+The Axios client attaches the saved JWT token to outgoing requests when a token is available.
+
+### Mobile auth structure
+
+- `AuthContext` owns mobile session state.
+- `authService` persists and refreshes mobile auth data.
+- The app stores both token and user data.
+- Invalid sessions are cleared when refresh requests fail with unauthorized/not-found responses.
+- Navigation switches between auth and app flows based on session state.
 
 ---
 
-## Authentication and Access Control
+## Shared Product Areas
+
+| Feature area | Web | API | Mobile |
+|---|---|---|---|
+| Login/signup/logout | Yes | Yes | Yes |
+| Current user refresh | Yes | `/api/auth/me` | Yes |
+| Recipe browsing | Yes | `/api/recipes` | Yes |
+| A-Z all-recipes listing | Yes | `sort=title_asc` / `sort=az` | Yes |
+| Recipe detail | Yes | `/api/recipes/:id` | Yes |
+| Meal planner | Yes | `/api/meal-planner` | Yes |
+| Shopping list | Client support | `/api/shopping-list` | Client support |
+| Notifications | Yes | `/api/notifications` | Yes |
+| Profile | Yes | `/api/profile` | Yes |
+| Inventory | Client support | `/api/inventory` | Client support |
+| Admin | Web only | Role-backed support | Not applicable |
+| AI/ML | Client features | `/api/ml` | Client features |
+
+---
+
+## Environment and Runtime Configuration
+
+| Location | Purpose |
+|---|---|
+| Root `.env` | Web environment variables such as `VITE_API_BASE_URL` |
+| `api/.env` | API port, database credentials, JWT/config secrets, CORS configuration |
+| `mobile/app.json` | Expo configuration, including `expo.extra.apiBaseUrl` |
+| `vite.config.ts` | Web aliases, plugins, PWA setup, and local `/api` proxy |
+
+---
+
+## Local Development Boundaries
 
 ### Web
 
-- local session cache uses localStorage
-- `AuthProvider` initializes from cache and revalidates against the API
-- `GuestGate` keeps authenticated users away from guest-only pages
-- `AuthGate` protects signed-in app routes
-- `AdminGate` protects the admin area
-
-### Mobile
-
-- auth state lives in `mobile/src/context/AuthContext.js`
-- auth persistence is handled in `mobile/src/services/authService.js`
-- the navigator acts as the mobile equivalent of an auth gate
-
-### Admin access
-
-- admin authorization is role-based
-- the web admin interface has its own route tree and layout
-- the database schema includes role support in the `users` table
-
----
-
-## AI and Recommendation Structure
-
-CookMate’s AI capabilities are part of the broader application architecture rather than an isolated demo feature.
-
-### Current AI-related responsibilities
-
-- ingredient recognition and recipe suggestion flows
-- assistant-style cooking support
-- recommendation/ML endpoints under `/api/ml`
-- Gemini-backed AI behavior with backend-managed secrets
-
-### Conceptual request flow
-
-```text
-Web App or Mobile App
-        |
-        | HTTP requests
-        v
-Express API (/api/*)
-        |
-        | database access / auth / AI logic
-        v
-PostgreSQL + Google Gemini
-```
-
----
-
-## Local Development Structure
-
-### Web app
-
-- run from the repository root
-- uses `vite` for development
-- usually leaves `VITE_API_BASE_URL` empty in local dev
-- relies on `vite.config.ts` to proxy `/api` to `http://localhost:5000`
+- Run from the repository root.
+- Uses Vite.
+- Calls `/api` through the Vite proxy when `VITE_API_BASE_URL` is empty.
 
 ### API
 
-- runs from `api/`
-- loads runtime configuration from `api/.env`
-- serves the backend contract used by both clients
+- Run from `api/`.
+- Requires PostgreSQL.
+- Uses `database/schema.sql` and migrations/seeds from `database/`.
 
 ### Mobile
 
-- runs from `mobile/`
-- reads API base URL from Expo config (`expo.extra.apiBaseUrl`) with runtime fallbacks
-- depends on the API being reachable from the device or emulator
-
----
-
-## NPM Script Overview
-
-### Root web app — `package.json`
-
-| Script | Purpose |
-|---|---|
-| `dev` | Start the Vite web dev server |
-| `dev:api` | Start the backend from the `api/` package |
-| `build` | Build the web app into `dist/` |
-| `preview` | Preview the built web app |
-| `clean` | Remove the web build output |
-| `lint` | Run TypeScript type checking |
-
-### API — `api/package.json`
-
-| Script | Purpose |
-|---|---|
-| `dev` | Start the Express API with Node watch mode |
-| `start` | Start the Express API normally |
-
-### Mobile — `mobile/package.json`
-
-| Script | Purpose |
-|---|---|
-| `start` | Start the Expo dev server |
-| `android` | Launch the Expo Android flow |
-| `ios` | Launch the Expo iOS flow |
+- Run from `mobile/`.
+- Requires Expo tooling.
+- Must be able to reach the Express API from the simulator, emulator, physical device, or Expo web runtime.
 
 ---
 
 ## Current System Summary
 
-| Area | Current State |
+| Area | Current state |
 |---|---|
-| Web app | Active React/Vite frontend with protected and admin routes |
-| API | Active Express backend in `api/` |
-| Database | PostgreSQL schema defined in `database/schema.sql` |
-| Mobile app | Active Expo client using the same backend |
-| Auth | Real backend-backed login/session flow on web and mobile |
-| Admin | Dedicated web-only admin interface |
-| AI | Integrated into product flows and API-backed behavior |
-| PWA | Web app supports installability and PWA behavior |
+| Root web app | Active React/Vite TypeScript app |
+| Backend | Active Express API mounted under `/api` |
+| Database | PostgreSQL schema, migrations, and Philippine recipe seed CSV |
+| Mobile | Active Expo React Native app |
+| Auth | Backend-backed JWT/session flow for web and mobile |
+| Admin | Web-only admin area protected by admin authorization |
+| Recipes | Database-backed with filtering, pagination, featured/recent/category endpoints, and A-Z listing support |
+| AI/ML | Backend route group and AI/recommendation dependencies are present |
+| PWA | Root web app includes PWA support through Vite plugin configuration |
 
----
-
-*This document should be kept in sync with the route tree, API surface, and package layout whenever the system architecture changes.*
+This document should stay synchronized with the real repository structure, route tree, package scripts, and database files.

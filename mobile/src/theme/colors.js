@@ -32,25 +32,25 @@ export const lightColors = {
 };
 
 export const darkColors = {
-  background: '#120b07',
-  surface: '#24160f',
-  surfaceAlt: '#3b2417',
+  background: '#0c0a09',
+  surface: '#1c1917',
+  surfaceAlt: '#292524',
   text: '#fafaf9',
-  textMuted: '#f1d6c4',
-  textSubtle: '#d6a98c',
-  border: '#4a2d1c',
-  borderSoft: '#3b2417',
+  textMuted: '#e7e5e4',
+  textSubtle: '#a8a29e',
+  border: '#44403c',
+  borderSoft: '#292524',
   primary: '#f97316',
   primaryDark: '#fb923c',
   primaryLight: '#fdba74',
   primarySoft: '#431407',
   primarySoftBorder: '#7c2d12',
   brandShadow: '#f97316',
-  amber: '#fb923c',
-  success: '#fb923c',
+  amber: '#f59e0b',
+  success: '#22c55e',
   danger: '#ef4444',
-  info: '#fb923c',
-  dark: '#120b07',
+  info: '#3b82f6',
+  dark: '#0c0a09',
 };
 
 export function getColors(mode = 'light') {

@@ -15,6 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
 import RecipeCard from '../components/RecipeCard';
+import HomeRecipeCard from '../components/HomeRecipeCard';
+import HomeSection from '../components/HomeSection';
+import CategoryChip from '../components/CategoryChip';
 import AIAssistantWidget from '../components/AIAssistantWidget';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -82,6 +85,14 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const [featuredRecipes, setFeaturedRecipes] = useState(fallbackFeatured);
   const [recentRecipes, setRecentRecipes] = useState(fallbackRecent);
+  const [homeSections, setHomeSections] = useState({
+    categories: [],
+    popularFilipinoRecipes: [],
+    recentlyAddedRecipes: [],
+    recommendedRecipes: [],
+  });
+  const [homeSectionsLoading, setHomeSectionsLoading] = useState(true);
+  const [homeSectionsError, setHomeSectionsError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
@@ -101,19 +112,32 @@ export default function HomeScreen({ navigation }) {
   };
 
   const fetchData = async () => {
+    setHomeSectionsLoading(true);
+    setHomeSectionsError(null);
     try {
-      const [featuredRes, recentRes] = await Promise.all([
+      const homeParams = user?.id ? { userId: user.id } : undefined;
+      const [featuredRes, recentRes, sectionsRes] = await Promise.all([
         recipeApi.getFeatured(),
         recipeApi.getRecent(),
+        recipeApi.getHomeSections(homeParams),
       ]);
-      setFeaturedRecipes(withFallback(featuredRes?.data, fallbackFeatured));
-      setRecentRecipes(withFallback(recentRes?.data, fallbackRecent));
+      setFeaturedRecipes(withFallback(featuredRes?.data?.recipes, fallbackFeatured));
+      setRecentRecipes(withFallback(recentRes?.data?.recipes, fallbackRecent));
+      const payload = sectionsRes?.data || {};
+      setHomeSections({
+        categories: Array.isArray(payload.categories) ? payload.categories : [],
+        popularFilipinoRecipes: Array.isArray(payload.popularFilipinoRecipes) ? payload.popularFilipinoRecipes : [],
+        recentlyAddedRecipes: Array.isArray(payload.recentlyAddedRecipes) ? payload.recentlyAddedRecipes : [],
+        recommendedRecipes: Array.isArray(payload.recommendedRecipes) ? payload.recommendedRecipes : [],
+      });
     } catch (error) {
       console.error('Failed to fetch home data', error);
       setFeaturedRecipes(fallbackFeatured);
       setRecentRecipes(fallbackRecent);
+      setHomeSectionsError('Could not load homepage sections. Pull to refresh.');
     } finally {
       setRefreshing(false);
+      setHomeSectionsLoading(false);
     }
   };
 
@@ -198,11 +222,11 @@ export default function HomeScreen({ navigation }) {
           {/* Featured Hero Card — matches web center column */}
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
+            onPress={() => navigation.navigate('RecipeDetail', { id: featuredRecipes[0]?.id || 1 })}
             style={s.heroWrap}
           >
             <Image
-              source={{ uri: 'https://picsum.photos/seed/chicken/800/800' }}
+              source={{ uri: featuredRecipes[0]?.image_url || featuredRecipes[0]?.image || 'https://picsum.photos/seed/chicken/800/800' }}
               style={s.heroImage}
             />
             <View style={s.heroOverlay} />
@@ -210,8 +234,8 @@ export default function HomeScreen({ navigation }) {
               <View style={s.heroBadge}>
                 <Text style={s.heroBadgeText}>FEATURED TONIGHT</Text>
               </View>
-              <Text style={s.heroTitle}>Slow-Roasted{'\n'}Garlic Herb{'\n'}Chicken</Text>
-              <Text style={s.heroDesc}>A masterclass in texture and aroma. 45 minutes of prep time.</Text>
+              <Text style={s.heroTitle}>{featuredRecipes[0]?.title || 'Discover New Recipes'}</Text>
+              <Text style={s.heroDesc}>{featuredRecipes[0]?.description || 'A masterclass in texture and aroma.'}</Text>
               <View style={s.heroBtn}>
                 <Text style={s.heroBtnText}>View Step-by-Step</Text>
               </View>
@@ -257,6 +281,83 @@ export default function HomeScreen({ navigation }) {
               )}
             />
           </View>
+
+          {/* Browse by Category */}
+          <HomeSection
+            eyebrow="Discover"
+            title="Browse by Category"
+            description="Tap a category to jump into matching recipes."
+            data={homeSections.categories}
+            keyExtractor={(item, index) => `cat-${item.category || index}`}
+            loading={homeSectionsLoading}
+            error={homeSectionsError}
+            emptyText="No categories yet — once recipes are added you'll see them here."
+            renderItem={({ item }) => (
+              <CategoryChip
+                category={item.category}
+                count={item.count}
+                onPress={() =>
+                  navigation.navigate('Search', { category: item.category })
+                }
+              />
+            )}
+          />
+
+          {/* Popular Filipino Recipes */}
+          <HomeSection
+            eyebrow="Trending"
+            title="Popular Filipino Recipes"
+            description="Crowd favourites blending featured picks, meal-plan usage, and review buzz."
+            data={homeSections.popularFilipinoRecipes}
+            keyExtractor={(item, index) => `pop-${item.id || index}`}
+            loading={homeSectionsLoading}
+            error={homeSectionsError}
+            emptyText="No popular recipes yet."
+            renderItem={({ item }) => (
+              <HomeRecipeCard
+                recipe={item}
+                onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
+              />
+            )}
+          />
+
+          {/* Recently Added Recipes */}
+          <HomeSection
+            eyebrow="Fresh"
+            title="Recently Added Recipes"
+            description="The newest dishes from the CookMate kitchen, hot off the oven."
+            onViewAll={() => navigation.navigate('AllRecipes')}
+            viewAllLabel="View all recipes"
+            data={homeSections.recentlyAddedRecipes}
+            keyExtractor={(item, index) => `recent-${item.id || index}`}
+            loading={homeSectionsLoading}
+            error={homeSectionsError}
+            emptyText="No recipes have been added yet."
+            renderItem={({ item }) => (
+              <HomeRecipeCard
+                recipe={item}
+                onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
+              />
+            )}
+          />
+
+          {/* Recommended for You */}
+          <HomeSection
+            eyebrow="For you"
+            title="Recommended for You"
+            description={user ? 'Personalised suggestions based on your meal-plan history.' : 'Hand-picked starters to inspire your next cooking session.'}
+            data={homeSections.recommendedRecipes}
+            keyExtractor={(item, index) => `rec-${item.id || index}`}
+            loading={homeSectionsLoading}
+            error={homeSectionsError}
+            emptyText="No recommendations yet — try adding a recipe to your meal plan."
+            renderItem={({ item }) => (
+              <HomeRecipeCard
+                recipe={item}
+                onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
+              />
+            )}
+          />
 
           {/* Info Cards Row — matches web's Seasonal Ingredients / Cooking Skills blocks */}
           <View style={s.infoRow}>
@@ -304,7 +405,16 @@ export default function HomeScreen({ navigation }) {
 
           {/* Recent Recipes — matches web left column Recent Recipes */}
           <View style={s.section}>
-            <Text style={[s.sectionLabel, { color: colors.textMuted }]}>RECENT RECIPES</Text>
+            <View style={s.sectionHeader}>
+              <Text style={[s.sectionLabel, { color: colors.textMuted }]}>RECENT RECIPES</Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('AllRecipes')}
+                style={[s.viewAllBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.viewAllText, { color: colors.primary }]}>VIEW ALL RECIPES</Text>
+              </TouchableOpacity>
+            </View>
             {recentRecipes.map((recipe, index) => (
               <TouchableOpacity
                 key={`${recipe.id || recipe.title || index}`}
@@ -312,7 +422,7 @@ export default function HomeScreen({ navigation }) {
                 style={s.recentItem}
               >
                 <Image
-                  source={{ uri: recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
+                  source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
                   style={[s.recentImage, { borderColor: colors.borderSoft }]}
                 />
                 <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
@@ -324,17 +434,17 @@ export default function HomeScreen({ navigation }) {
           {/* AI Cooking Assistant — matches web right column dark AI panel */}
           <View style={[s.aiPanel, { backgroundColor: colors.dark }]}>
             <View style={s.aiPanelHeader}>
-              <View style={s.aiIconBox}>
+              <View style={[s.aiIconBox, { backgroundColor: colors.surface }]}>
                 <Ionicons name="restaurant" size={16} color={colors.primary} />
               </View>
-              <Text style={s.aiPanelTitle}>AI Cooking{'\n'}Assistant</Text>
+              <Text style={[s.aiPanelTitle, { color: colors.text }]}>AI Cooking{'\n'}Assistant</Text>
             </View>
-            <Text style={s.aiPanelDesc}>Ask me anything about your pantry or current recipe. I can suggest substitutes in real-time.</Text>
-            <View style={s.aiQuoteBox}>
-              <Text style={s.aiQuoteText}>"What can I use instead of heavy cream for this sauce?"</Text>
+            <Text style={[s.aiPanelDesc, { color: colors.textSubtle }]}>Ask me anything about your pantry or current recipe. I can suggest substitutes in real-time.</Text>
+            <View style={[s.aiQuoteBox, { borderColor: colors.border }]}>
+              <Text style={[s.aiQuoteText, { color: colors.textMuted }]}>"What can I use instead of heavy cream for this sauce?"</Text>
             </View>
-            <TouchableOpacity style={s.aiBtn}>
-              <Text style={s.aiBtnText}>START CONVERSATION</Text>
+            <TouchableOpacity style={[s.aiBtn, { backgroundColor: colors.surface }]}>
+              <Text style={[s.aiBtnText, { color: colors.primary }]}>START CONVERSATION</Text>
             </TouchableOpacity>
           </View>
 
@@ -397,6 +507,8 @@ const s = StyleSheet.create({
   sectionLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   editBtn: { padding: 4 },
+  viewAllBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  viewAllText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.4 },
   // Info Cards
   infoRow: { flexDirection: 'row', gap: 12 },
   infoCard: { flex: 1, padding: 20, borderRadius: 0 },

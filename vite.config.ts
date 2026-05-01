@@ -1,10 +1,10 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
+import { defineConfig, loadEnv } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   // Only load vars prefixed with '' (all), but only expose GEMINI_API_KEY to the client.
   // DB_* and other server-only vars are intentionally NOT forwarded to the browser bundle.
   const env = loadEnv(mode, '.', '');
@@ -94,7 +94,7 @@ export default defineConfig(({mode}) => {
         },
 
         devOptions: {
-          enabled: true,
+          enabled: false,
         },
       }),
     ],
@@ -103,6 +103,11 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
       },
+    },
+
+    // @imgly/background-removal uses WASM + Workers — exclude from dep optimizer
+    optimizeDeps: {
+      exclude: ['@imgly/background-removal'],
     },
 
     // Expose only the Gemini API key to the client bundle.

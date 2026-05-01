@@ -1,221 +1,652 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, Info, ArrowRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { GoogleGenAI } from "@google/genai";
+import api from '@/services/api';
 import { Badge } from '../components/ui/badge';
 import { Link } from 'react-router-dom';
 import { AICameraPageSkeleton, CameraAnalysisSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+type Phase = 'idle' | 'scanning' | 'selecting' | 'selected' | 'sticker' | 'done';
+
+interface DetectedIngredient {
+  name: string;
+  description: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+interface MatchedRecipe {
+  id: number;
+  title: string;
+  image_url: string | null;
+  category: string | null;
+  difficulty: string | null;
+  cook_time: string | null;
+  description: string | null;
+  matchedIngredients: string[];
+}
+
+interface AnalysisResult {
+  success: boolean;
+  detectedIngredients: DetectedIngredient[];
+  matchedRecipes: MatchedRecipe[];
+  message: string | null;
+}
+
+const MAX_UPLOAD_FILE_SIZE = 12 * 1024 * 1024;
+const MAX_ANALYSIS_DATA_URL_LENGTH = 6.5 * 1024 * 1024;
+const ANALYSIS_IMAGE_PROFILES = [
+  { maxEdge: 1024, quality: 0.72 },
+  { maxEdge: 896, quality: 0.66 },
+  { maxEdge: 768, quality: 0.6 },
+];
+const BG_REMOVAL_MAX_EDGE = 720;
+
+interface PreparedCameraImage {
+  analysisDataUrl: string;
+  bgRemovalDataUrl: string;
+}
+
+interface LoadedImageSource {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  close: () => void;
+}
+
+interface BackgroundRemovalResult {
+  cutout?: string;
+  cutoutUri?: string;
+  image?: string;
+}
+
+function getScaledSize(width: number, height: number, maxEdge: number) {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type = 'image/jpeg', quality = 0.76): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Could not prepare image for analysis.'));
+    }, type, quality);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Could not read prepared image.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(resolve, 0);
+    });
+  });
+}
+
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Could not load the selected image.'));
+    img.src = url;
+  });
+}
+
+async function loadImageSource(file: File, previewUrl: string): Promise<LoadedImageSource> {
+  if ('createImageBitmap' in window) {
+    try {
+      const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
+    } catch {
+      // Fall back to HTMLImageElement for browsers that cannot decode this file with createImageBitmap.
+    }
+  }
+
+  const image = await loadImageFromUrl(previewUrl);
+  return {
+    source: image,
+    width: image.naturalWidth || image.width,
+    height: image.naturalHeight || image.height,
+    close: () => {},
+  };
+}
+
+async function resizeImageToBlob(
+  image: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+  maxEdge: number,
+  quality: number
+) {
+  const { width, height } = getScaledSize(sourceWidth, sourceHeight, maxEdge);
+  await yieldToBrowser();
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not prepare image canvas.');
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = width * height > 900000 ? 'medium' : 'high';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+
+  const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+  canvas.width = 0;
+  canvas.height = 0;
+  return blob;
+}
+
+async function prepareCameraImage(file: File, previewUrl: string): Promise<PreparedCameraImage> {
+  const image = await loadImageSource(file, previewUrl);
+  try {
+    let analysisDataUrl = '';
+
+    for (const profile of ANALYSIS_IMAGE_PROFILES) {
+      const blob = await resizeImageToBlob(image.source, image.width, image.height, profile.maxEdge, profile.quality);
+      analysisDataUrl = await blobToDataUrl(blob);
+      if (analysisDataUrl.length <= MAX_ANALYSIS_DATA_URL_LENGTH) break;
+    }
+
+    if (analysisDataUrl.length > MAX_ANALYSIS_DATA_URL_LENGTH) {
+      throw new Error('Image is still too large after optimization. Please retake it a little farther back.');
+    }
+
+    const bgRemovalBlob = await resizeImageToBlob(image.source, image.width, image.height, BG_REMOVAL_MAX_EDGE, 0.82);
+    const bgRemovalDataUrl = await blobToDataUrl(bgRemovalBlob);
+    return { analysisDataUrl, bgRemovalDataUrl };
+  } finally {
+    image.close();
+  }
+}
+
+function isAbortError(err: unknown) {
+  return (
+    err instanceof DOMException && err.name === 'AbortError'
+  ) || (
+    typeof err === 'object' &&
+    err !== null &&
+    'name' in err &&
+    (err as { name?: string }).name === 'AbortError'
+  );
+}
+
+function cameraWarningMessage(err: unknown, fallback: string) {
+  const message = err instanceof Error ? err.message : '';
+  if (/failed to fetch|networkerror|network request failed/i.test(message)) {
+    return 'Cannot reach the CookMate API. Make sure the API server is running and the web app can access it.';
+  }
+  if (/timed out|timeout/i.test(message)) {
+    return 'AI Camera is taking longer than usual. Please wait 1-2 minutes, then try again.';
+  }
+  return message || fallback;
+}
+
 
 export default function AICamera() {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [analysis, setAnalysis] = useState<any>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
+  const [bgRemovalDone, setBgRemovalDone] = useState(false);
+  const [bgRemovalProgress, setBgRemovalProgress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activePreviewUrlRef = useRef<string | null>(null);
+  const requestIdRef = useRef(0);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const bgRemovalAbortRef = useRef<AbortController | null>(null);
   const isInitialLoading = useInitialContentLoading();
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-        analyzeImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+  const replacePreviewImage = useCallback((nextUrl: string | null) => {
+    const previousUrl = activePreviewUrlRef.current;
+    if (previousUrl && previousUrl !== nextUrl) {
+      URL.revokeObjectURL(previousUrl);
     }
-  };
+    activePreviewUrlRef.current = nextUrl;
+    setImage(nextUrl);
+  }, []);
 
-  const analyzeImage = async (base64: string) => {
-    setLoading(true);
-    try {
-      // Note: for production, use backend proxy. Doing fake load for UI showcase if key is missing
-      if (!import.meta.env.VITE_GEMINI_API_KEY) {
-        setTimeout(() => {
-          setAnalysis({
-            dishName: 'Fresh Caprese Salad',
-            ingredients: ['Tomatoes', 'Fresh Mozzarella', 'Basil', 'Olive Oil', 'Balsamic Glaze'],
-            estimatedCalories: 350,
-            suggestedRecipe: {
-              title: 'Classic Italian Caprese',
-              description: 'A beautiful and simple summer salad combining ripe tomatoes with creamy mozzarella and fresh basil.'
-            }
-          });
-          setLoading(false);
-        }, 2000);
-        return;
+  const abortInFlightRequests = useCallback(() => {
+    analysisAbortRef.current?.abort();
+    bgRemovalAbortRef.current?.abort();
+    analysisAbortRef.current = null;
+    bgRemovalAbortRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      abortInFlightRequests();
+      if (activePreviewUrlRef.current) {
+        URL.revokeObjectURL(activePreviewUrlRef.current);
       }
+    };
+  }, [abortInFlightRequests]);
 
-      const base64Data = base64.split(',')[1];
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { text: "Identify the food or ingredients in this image. Return a JSON object with 'dishName', 'ingredients' (array), 'estimatedCalories', and 'suggestedRecipe' (title and brief description)." },
-              { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json"
-        }
-      });
+  /* Phase sequencer - keeps the sticker animation quick while bg removal finishes in the background */
+  useEffect(() => {
+    if (phase === 'scanning') {
+      const t = setTimeout(() => setPhase('selecting'), 1200);
+      return () => clearTimeout(t);
+    }
+    if (phase === 'selecting') {
+      const t = setTimeout(() => setPhase('selected'), 1000);
+      return () => clearTimeout(t);
+    }
+    if (phase === 'selected') {
+      const t = setTimeout(() => setPhase('sticker'), bgRemovalDone ? 320 : 650);
+      return () => clearTimeout(t);
+    }
+    if (phase === 'sticker') {
+      const t = setTimeout(() => setPhase('done'), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [phase, bgRemovalDone]);
 
-      const result = JSON.parse(response.text || '{}');
-      setAnalysis(result);
-    } catch (error) {
-      console.error('Analysis failed:', error);
+  /* ── Background removal ── */
+  const startBgRemoval = useCallback(async (imageDataUrl: string, requestId: number) => {
+    bgRemovalAbortRef.current?.abort();
+    const controller = new AbortController();
+    bgRemovalAbortRef.current = controller;
+    setBgRemovalDone(false);
+    setCutoutUrl(null);
+    setBgRemovalProgress('Removing background...');
+    try {
+      const result = await api.post<BackgroundRemovalResult>(
+        '/api/ml/camera/remove-bg',
+        { image: imageDataUrl },
+        undefined,
+        { signal: controller.signal }
+      );
+      if (requestIdRef.current !== requestId) return;
+      const nextCutout = result.cutout || result.cutoutUri || result.image || null;
+      if (nextCutout) {
+        setCutoutUrl(nextCutout);
+      }
+    } catch (err) {
+      if (isAbortError(err) || requestIdRef.current !== requestId) return;
+      console.warn('Background removal warning:', cameraWarningMessage(err, 'Background removal is temporarily unavailable. The original photo will be used.'));
+      // Fallback: no cutout, sticker will use original image with border
     } finally {
-      setLoading(false);
+      if (bgRemovalAbortRef.current === controller) {
+        bgRemovalAbortRef.current = null;
+      }
+      if (requestIdRef.current === requestId) {
+        setBgRemovalDone(true);
+        setBgRemovalProgress('');
+      }
+    }
+  }, []);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload a valid image file.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_UPLOAD_FILE_SIZE) {
+      setError('Image too large. Max 12MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    abortInFlightRequests();
+    requestIdRef.current = requestId;
+    const previewUrl = URL.createObjectURL(file);
+
+    replacePreviewImage(previewUrl);
+    setAnalysis(null);
+    setError(null);
+    setCutoutUrl(null);
+    setBgRemovalDone(false);
+    setBgRemovalProgress('');
+    setLoading(true);
+    setPhase('scanning');
+
+    try {
+      await yieldToBrowser();
+      const prepared = await prepareCameraImage(file, previewUrl);
+      if (requestIdRef.current !== requestId) return;
+
+      await startBgRemoval(prepared.bgRemovalDataUrl, requestId);
+      if (requestIdRef.current !== requestId) return;
+      await analyzeImage(prepared.analysisDataUrl, requestId);
+    } catch (err: any) {
+      if (requestIdRef.current === requestId) {
+        setError(err?.message || 'Image could not be prepared. Please try another photo.');
+        setBgRemovalDone(true);
+        setLoading(false);
+        setPhase('done');
+      }
+    } finally {
+      e.target.value = '';
     }
   };
 
-  if (isInitialLoading) {
-    return (
-      <Layout>
-        <AICameraPageSkeleton />
-      </Layout>
-    );
-  }
+  const analyzeImage = async (base64: string, requestId: number) => {
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.post<AnalysisResult>(
+        '/api/ml/analyze-ingredients',
+        { image: base64 },
+        undefined,
+        { signal: controller.signal }
+      );
+      if (requestIdRef.current === requestId) {
+        setAnalysis(result);
+      }
+    } catch (err: any) {
+      if (isAbortError(err)) return;
+      if (requestIdRef.current !== requestId) return;
+      console.warn('Analysis warning:', err);
+      setError(cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.'));
+    } finally {
+      if (analysisAbortRef.current === controller) {
+        analysisAbortRef.current = null;
+      }
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleReset = () => {
+    requestIdRef.current += 1;
+    abortInFlightRequests();
+    replacePreviewImage(null); setAnalysis(null); setError(null); setPhase('idle');
+    setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setLoading(false);
+    fileInputRef.current?.click();
+  };
+
+  if (isInitialLoading) return <Layout><AICameraPageSkeleton /></Layout>;
+
+  const bgDim = phase === 'selected' || phase === 'sticker' || phase === 'done';
+  const showCorners = phase === 'selecting' || phase === 'selected';
+  const showGlowOutline = phase === 'selected';
+  const showSticker = phase === 'sticker' || phase === 'done';
+  const analysisOutputReady = phase === 'done';
+  const showAnalysisSkeleton = Boolean(image) && (!analysisOutputReady || loading);
+  const showAnalysisError = Boolean(error) && analysisOutputReady && !loading && !analysis;
+  const showAnalysisResult = Boolean(analysis) && analysisOutputReady && !loading;
+  const hasDetectedIngredients = Boolean(analysis?.detectedIngredients?.length);
+  const matchedRecipes = showAnalysisResult ? (analysis?.matchedRecipes || []) : [];
+  const topRecipe = matchedRecipes[0] || undefined;
+  const noFoodDetected = analysis?.success === false || !hasDetectedIngredients;
+  const confidenceColor = (c: string) => c === 'high' ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : c === 'medium' ? 'bg-amber-500/20 text-amber-200 border-amber-400/30' : 'bg-red-500/20 text-red-200 border-red-400/30';
 
   return (
     <Layout>
+      <style>{`
+        @keyframes corner-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+        @keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 20px 6px rgba(249,115,22,0.45), 0 0 60px 10px rgba(249,115,22,0.18); } 50% { box-shadow: 0 0 30px 10px rgba(249,115,22,0.65), 0 0 80px 18px rgba(249,115,22,0.3); } }
+      `}</style>
+
       <div className="mx-auto w-full max-w-6xl px-4 py-12 animate-fade-up sm:px-6 lg:px-8">
         <div className="text-center space-y-4 mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4">
             <Sparkles size={16} /> Powered by Gemini AI
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold text-stone-900 tracking-tight">AI Kitchen Camera</h1>
-          <p className="text-lg text-stone-500 max-w-2xl mx-auto">
-            Snap a photo of your fridge or a prepared dish, and we'll instantly identify the ingredients and suggest recipes.
-          </p>
+          <p className="text-lg text-stone-500 max-w-2xl mx-auto">Snap a photo of your fridge or a prepared dish, and we'll instantly identify the ingredients and suggest recipes.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-
-          {/* Camera/Upload Section */}
+          {/* ════ Camera / Upload ════ */}
           <div className="w-full">
-            <div
-              onClick={() => !image && fileInputRef.current?.click()}
-              className={cn(
-                "aspect-[4/5] sm:aspect-square w-full rounded-[2.5rem] overflow-hidden relative transition-all shadow-xl",
-                image ? "border-none shadow-stone-200/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group"
-              )}
-            >
+            <div onClick={() => !image && fileInputRef.current?.click()} className={cn(
+              "aspect-[4/5] sm:aspect-square w-full rounded-[2.5rem] overflow-hidden relative transition-all shadow-xl",
+              image ? "border-none shadow-stone-200/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group"
+            )}>
               {image ? (
-                <>
-                  <img src={image} alt="Upload" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-stone-900/80 via-stone-900/20 to-transparent flex flex-col justify-end p-8">
-                    <Button onClick={() => { setImage(null); setAnalysis(null); fileInputRef.current?.click(); }} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg">
-                      <RefreshCcw size={20} className="mr-2" /> Retake Photo
-                    </Button>
-                  </div>
-                </>
+                <div className="relative w-full h-full overflow-hidden bg-stone-900">
+                  {/* Background image — dims during selection */}
+                  <motion.img src={image} alt="Upload" className="w-full h-full object-cover absolute inset-0"
+                    animate={{ opacity: bgDim ? 0.15 : 1 }} transition={{ duration: 0.6 }} />
+
+                  {/* Scan line */}
+                  <AnimatePresence>
+                    {phase === 'scanning' && (
+                      <motion.div className="absolute left-0 right-0 h-1 z-20"
+                        style={{ background: 'linear-gradient(90deg, transparent, rgba(249,115,22,0.9), rgba(255,255,255,0.95), rgba(249,115,22,0.9), transparent)', boxShadow: '0 0 30px rgba(249,115,22,0.5)' }}
+                        initial={{ top: '-2%' }} animate={{ top: '102%' }} exit={{ opacity: 0 }}
+                        transition={{ duration: 1.1, ease: 'easeInOut' }} />
+                    )}
+                  </AnimatePresence>
+
+                  {/* Corner brackets */}
+                  <AnimatePresence>
+                    {showCorners && (
+                      <motion.div className="absolute z-20" style={{ inset: phase === 'selecting' ? '8%' : '12%', animation: 'corner-pulse 1s ease-in-out infinite' }}
+                        initial={{ inset: '4%', opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+                        <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-orange-400 rounded-tl-lg" />
+                        <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-orange-400 rounded-tr-lg" />
+                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-orange-400 rounded-bl-lg" />
+                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-orange-400 rounded-br-lg" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Object highlight glow */}
+                  <AnimatePresence>
+                    {showGlowOutline && (
+                      <motion.div className="absolute z-15 rounded-[1.5rem] overflow-hidden"
+                        style={{ inset: '14%', animation: 'glow-pulse 1.2s ease-in-out infinite' }}
+                        initial={{ opacity: 0, scale: 1.05 }} animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.5 }}>
+                        <img src={image} alt="" className="w-full h-full object-cover" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* ══ STICKER — real cutout with white outline ══ */}
+                  <AnimatePresence>
+                    {showSticker && (
+                      <motion.div className="absolute inset-0 flex items-center justify-center z-20"
+                        initial={{ scale: 0.4, opacity: 0, rotate: -6 }}
+                        animate={{ scale: [0.4, 1.1, 0.96, 1.02, 1], opacity: 1, rotate: [-6, 3, -1.5, 0.5, 0] }}
+                        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], times: [0, 0.35, 0.55, 0.75, 1] }}>
+                        {cutoutUrl ? (
+                          /* Real cutout with white outline baked in */
+                          <img src={cutoutUrl} alt="Sticker cutout"
+                            className="max-w-[80%] max-h-[70vh] object-contain"
+                            style={{ filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.35))' }} />
+                        ) : (
+                          /* Fallback: bordered image */
+                          <div className="rounded-[1.8rem] overflow-hidden" style={{ padding: '6px', background: '#fff', maxWidth: '76%', boxShadow: '0 0 0 4px rgba(249,115,22,0.35), 0 16px 48px rgba(0,0,0,0.25)' }}>
+                            <img src={image} alt="Sticker" className="w-full h-auto rounded-[1.4rem] object-cover" style={{ maxHeight: '65vh' }} />
+                          </div>
+                        )}
+                        <motion.div className="absolute -top-2 -right-1 text-orange-400" initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ delay: 0.35, duration: 0.45 }}><Sparkles size={26} /></motion.div>
+                        <motion.div className="absolute -bottom-1 -left-1 text-orange-300" initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ delay: 0.5, duration: 0.45 }}><Sparkles size={18} /></motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Phase badges */}
+                  <AnimatePresence mode="wait">
+                    {phase === 'scanning' && (
+                      <motion.div key="scan" className="absolute top-6 left-1/2 -translate-x-1/2 z-30" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <div className="flex items-center gap-2 px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full">
+                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}><ScanLine size={16} className="text-orange-400" /></motion.div>
+                          <span className="text-white text-sm font-bold tracking-wide">Scanning image…</span>
+                        </div>
+                      </motion.div>
+                    )}
+                    {phase === 'selecting' && (
+                      <motion.div key="selecting" className="absolute top-6 left-1/2 -translate-x-1/2 z-30" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <div className="flex items-center gap-2 px-5 py-2.5 bg-black/60 backdrop-blur-md rounded-full">
+                          <motion.div animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 0.8, repeat: Infinity }}><Focus size={16} className="text-orange-400" /></motion.div>
+                          <span className="text-white text-sm font-bold tracking-wide">Selecting object…</span>
+                        </div>
+                      </motion.div>
+                    )}
+                    {phase === 'selected' && (
+                      <motion.div key="selected" className="absolute top-6 left-1/2 -translate-x-1/2 z-30" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <div className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/80 backdrop-blur-md rounded-full shadow-lg shadow-orange-500/25">
+                          <Sparkles size={16} className="text-white" />
+                          <span className="text-white text-sm font-bold tracking-wide">
+                            {bgRemovalDone ? 'Object detected!' : bgRemovalProgress || 'Removing background…'}
+                          </span>
+                        </div>
+                      </motion.div>
+                    )}
+                    {phase === 'sticker' && (
+                      <motion.div key="sticker" className="absolute top-6 left-1/2 -translate-x-1/2 z-30" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
+                        <div className="flex items-center gap-2 px-5 py-2.5 bg-orange-500/90 backdrop-blur-md rounded-full shadow-lg shadow-orange-500/25">
+                          <Sparkles size={16} className="text-white" />
+                          <span className="text-white text-sm font-bold tracking-wide">Sticker created! ✨</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Retake overlay */}
+                  <AnimatePresence>
+                    {phase === 'done' && (
+                      <motion.div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-900/80 via-stone-900/20 to-transparent flex flex-col justify-end p-8 z-30"
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                        <Button onClick={handleReset} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg">
+                          <RefreshCcw size={20} className="mr-2" /> Retake Photo
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               ) : (
                 <div className="text-center space-y-6 p-8 relative z-10">
-                  <div className="w-24 h-24 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                    <Camera size={48} />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-bold text-stone-900 mb-2">Tap to take a photo</h3>
-                    <p className="text-stone-500">or browse files from your device</p>
-                  </div>
-                  <div className="inline-flex items-center gap-2 text-orange-500 font-bold mt-4">
-                    <Upload size={20} /> Upload Image
-                  </div>
+                  <div className="w-24 h-24 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300 shadow-inner"><Camera size={48} /></div>
+                  <div><h3 className="text-2xl font-bold text-stone-900 mb-2">Tap to take a photo</h3><p className="text-stone-500">or browse files from your device</p></div>
+                  <div className="inline-flex items-center gap-2 text-orange-500 font-bold mt-4"><Upload size={20} /> Upload Image</div>
                 </div>
               )}
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleUpload}
-                className="hidden"
-                accept="image/*"
-              />
+              <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" accept="image/*" capture="environment" />
             </div>
           </div>
 
-          {/* Analysis Section */}
+          {/* ════ Analysis Section ════ */}
           <div className="w-full h-full">
-            {loading ? (
+            {showAnalysisError ? (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                <Card className="rounded-[2.5rem] border-red-100 shadow-xl overflow-hidden bg-white">
+                  <div className="bg-gradient-to-r from-red-600 to-red-500 flex items-center gap-3 p-6 text-white">
+                    <div className="p-2 bg-white/20 rounded-xl"><AlertTriangle size={24} /></div>
+                    <h3 className="text-xl font-bold">AI Camera Warning</h3>
+                  </div>
+                  <CardContent className="p-8 space-y-6">
+                    <p className="text-stone-600">{error}</p>
+                    <Button onClick={handleReset} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-full py-6 font-bold"><RefreshCcw size={18} className="mr-2" /> Try Again</Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ) : showAnalysisSkeleton ? (
               <CameraAnalysisSkeleton />
-            ) : analysis ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="h-full"
-              >
+            ) : showAnalysisResult && analysis ? (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="h-full">
                 <Card className="rounded-[2.5rem] border-stone-100 shadow-xl shadow-stone-200/50 overflow-hidden bg-white h-full flex flex-col">
                   <div className="orange-gradient flex flex-col justify-between gap-4 p-6 text-white sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-orange-500/20 rounded-xl">
-                        <Sparkles size={24} className="text-orange-400" />
-                      </div>
+                      <div className="p-2 bg-orange-500/20 rounded-xl"><Sparkles size={24} className="text-orange-400" /></div>
                       <h3 className="text-xl font-bold">Analysis Complete</h3>
                     </div>
-                    <Badge className="border border-white/20 bg-white/20 px-3 py-1.5 font-bold text-white hover:bg-white/25">
-                      High Confidence
-                    </Badge>
+                    {hasDetectedIngredients && (
+                      <Badge className={cn("border px-3 py-1.5 font-bold capitalize", confidenceColor(analysis.detectedIngredients[0]?.confidence || 'medium'))}>
+                        {analysis.detectedIngredients.length} ingredient{analysis.detectedIngredients.length !== 1 ? 's' : ''} detected
+                      </Badge>
+                    )}
                   </div>
-
                   <CardContent className="p-8 flex-1 flex flex-col justify-between">
                     <div className="space-y-8">
                       <div>
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Identified Subject</p>
-                        <h4 className="text-3xl font-extrabold text-stone-900 leading-tight">{analysis.dishName || 'Assorted Ingredients'}</h4>
+                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 flex items-center gap-2"><ChefHat size={16} /> Detected Ingredients</p>
+                        {analysis.detectedIngredients.length > 0 ? (
+                          <div className="space-y-3">
+                            {analysis.detectedIngredients.map((ing) => (
+                              <div key={ing.name} className="bg-stone-50 border border-stone-100 rounded-2xl p-4">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-bold text-stone-900 capitalize">{ing.name}</span>
+                                  <Badge className={cn("border px-2 py-0.5 text-xs font-bold capitalize", confidenceColor(ing.confidence))}>{ing.confidence}</Badge>
+                                </div>
+                                <p className="text-sm text-stone-500 leading-relaxed">{ing.description}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <p className="text-stone-400 italic">No ingredients detected</p>}
                       </div>
-
-                      <div>
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          <ChefHat size={16} /> Detected Ingredients
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {analysis.ingredients?.map((ing: string) => (
-                            <Badge key={ing} variant="secondary" className="bg-stone-100 hover:bg-stone-200 text-stone-700 border-none px-4 py-2 rounded-xl text-sm font-medium">
-                              {ing}
-                            </Badge>
+                    </div>
+                    {topRecipe ? (
+                      <div className="mt-8 pt-8 border-t border-stone-100">
+                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Suggested Recipes ({matchedRecipes.length})</p>
+                        <div className="space-y-3">
+                          {matchedRecipes.slice(0, 5).map((recipe) => (
+                            <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="block group">
+                              <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-5 rounded-[1.5rem] border border-orange-100 transition-all group-hover:shadow-lg group-hover:shadow-orange-100">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <h5 className="font-bold text-lg text-stone-900 mb-1 group-hover:text-orange-600 transition-colors truncate">{recipe.title}</h5>
+                                    {recipe.description && <p className="text-stone-600 text-sm leading-relaxed mb-2 line-clamp-1">{recipe.description}</p>}
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {recipe.matchedIngredients.map((mi) => (
+                                        <span key={mi} className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium capitalize">{mi}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <ArrowRight size={18} className="text-orange-500 mt-1 shrink-0 group-hover:translate-x-1 transition-transform" />
+                                </div>
+                                {(recipe.difficulty || recipe.cook_time || recipe.category) && (
+                                  <div className="flex items-center gap-3 mt-2 text-xs text-stone-500">
+                                    {recipe.difficulty && <span>{recipe.difficulty}</span>}
+                                    {recipe.cook_time && <span>{recipe.cook_time}</span>}
+                                    {recipe.category && <span>{recipe.category}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            </Link>
                           ))}
                         </div>
                       </div>
-
-                      {analysis.estimatedCalories && (
-                        <div className="bg-stone-50 border border-stone-100 p-5 rounded-2xl flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-orange-500 shadow-sm">
-                              <Info size={24} />
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Estimated Calories</p>
-                              <p className="text-xl font-bold text-stone-900">{analysis.estimatedCalories} kcal</p>
-                            </div>
-                          </div>
+                    ) : (
+                      <div className="mt-8 border-t border-stone-100 pt-8">
+                        <div className="rounded-[2rem] border border-stone-200 bg-stone-50 p-6">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400">
+                            {noFoodDetected ? 'No Food Items Detected' : 'No Database Match Yet'}
+                          </p>
+                          <p className="text-sm leading-relaxed text-stone-600">
+                            {analysis.message || (noFoodDetected
+                              ? 'No recognizable cooking ingredient was detected. Please retake or upload a clearer ingredient photo.'
+                              : 'CookMate found ingredients, but no published recipe in the database matches them yet.')}
+                          </p>
                         </div>
-                      )}
-                    </div>
-
-                    {analysis.suggestedRecipe && (
-                      <div className="mt-8 pt-8 border-t border-stone-100">
-                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Suggested Recipe</p>
-                        <Link to="/recipe/1" className="block group">
-                          <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 p-6 rounded-[2rem] border border-orange-100 transition-all group-hover:shadow-lg group-hover:shadow-orange-100">
-                            <h5 className="font-bold text-xl text-stone-900 mb-2 group-hover:text-orange-600 transition-colors">
-                              {analysis.suggestedRecipe.title}
-                            </h5>
-                            <p className="text-stone-600 leading-relaxed mb-4">
-                              {analysis.suggestedRecipe.description}
-                            </p>
-                            <div className="flex items-center gap-2 text-orange-600 font-bold">
-                              Let's cook this <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                            </div>
-                          </div>
-                        </Link>
                       </div>
                     )}
                   </CardContent>
@@ -223,9 +654,7 @@ export default function AICamera() {
               </motion.div>
             ) : (
               <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-6 rounded-[2.5rem] border border-dashed border-orange-200 bg-orange-50/60 p-12 text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-orange-300 shadow-sm">
-                  <Sparkles size={40} />
-                </div>
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-orange-300 shadow-sm"><Sparkles size={40} /></div>
                 <div className="max-w-xs">
                   <h3 className="text-xl font-bold text-stone-900 mb-2">Waiting for Image</h3>
                   <p className="text-stone-500">Upload a photo to let CookMate's AI analyze your ingredients and suggest recipes.</p>

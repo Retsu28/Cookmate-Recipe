@@ -55,8 +55,26 @@ export default function RecipeDetailScreen({ route, navigation }) {
     const fetchRecipe = async () => {
       try {
         const response = await recipeApi.getById(id);
-        setRecipe(response.data);
-        setServings(response.data.servings || 4);
+        const r = response.data?.recipe || response.data;
+        // Normalize API fields to match component expectations
+        const normalized = {
+          ...r,
+          image: r.image_url || r.image || null,
+          time: r.total_time_minutes ? `${r.total_time_minutes} min` : r.time || '30 min',
+          prepTime: r.prep_time_minutes ? `${r.prep_time_minutes} min` : r.prepTime || '',
+          ingredients: r.ingredients || (r.normalized_ingredients || []).map((name, i) => ({ name, amount: '', unit: '' })),
+          steps: r.instructions
+            ? r.instructions.map((text, i) => ({ number: i + 1, text, time: null }))
+            : r.steps || [],
+          nutrition: r.nutrition || {
+            calories: r.calories || 0,
+            protein: r.protein_g ? `${r.protein_g}g` : '—',
+            carbs: r.carbs_g ? `${r.carbs_g}g` : '—',
+            fat: r.fat_g ? `${r.fat_g}g` : '—',
+          },
+        };
+        setRecipe(normalized);
+        setServings(normalized.servings || 4);
       } catch (error) {
         console.error('Failed to fetch recipe', error);
         const fallback = fallbackRecipes[id] || fallbackRecipes[1];
@@ -220,12 +238,12 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </View>
 
           {/* Ask AI Assistant */}
-          <View style={st.aiCard}>
+          <View style={[st.aiCard, { backgroundColor: colors.dark, padding: 20 }]}>
             <View style={st.aiRow}>
-              <View style={st.aiIcon}><Ionicons name="restaurant" size={14} color={colors.primary} /></View>
-              <Text style={st.aiTitle}>Ask AI Assistant</Text>
+              <View style={[st.aiIcon, { backgroundColor: colors.surface }]}><Ionicons name="restaurant" size={14} color={colors.primary} /></View>
+              <Text style={[st.aiTitle, { color: colors.text }]}>Ask AI Assistant</Text>
             </View>
-            <Text style={st.aiDesc}>Get substitution ideas, scaling tips, or wine pairings for this recipe.</Text>
+            <Text style={[st.aiDesc, { color: colors.textSubtle }]}>Get substitution ideas, scaling tips, or wine pairings for this recipe.</Text>
           </View>
         </View>
       </ScrollView>
@@ -253,7 +271,7 @@ const st = StyleSheet.create({
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.12)' },
   backBtn: { position: 'absolute', top: 48, left: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   heartBtn: { position: 'absolute', top: 48, right: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  heroBadge: { position: 'absolute', bottom: 20, left: 20, backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 6 },
+  heroBadge: { position: 'absolute', bottom: 20, left: 20, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 14, paddingVertical: 6 },
   heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5, color: '#ea580c', textTransform: 'uppercase' },
   body: { padding: 20, gap: 24 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -294,11 +312,11 @@ const st = StyleSheet.create({
   nutrBar: { height: 6, width: '100%' },
   nutrBarFill: { height: '100%' },
   // AI
-  aiCard: { backgroundColor: '#24160f', padding: 20, gap: 8, borderRadius: 24 },
+  aiCard: { backgroundColor: 'transparent', padding: 0, gap: 8, borderRadius: 24 },
   aiRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  aiIcon: { width: 28, height: 28, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  aiTitle: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff' },
-  aiDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, color: '#a8a29e', lineHeight: 18 },
+  aiIcon: { width: 28, height: 28, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  aiTitle: { fontFamily: 'Geist_700Bold', fontSize: 14 },
+  aiDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, lineHeight: 18 },
   // Bottom bar
   bottomBar: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
   saveBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },

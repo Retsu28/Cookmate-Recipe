@@ -61,8 +61,14 @@ export const api = {
   get: <T = unknown>(endpoint: string, headers?: Record<string, string>) =>
     request<T>(endpoint, { method: 'GET', headers }),
 
-  post: <T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>) =>
+  post: <T = unknown>(
+    endpoint: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    init?: Omit<RequestInit, 'method' | 'body' | 'headers'>
+  ) =>
     request<T>(endpoint, {
+      ...init,
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
       headers,
@@ -77,6 +83,13 @@ export const api = {
 
   delete: <T = unknown>(endpoint: string, headers?: Record<string, string>) =>
     request<T>(endpoint, { method: 'DELETE', headers }),
+
+  patch: <T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>) =>
+    request<T>(endpoint, {
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+      headers,
+    }),
 };
 
 export default api;

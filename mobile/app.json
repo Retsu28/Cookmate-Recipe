@@ -26,6 +26,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#fff8f1"
       },
+      "usesCleartextTraffic": true,
       "package": "com.cookmate.app",
       "permissions": [
         "CAMERA",

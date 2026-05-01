@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { mlApi } from '../api/api';
+import { mlApi, recipeApi } from '../api/api';
 import IngredientTag from '../components/IngredientTag';
 import RecipeCard from '../components/RecipeCard';
 import { useAppTheme } from '../context/ThemeContext';
@@ -18,9 +18,9 @@ import { SearchContentSkeleton, SearchResultsSkeleton } from '../components/Skel
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 const suggestedCombinations = [
-  { title: 'Mediterranean Pantry', items: 'Olives, Feta, Tomatoes, Cucumber', icon: 'restaurant' },
-  { title: 'Quick Stir-Fry Set', items: 'Ginger, Soy Sauce, Broccoli, Tofu', icon: 'flame' },
-  { title: "Baker's Base", items: 'Flour, Yeast, Salt', icon: 'cafe' },
+  { title: 'Filipino Adobo', items: 'Chicken, Soy Sauce, Vinegar, Garlic', icon: 'restaurant' },
+  { title: 'Sinigang Essentials', items: 'Pork, Tamarind, Tomato, Kangkong', icon: 'flame' },
+  { title: 'Pancit Basics', items: 'Noodles, Soy Sauce, Garlic, Vegetables', icon: 'cafe' },
 ];
 
 const mockResults = [
@@ -30,13 +30,56 @@ const mockResults = [
   { id: 4, title: 'Crispy Garlic Smashed Taters', match: '74%', time: '15 MIN' },
 ];
 
-export default function SearchScreen({ navigation }) {
+export default function SearchScreen({ navigation, route }) {
   const { colors, isDark } = useAppTheme();
+  const categoryParam = route?.params?.category?.trim?.() || '';
   const [ingredient, setIngredient] = useState('');
   const [ingredients, setIngredients] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState(categoryParam);
   const isInitialLoading = useInitialContentLoading();
+
+  // When the user lands here with a category param (e.g. tapping a category
+  // chip on the homepage), hydrate the results grid using the existing
+  // /api/recipes endpoint without disturbing the ingredient-based flow.
+  useEffect(() => {
+    if (!categoryParam) return;
+    let cancelled = false;
+    setActiveCategory(categoryParam);
+    setIngredients([]);
+    setLoading(true);
+    recipeApi
+      .byCategory(categoryParam)
+      .then((res) => {
+        if (cancelled) return;
+        const recipes = res?.data?.recipes || [];
+        const mapped = recipes.map((r) => ({
+          recipe: {
+            ...r,
+            time:
+              r.total_time_minutes
+                ? `${r.total_time_minutes} MIN`
+                : `${(r.prep_time_minutes || 0) + (r.cook_time_minutes || 0)} MIN`,
+            image: r.image_url,
+          },
+          matchPercentage: 100,
+          score: 1,
+        }));
+        setResults(mapped);
+      })
+      .catch((err) => {
+        console.error('Failed to load category recipes', err);
+        if (!cancelled) setResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryParam]);
 
   const addIngredient = () => {
     if (ingredient.trim() && !ingredients.includes(ingredient.trim())) {
@@ -63,13 +106,35 @@ export default function SearchScreen({ navigation }) {
     }
   };
 
+  const clearCategoryFilter = () => {
+    setActiveCategory('');
+    setResults([]);
+    if (route?.params?.category) {
+      navigation.setParams({ category: undefined });
+    }
+  };
+
   const renderHeader = () => (
     <View style={st.headerWrap}>
       {/* Big heading — matches web */}
-      <Text style={[st.pageTitle, { color: colors.text }]}>Search by{'\n'}Ingredients</Text>
-      <Text style={[st.pageDesc, { color: colors.textMuted }]}>
-        Enter the items currently in your pantry and we'll find the perfect recipe for your next meal.
+      <Text style={[st.pageTitle, { color: colors.text }]}>
+        {activeCategory ? `Browse${'\n'}${activeCategory}` : `Search by${'\n'}Ingredients`}
       </Text>
+      <Text style={[st.pageDesc, { color: colors.textMuted }]}>
+        {activeCategory
+          ? `Every published recipe filed under ${activeCategory}. Tap a card to view the full step-by-step.`
+          : "Enter the items currently in your pantry and we'll find the perfect recipe for your next meal."}
+      </Text>
+
+      {activeCategory ? (
+        <TouchableOpacity
+          onPress={clearCategoryFilter}
+          style={[st.clearCategoryBtn, { borderColor: colors.border }]}
+        >
+          <Ionicons name="close" size={12} color={colors.primary} />
+          <Text style={[st.clearCategoryText, { color: colors.primary }]}>CLEAR CATEGORY</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Input */}
       <View style={st.inputSection}>
@@ -211,4 +276,10 @@ const st = StyleSheet.create({
   filterBtn: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
   filterBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },
   colWrapper: { justifyContent: 'space-between', paddingHorizontal: 16 },
+  clearCategoryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+  },
+  clearCategoryText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
 });

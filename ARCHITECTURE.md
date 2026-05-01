@@ -1,179 +1,101 @@
-# Cookmate — System Architecture & Feature Reference
+﻿# CookMate — System Architecture
 
-> **Version:** Monorepo architecture reference  
-> **Last updated:** April 2026  
-> **Status:** Active development across web, API, and mobile
-
----
-
-## What Is Cookmate?
-
-Cookmate is an **AI-powered recipe and cooking assistant** delivered as a small monorepo with three active applications:
-- a **React + Vite web app**
-- an **Express API backend**
-- an **Expo React Native mobile app**
-
-It helps users browse recipes, follow guided cooking flows, manage meal plans, access profile and notification features, and use AI-assisted experiences such as ingredient recognition and recipe suggestion.
+> **Project:** Cookmate-Recipe  
+> **Status:** Active monorepo for web, API, database, and mobile  
+> **See also:** [Full System Structure](./cookmate_system_structure.md)
 
 ---
 
-## Core Features
+## Overview
 
-### Recipe browsing and search
-Users can browse recipes from the dashboard, search by terms or ingredients, and open detail views for individual recipes.
+CookMate is a recipe and cooking assistant built as a JavaScript monorepo. The current project contains:
 
-### Recipe detail and guided cooking
-Recipe detail pages provide ingredients, instructions, metadata, and cooking-focused UI. Guided cooking remains a core experience across web and mobile, including step navigation and cooking assistance patterns.
+- **Web app:** React 19, TypeScript, Vite, React Router, Tailwind CSS
+- **Backend API:** Express 4 REST API
+- **Database:** PostgreSQL schema, migrations, and recipe seed data
+- **Mobile app:** Expo React Native client
 
-### Authentication and profile
-Both web and mobile now use real backend-backed authentication rather than placeholder-only UI. Session state is cached locally and refreshed against the API with `/api/auth/me`.
-
-### Meal planning, notifications, and profile data
-Meal planning, profile, notification, inventory, and related user features are represented in the API and database schema, with the web and mobile clients consuming backend endpoints.
-
-### Admin area
-The web application includes a dedicated admin section gated separately from standard authenticated routes. Admin pages cover recipes, ingredients, users, meal planner monitoring, AI activity, reports, notifications, reviews, and system status.
-
-### AI camera and AI assistance
-Cookmate uses Google Gemini for AI-assisted flows such as ingredient recognition, recipe suggestion, and assistant-style cooking help. AI is treated as a backend-integrated capability rather than a purely client-side feature.
+The web and mobile clients are separate frontends, but both use the same Express API contract and the same PostgreSQL-backed application data.
 
 ---
 
-## Monorepo Structure
+## High-Level Runtime Flow
 
 ```text
-Cookmate-Recipe/
-├── src/                     # Web app (React 19 + Vite + TypeScript)
-│   ├── app/                 # Shared shell/layout wiring
-│   ├── admin/               # Admin layout, pages, hooks, data
-│   ├── auth/                # AuthGate and AdminGate route protection
-│   ├── components/          # Shared web UI components
-│   ├── context/             # Web auth context
-│   ├── pages/               # Public/authenticated page routes
-│   ├── services/            # API client and auth service
-│   └── main.tsx             # Web entry
-├── api/                     # Express backend
-│   ├── src/config/          # Environment and DB configuration
-│   ├── src/controllers/     # Route handlers / application logic
-│   ├── src/middleware/      # Error handling, auth middleware
-│   ├── src/models/          # DB-facing model helpers
-│   ├── src/routes/          # REST API routes mounted under /api
-│   └── src/server.js        # API entrypoint
-├── mobile/                  # Expo React Native app
-│   ├── src/api/             # Mobile HTTP client
-│   ├── src/components/      # Shared native UI components
-│   ├── src/context/         # Mobile auth and theme contexts
-│   ├── src/navigation/      # Stack + tab navigation
-│   ├── src/screens/         # App screens
-│   ├── src/services/        # Mobile auth/session services
-│   └── App.js               # Mobile entry
-├── database/schema.sql      # PostgreSQL schema
-├── public/                  # Web static assets
-├── vite.config.ts           # Vite config and local API proxy
-└── vercel.json              # Web deployment rewrites
+React Web App              Expo Mobile App
+     |                           |
+     | HTTP /api requests        | HTTP /api requests
+     v                           v
+              Express API Backend
+                       |
+                       | SQL queries
+                       v
+                PostgreSQL Database
+                       |
+                       | optional AI/ML logic
+                       v
+              Google Gemini / natural
 ```
 
 ---
 
-## Runtime Architecture
+## Repository Layout
 
-### Web application
-
-- React 19 + TypeScript
-- Vite 6
-- React Router 7
-- Tailwind CSS 4 + component primitives in `src/components/ui`
-- Protected user routes via `src/auth/AuthGate.tsx`
-- Protected admin routes via `src/auth/AdminGate.tsx`
-
-### API backend
-
-- Express 4 in `api/src/server.js`
-- CORS + JSON + cookie parsing middleware
-- Central route mount at `/api`
-- PostgreSQL connectivity via `pg`
-- JWT and bcrypt-based auth stack
-- Startup bootstrap that attempts to ensure an admin account exists
-
-### Mobile application
-
-- Expo SDK 55 + React Native 0.83
-- React Navigation stack and bottom tabs
-- Secure local session persistence using `expo-secure-store`
-- Shared theme context for native styling and navigation theme
+```text
+Cookmate-Recipe/
+├── src/                     # React + Vite web app
+├── api/                     # Express backend package
+├── database/                # PostgreSQL schema, migrations, and seed CSV
+├── mobile/                  # Expo React Native app
+├── public/                  # Web static assets
+├── dist/                    # Web build output
+├── index.html               # Vite HTML entry
+├── package.json             # Root web package scripts/dependencies
+├── vite.config.ts           # Vite config, aliases, PWA, and API proxy
+├── vercel.json              # Web SPA deployment rewrites
+├── ARCHITECTURE.md          # This architecture reference
+└── cookmate_system_structure.md
+```
 
 ---
 
-## Two Separate Codebases
+## Web Application
 
-The web and mobile clients are still separate frontends, but they now share a common backend contract through the Express API.
+The root `src/` folder contains the browser app.
 
-| | Web App | Mobile App |
-|---|---|---|
-| **Technology** | React 19 + Vite + TypeScript | Expo + React Native + JavaScript |
-| **Routing** | React Router | React Navigation |
-| **Auth source** | Express API + localStorage cache | Express API + SecureStore cache |
-| **Runs on** | Browser | Android/iOS via Expo |
-| **PWA support** | Configured | Not applicable |
-| **Backend dependency** | Shared Express API | Shared Express API |
+### Main responsibilities
 
----
+- Renders the user-facing CookMate interface
+- Provides public, authenticated, and admin route trees
+- Uses `AuthGate`, `GuestGate`, and `AdminGate` for route protection
+- Uses service-layer helpers in `src/services/` to call the Express API
+- Uses Vite's local proxy for `/api` requests during local development
 
-## Tech Stack
-
-### Web Application
-| Layer | Technology | Notes |
-|---|---|---|
-| Framework | React 19 + TypeScript | |
-| Bundler | Vite 6 | Local dev proxies `/api` to the backend |
-| Routing | React Router 7 | Client-side routing |
-| Styling | Tailwind CSS + Shadcn UI | |
-| Animation | Motion (Framer Motion) | |
-| Icons | Lucide React | |
-| Theming | `next-themes` | Light-first configuration |
-| AI | Google Gemini | Used by AI features |
-| PWA | `vite-plugin-pwa` + Workbox | Installability and caching |
-
-### Mobile Application
-| Layer | Technology | Notes |
-|---|---|---|
-| Framework | Expo SDK 55 + React Native | |
-| Language | JavaScript | |
-| Navigation | React Navigation | Stack + tabs |
-| Secure session storage | `expo-secure-store` | Persists token and user |
-
-### API and Data
-| Layer | Technology | Notes |
-|---|---|---|
-| API | Express 4 | Backend mounted in `api/` |
-| Auth | `bcryptjs` + `jsonwebtoken` | Login, signup, token auth |
-| Database | PostgreSQL + `pg` | Schema in `database/schema.sql` |
-| Recommendation/ML | `natural` | Ingredient-based recommendation support |
-
----
-
-## Route and Access Model
-
-### Web routes
+### Web route groups
 
 Public guest routes:
 
 - `/login`
 - `/signup`
-- `/onboarding`
 
 Authenticated app routes:
 
 - `/`
+- `/onboarding`
 - `/search`
+- `/recipes`
 - `/recipe/:id`
 - `/planner`
 - `/profile`
 - `/notifications`
 - `/camera`
 - `/settings`
+- `/settings/account`
+- `/settings/appearance`
+- `/settings/notifications`
+- `/settings/privacy-security`
 
-Admin-only routes:
+Admin routes:
 
 - `/admin`
 - `/admin/recipes`
@@ -186,45 +108,52 @@ Admin-only routes:
 - `/admin/reports`
 - `/admin/system-status`
 
-### API route groups
+---
 
-Mounted under `/api`:
+## Backend API
 
-- `/health`
-- `/auth`
-- `/recipes`
-- `/ingredients`
-- `/meal-planner`
-- `/shopping-list`
-- `/notifications`
-- `/profile`
-- `/inventory`
-- `/ml`
+The backend lives in `api/` and starts from `api/src/server.js`.
+
+### Backend responsibilities
+
+- Loads API environment variables with `dotenv`
+- Connects to PostgreSQL through `pg`
+- Bootstraps an admin account when possible
+- Applies CORS, JSON parsing, and cookie parsing middleware
+- Mounts all REST routes under `/api`
+- Handles authentication, recipes, ingredients, meal planning, shopping lists, notifications, profiles, inventory, and ML endpoints
+
+### Mounted API route groups
+
+- `/api/health`
+- `/api/auth`
+- `/api/recipes`
+- `/api/ingredients`
+- `/api/meal-planner`
+- `/api/shopping-list`
+- `/api/notifications`
+- `/api/profile`
+- `/api/inventory`
+- `/api/ml`
 
 ---
 
-## Authentication Flow
+## Database Layer
 
-### Web
+The database source lives in `database/`.
 
-- `AuthProvider` boots from cached localStorage user data
-- `authService.me()` refreshes state from `GET /api/auth/me`
-- invalid or stale sessions are cleared on `401` or `404`
-- `AuthGate` protects signed-in routes
-- `AdminGate` protects admin routes
+```text
+database/
+├── schema.sql
+├── migrations/
+│   ├── 20260425_unique_user_auth_fields.sql
+│   ├── 20260426_recipes_csv_fields.sql
+│   └── 20260426_recipes_full_fields.sql
+└── seeds/
+    └── philippine_food_recipes_100.csv
+```
 
-### Mobile
-
-- `AuthContext` persists both token and user in SecureStore
-- the session is refreshed from `/api/auth/me`
-- stale sessions are cleared automatically on invalid responses
-- navigation acts as a mobile auth gate by switching between auth and app stacks
-
----
-
-## Data Layer
-
-The PostgreSQL schema in `database/schema.sql` currently defines the core domain tables:
+### Main schema tables
 
 - `users`
 - `ingredients`
@@ -236,95 +165,131 @@ The PostgreSQL schema in `database/schema.sql` currently defines the core domain
 - `reviews`
 - `notifications`
 
-The `users` table includes a `role` column with `user` and `admin` values, which supports admin authorization in both backend and frontend flows.
+Important schema details include user roles through `users.role`, normalized unique auth fields, recipe publishing/featured flags, image URLs, recipe metadata, and recipe-to-ingredient relationships.
 
 ---
 
-## AI Integration
+## Mobile Application
 
-Cookmate uses Google Gemini as part of its AI feature set. The architecture should be understood as **backend-integrated AI**, not a standalone serverless-only layer.
+The mobile app lives in `mobile/` and runs through Expo.
 
-Conceptual flow:
+### Main responsibilities
 
-```text
-Web or Mobile Client
-        |
-        | authenticated API requests
-        v
- Express API (/api/*)
-        |
-        | domain logic / AI-related processing
-        v
- Google Gemini + PostgreSQL-backed application data
-```
+- Provides the native/mobile version of the CookMate experience
+- Uses React Navigation for stack and tab navigation
+- Calls the same Express API through `mobile/src/api/api.js`
+- Persists auth tokens and user data through mobile storage services
+- Uses mobile-specific theme tokens and native components
 
-For local development:
+### Mobile runtime API base URL
 
-- web requests can hit `/api/*` through the Vite proxy
-- mobile uses the configured API base URL from Expo config
-- API secrets remain server-side in backend environment files
+The mobile client reads the API base URL from Expo config when available, then falls back to development-friendly URLs:
+
+- Expo configured `extra.apiBaseUrl`
+- Expo debugger host on port `5000`
+- Android emulator fallback `http://10.0.2.2:5000`
+- Localhost fallback `http://localhost:5000`
 
 ---
 
-## PWA and Local Development Notes
+## Authentication and Access Control
 
-- The root web app is the PWA-enabled frontend.
-- Local web development typically leaves `VITE_API_BASE_URL` empty so Vite proxies `/api` to `http://localhost:5000`.
-- The API loads its own environment from `api/.env`.
-- The mobile app reads its API base URL from Expo config and runtime fallbacks.
+### Backend
+
+- Passwords are hashed with `bcryptjs`
+- JWTs are signed with `jsonwebtoken`
+- Login and signup return a token and public user object
+- The API also sets/clears an auth cookie
+- `/api/auth/me` refreshes the current authenticated user
+
+### Web
+
+- `src/context/AuthContext.tsx` owns web auth state
+- `src/services/authService.ts` handles login, signup, logout, token persistence, and current-user refresh
+- `GuestGate` protects guest-only pages
+- `AuthGate` protects normal signed-in pages
+- `AdminGate` protects the admin route tree
+
+### Mobile
+
+- `mobile/src/context/AuthContext.js` owns mobile auth state
+- `mobile/src/services/authService.js` persists token and user data
+- Mobile navigation switches between auth and app screens based on auth state
 
 ---
 
-## Feature Implementation Status
+## Recipes and AI/ML
 
-### Fully Implemented
-| Feature | Web | Mobile |
-|---|---|---|
-| Recipe browsing / listing | ✅ | ✅ |
-| Recipe search | ✅ | ✅ |
-| Recipe detail view | ✅ | ✅ |
-| Authentication flow | ✅ | ✅ |
-| Profile backed by authenticated user/session | ✅ | ✅ |
-| Meal planning UI | ✅ | ✅ |
-| Notifications UI | ✅ | ✅ |
-| Admin dashboard and admin route tree | ✅ | N/A |
-| PWA installability | ✅ | N/A |
-| Express API foundation | N/A | N/A |
+Recipe data is database-backed through `/api/recipes`. Current recipe listing supports pagination and filters such as category, difficulty, search, featured, published, and tag. The API also supports title A-Z sorting through `sort=title_asc` or `sort=az`.
 
-### Partial / In Progress
-| Feature | Notes |
+AI and recommendation functionality is exposed through `/api/ml`, with backend dependencies for Google Gemini and `natural`. API secrets and database access stay server-side.
+
+---
+
+## Local Development
+
+### Web
+
+Run from the repository root.
+
+| Script | Purpose |
 |---|---|
-| Some API domains | Present in route structure but depth of CRUD differs by module |
-| Mobile production packaging | Expo app is active but still in development workflow |
-| Offline support | Limited / evolving rather than complete offline-first behavior |
+| `npm run dev` | Start Vite dev server |
+| `npm run dev:api` | Start the API package from the root script |
+| `npm run build` | Build the web app |
+| `npm run preview` | Preview the built web app |
+| `npm run lint` | Run TypeScript checking |
 
-### Not Yet Implemented
-| Feature | Notes |
+In local web development, `VITE_API_BASE_URL` can be empty because Vite proxies `/api` to the backend.
+
+### API
+
+Run from `api/`.
+
+| Script | Purpose |
 |---|---|
-| Full favorites/saved-recipes product flow | Not yet documented as complete |
-| Broader AI roadmap items | Pantry mode, dish-photo reconstruction, substitutions, scaling, step clarification |
+| `npm run dev` | Start Express with Node watch mode |
+| `npm start` | Start Express normally |
+| `npm run seed:recipes` | Import recipe seed data from CSV |
+
+The API reads runtime configuration from `api/.env`.
+
+### Mobile
+
+Run from `mobile/`.
+
+| Script | Purpose |
+|---|---|
+| `npm start` | Start Expo |
+| `npm run android` | Start Expo Android flow |
+| `npm run ios` | Start Expo iOS flow |
 
 ---
 
-## Roadmap Direction
+## Current Technology Stack
 
-Likely next architecture-level improvements include:
-
-- stronger offline/PWA behavior
-- deeper CRUD completion across API modules
-- richer AI-assisted cooking and pantry workflows
-- production deployment hardening for web, API, and mobile
-
----
-
-## Environment Variables
-
-| Variable | Location | Purpose |
-|---|---|---|
-| `VITE_API_BASE_URL` | Root web env | Optional explicit API base URL for the web app |
-| API runtime env vars | `api/.env` | Backend port, database, auth, and secret configuration |
-| Expo `extra.apiBaseUrl` | `mobile/app.json` | Mobile API base URL |
+| Area | Current project technology |
+|---|---|
+| Web | React 19, TypeScript, Vite 6, React Router 7 |
+| Web styling | Tailwind CSS 4, shadcn-style UI components, Lucide, Motion |
+| Web PWA | `vite-plugin-pwa` and Workbox |
+| API | Express 4, Node.js, CORS, cookie-parser |
+| Auth | `bcryptjs`, `jsonwebtoken` |
+| Database | PostgreSQL, `pg` |
+| AI/ML | Google Gemini packages, `natural` |
+| Mobile | Expo SDK 55, React Native 0.83, React 19.2 |
+| Mobile navigation | React Navigation stack and bottom tabs |
+| Mobile storage | `expo-secure-store`, AsyncStorage where needed |
 
 ---
 
-*This document should be updated whenever route structure, backend boundaries, auth flow, or deployment strategy changes.*
+## Architecture Summary
+
+CookMate is currently a three-client-layer monorepo:
+
+- **Root web app** handles the browser UI, PWA behavior, protected user routes, and admin pages.
+- **Express API** is the shared backend for both web and mobile clients.
+- **PostgreSQL** stores users, recipes, ingredients, meal plans, shopping lists, inventory, reviews, and notifications.
+- **Expo mobile app** mirrors the core user experience on mobile and consumes the same API.
+
+This document should be updated whenever routes, API modules, database tables, package structure, or deployment assumptions change.

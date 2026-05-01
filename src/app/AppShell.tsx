@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { WifiOff } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { Layout, LayoutShellContext } from '@/components/Layout';
 import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
@@ -49,12 +50,21 @@ export default function AppShell() {
           </LayoutShellContext.Provider>
         </Layout>
       ) : (
-        <>
-          <header className="sr-only">
-            <Link to="/">CookMate</Link>
-          </header>
-          {routeContent}
-        </>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="h-full"
+          >
+            <header className="sr-only">
+              <Link to="/">CookMate</Link>
+            </header>
+            {routeContent}
+          </motion.div>
+        </AnimatePresence>
       )}
 
       {!isOnline && <OfflineBanner />}
