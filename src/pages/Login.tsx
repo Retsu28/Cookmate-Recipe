@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
-import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const fieldVariants = {
@@ -67,9 +66,7 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-screen bg-stone-950 flex overflow-hidden">
-      <AuthVideoBackground />
-
+    <div className="relative min-h-screen flex overflow-hidden">
       {/* ── Split-screen wrapper ── */}
       <div className="relative z-10 flex w-full min-h-screen">
         {/* Visual panel (left) — hidden on mobile, collapsible on desktop */}

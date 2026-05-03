@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
-import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
+import { ContentSkeleton } from '@/components/SkeletonScreen';
 
 /**
  * AuthGate — renders children only if the user is authenticated.
@@ -34,11 +34,7 @@ export default function AuthGate() {
 }
 
 export function GuestGate() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return <AuthPageSkeleton />;
-  }
+  const { user, isAuthenticated } = useAuth();
 
   if (isAuthenticated) {
     return <Navigate to={isAdminUser(user) ? '/admin' : '/'} replace />;

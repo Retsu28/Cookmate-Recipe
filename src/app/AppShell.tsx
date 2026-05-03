@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout, LayoutShellContext } from '@/components/Layout';
 import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
+import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup']);
@@ -33,12 +34,38 @@ export default function AppShell() {
   const isOnline = useOnlineStatus();
   const location = useLocation();
   const shouldUsePersistentLayout = !SHELLLESS_PATHS.has(location.pathname);
+  const isAuthPath = location.pathname === '/login' || location.pathname === '/signup';
 
   const routeContent = (
-    <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : <AuthPageSkeleton />}>
+    <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : isAuthPath ? null : <AuthPageSkeleton />}>
       <Outlet />
     </Suspense>
   );
+
+  if (isAuthPath) {
+    return (
+      <>
+        <div className="relative min-h-screen overflow-hidden bg-stone-950">
+          <AuthVideoBackground />
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10 min-h-screen"
+          >
+            <header className="sr-only">
+              <Link to="/">CookMate</Link>
+            </header>
+            {routeContent}
+          </motion.div>
+        </div>
+
+        {!isOnline && <OfflineBanner />}
+        <ShellBottomNav />
+      </>
+    );
+  }
 
   return (
     <>

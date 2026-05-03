@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
-import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const fieldVariants = {
@@ -104,9 +103,7 @@ export default function Signup() {
     'w-full h-12 rounded-xl border border-stone-200 bg-white px-4 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all';
 
   return (
-    <div className="relative min-h-screen bg-stone-950 flex overflow-hidden">
-      <AuthVideoBackground />
-
+    <div className="relative min-h-screen flex overflow-hidden">
       {/* ── Split-screen wrapper ── */}
       <div className="relative z-10 flex w-full min-h-screen">
         {/* Visual panel (left) — hidden on mobile, collapsible on desktop */}

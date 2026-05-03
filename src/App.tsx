@@ -15,6 +15,8 @@ import { AIChatProvider } from '@/context/AIChatContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
 import AdminGate from '@/auth/AdminGate';
 import AdminLayout from './admin/AdminLayout';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const SearchPage = lazy(() => import('./pages/Search'));
@@ -29,8 +31,6 @@ const AppearanceSettings = lazy(() => import('./pages/AppearanceSettings'));
 const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 const PrivacySecuritySettings = lazy(() => import('./pages/PrivacySecuritySettings'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
-const Login = lazy(() => import('./pages/Login'));
-const Signup = lazy(() => import('./pages/Signup'));
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
 const IngredientManagement = lazy(() => import('./admin/pages/IngredientManagement'));
