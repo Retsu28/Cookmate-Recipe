@@ -79,6 +79,25 @@ CREATE TABLE recipe_viewed (
 
 CREATE INDEX idx_recipe_viewed_user_recent ON recipe_viewed (user_id, viewed_at DESC);
 
+-- AI Camera saved outputs
+CREATE TABLE ai_camera_saves (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    original_image_data TEXT NOT NULL,
+    removed_background_image_data TEXT,
+    thumbnail_image_data TEXT,
+    detected_ingredient_name TEXT,
+    detected_ingredient_description TEXT,
+    recommended_recipe_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+    other_recipe_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+    full_analysis_result JSONB NOT NULL DEFAULT '{}'::JSONB,
+    source_type VARCHAR(20) NOT NULL DEFAULT 'upload' CHECK (source_type IN ('upload', 'capture')),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ai_camera_saves_user_recent ON ai_camera_saves (user_id, created_at DESC);
+
 -- Meal Plans table
 CREATE TABLE meal_plans (
     id SERIAL PRIMARY KEY,

@@ -19,7 +19,6 @@ import { useAppTheme } from '../context/ThemeContext';
 import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { apiBaseUrl, mlApi } from '../api/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -42,7 +41,6 @@ const P = { IDLE: 0, SCAN: 1, SELECTING: 2, SELECTED: 3, STICKER: 4, DONE: 5 };
 const MAX_CAMERA_BASE64_LENGTH = 7 * 1024 * 1024;
 const TARGET_CAPTURE_MAX_EDGE = 1280;
 const CAMERA_CAPTURE_QUALITY = 0.28;
-const SAVES_KEY = 'cookmate_camera_saves';
 const MAX_SAVES = 20;
 
 function parsePictureSize(size) {
@@ -124,11 +122,16 @@ export default function CameraScreen({ navigation }) {
   const [showMoreRecipes, setShowMoreRecipes] = useState(false);
   const [saves, setSaves] = useState([]);
   const [showSaves, setShowSaves] = useState(false);
+  const [savesLoading, setSavesLoading] = useState(false);
+  const [savesError, setSavesError] = useState(null);
+  const [restoringSaveId, setRestoringSaveId] = useState(null);
+  const [currentOriginalImageData, setCurrentOriginalImageData] = useState(null);
   const cooldownRef = useRef(null);
   const queuePollRef = useRef(null);
   const cameraRef = useRef(null);
   const requestIdRef = useRef(0);
-  const lastSavedRequestIdRef = useRef(0);
+  const savedRequestIdRef = useRef(0);
+  const savingRequestIdRef = useRef(0);
   const isInitialLoading = useInitialContentLoading();
 
   /* ── Animated values ── */
@@ -186,14 +189,24 @@ export default function CameraScreen({ navigation }) {
     queuePollRef.current = setInterval(refresh, 1500);
   };
 
+  const loadCameraSaves = async () => {
+    setSavesLoading(true);
+    setSavesError(null);
+    try {
+      const response = await mlApi.getAiCameraSaves({ limit: MAX_SAVES });
+      setSaves(response.data?.saves || []);
+    } catch (err) {
+      setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
+    } finally {
+      setSavesLoading(false);
+    }
+  };
+
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
-      try {
-        const raw = await AsyncStorage.getItem(SAVES_KEY);
-        if (raw) setSaves(JSON.parse(raw));
-      } catch {}
+      await loadCameraSaves();
     })();
     return () => {
       if (cooldownRef.current) clearInterval(cooldownRef.current);
@@ -202,18 +215,33 @@ export default function CameraScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
-    if (phase !== P.DONE || !capturedImage) return;
+    if (phase !== P.DONE || !capturedImage || !analysisResult || !bgRemovalDone || loading || !currentOriginalImageData) return;
     const rid = requestIdRef.current;
-    if (lastSavedRequestIdRef.current === rid) return;
-    lastSavedRequestIdRef.current = rid;
-    const imageUri = cutoutUri || capturedImage;
-    const newSave = { id: String(Date.now()), image: imageUri, savedAt: Date.now() };
-    setSaves(prev => {
-      const next = [newSave, ...prev].slice(0, MAX_SAVES);
-      AsyncStorage.setItem(SAVES_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-  }, [phase, capturedImage, cutoutUri]);
+    if (savedRequestIdRef.current === rid || savingRequestIdRef.current === rid) return;
+    savingRequestIdRef.current = rid;
+
+    (async () => {
+      try {
+        const response = await mlApi.saveAiCameraResult({
+          originalImageData: currentOriginalImageData,
+          removedBackgroundImageData: cutoutUri,
+          thumbnailImageData: cutoutUri || currentOriginalImageData,
+          analysisResult,
+          sourceType: 'capture',
+        });
+        if (!isCurrentRequest(rid)) return;
+        const saved = response.data;
+        setSaves(prev => [saved, ...prev.filter((item) => item.id !== saved.id)].slice(0, MAX_SAVES));
+        savedRequestIdRef.current = rid;
+      } catch (err) {
+        console.warn('[CameraScreen] auto-save warning:', apiErrorMessage(err, 'Failed to save AI Camera result.'));
+      } finally {
+        if (savingRequestIdRef.current === rid) {
+          savingRequestIdRef.current = 0;
+        }
+      }
+    })();
+  }, [phase, capturedImage, cutoutUri, analysisResult, bgRemovalDone, loading, currentOriginalImageData]);
 
   const configurePictureSize = async () => {
     try {
@@ -238,6 +266,14 @@ export default function CameraScreen({ navigation }) {
     glowOpacity.value = 0; glowScale.value = 1.05;
     stickerScale.value = 0.4; stickerOpacity.value = 0; stickerRotate.value = -6;
     sparkle1.value = 0; sparkle2.value = 0; badgeOp.value = 0;
+  };
+
+  const setRestoredDoneAnimationState = () => {
+    scanY.value = -2; scanOpacity.value = 0; imgOpacity.value = 0.15;
+    cornerOpacity.value = 0; cornerInset.value = 12;
+    glowOpacity.value = 0; glowScale.value = 1;
+    stickerScale.value = 1; stickerOpacity.value = 1; stickerRotate.value = 0;
+    sparkle1.value = 1; sparkle2.value = 1; badgeOp.value = 0;
   };
 
   const goSel = () => setPhase(P.SELECTING);
@@ -403,6 +439,7 @@ export default function CameraScreen({ navigation }) {
         setBgRemovalDone(false);
         setBgRemovalProgress('');
         setQueueStatus(null);
+        setCurrentOriginalImageData(null);
         reset();
         const photo = await cameraRef.current.takePictureAsync({
           base64: true,
@@ -422,6 +459,7 @@ export default function CameraScreen({ navigation }) {
           }
 
           const b64 = `data:image/jpeg;base64,${photo.base64}`;
+          setCurrentOriginalImageData(b64);
           await startBgRemoval(b64, requestId);
           if (isCurrentRequest(requestId)) {
             await analyzeImage(b64, requestId);
@@ -450,21 +488,63 @@ export default function CameraScreen({ navigation }) {
     setBgRemovalProgress('');
     setQueueStatus(null);
     setShowMoreRecipes(false);
+    setCurrentOriginalImageData(null);
     setPhase(P.IDLE);
     reset();
   };
 
-  const deleteSave = (id) => {
-    setSaves(prev => {
-      const next = prev.filter(s => s.id !== id);
-      AsyncStorage.setItem(SAVES_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
+  const restoreSave = async (id) => {
+    setRestoringSaveId(id);
+    setSavesError(null);
+    try {
+      const response = await mlApi.getAiCameraSave(id);
+      const saved = response.data;
+      const restoredAnalysis = saved.analysisResult || saved.fullAnalysisResult;
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      savedRequestIdRef.current = requestId;
+      savingRequestIdRef.current = 0;
+      stopQueuePolling();
+      setCapturedImage(saved.originalImageData);
+      setCutoutUri(saved.removedBackgroundImageData || null);
+      setAnalysisResult(restoredAnalysis);
+      setAnalysisError(null);
+      setBgRemovalDone(true);
+      setBgRemovalProgress('');
+      setQueueStatus(null);
+      setLoading(false);
+      setShowMoreRecipes(false);
+      setCurrentOriginalImageData(null);
+      setRestoredDoneAnimationState();
+      setPhase(P.DONE);
+      setShowSaves(false);
+    } catch (err) {
+      setSavesError(apiErrorMessage(err, 'Failed to restore saved AI Camera result.'));
+    } finally {
+      setRestoringSaveId(null);
+    }
   };
 
-  const clearAllSaves = () => {
+  const deleteSave = async (id) => {
+    const previous = saves;
+    setSaves(prev => prev.filter(s => s.id !== id));
+    try {
+      await mlApi.deleteAiCameraSave(id);
+    } catch (err) {
+      setSaves(previous);
+      setSavesError(apiErrorMessage(err, 'Failed to delete saved AI Camera result.'));
+    }
+  };
+
+  const clearAllSaves = async () => {
+    const previous = saves;
     setSaves([]);
-    AsyncStorage.removeItem(SAVES_KEY).catch(() => {});
+    try {
+      await Promise.all(previous.map((save) => mlApi.deleteAiCameraSave(save.id)));
+    } catch (err) {
+      setSaves(previous);
+      setSavesError(apiErrorMessage(err, 'Failed to clear saved AI Camera results.'));
+    }
   };
 
   if (isInitialLoading || hasPermission === null) return <CameraPermissionSkeleton colors={colors} />;
@@ -769,7 +849,7 @@ export default function CameraScreen({ navigation }) {
                 <Text style={st.hintText}>{cooldown > 0 ? `Please wait ${cooldown}s` : 'Point at ingredients or a dish'}</Text>
               </View>
               <View style={st.captureRow}>
-                <TouchableOpacity style={st.sideBtn} onPress={() => setShowSaves(true)}>
+                <TouchableOpacity style={st.sideBtn} onPress={() => { setShowSaves(true); loadCameraSaves(); }}>
                   <Ionicons name="images-outline" size={20} color="#fff" />
                   {saves.length > 0 && (
                     <View style={st.savesBadgeCount}>
@@ -800,24 +880,50 @@ export default function CameraScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
-            {saves.length > 0 ? (
+            {savesLoading ? (
+              <View style={st.savesEmpty}>
+                <Ionicons name="images-outline" size={48} color="rgba(255,255,255,0.3)" />
+                <Text style={st.savesEmptyText}>Loading saved AI camera results...</Text>
+              </View>
+            ) : savesError ? (
+              <View style={st.savesEmpty}>
+                <Ionicons name="alert-circle-outline" size={48} color="rgba(255,255,255,0.3)" />
+                <Text style={st.savesEmptyText}>{savesError}</Text>
+                <TouchableOpacity onPress={loadCameraSaves}>
+                  <Text style={st.savesClearText}>Try Again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : saves.length > 0 ? (
               <ScrollView contentContainerStyle={st.savesGrid}>
                 {saves.map(save => (
                   <View key={save.id} style={st.saveItem}>
-                    <Image source={{ uri: save.image }} style={st.saveThumb} />
+                    <TouchableOpacity onPress={() => restoreSave(save.id)} disabled={restoringSaveId !== null} style={st.saveOpenBtn}>
+                      {save.thumbnailImageData ? (
+                        <Image source={{ uri: save.thumbnailImageData }} style={st.saveThumb} />
+                      ) : (
+                        <View style={st.saveThumbFallback}>
+                          <Ionicons name="restaurant" size={22} color="rgba(255,255,255,0.55)" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => deleteSave(save.id)} style={st.saveDeleteBtn}>
                       <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.85)" />
                     </TouchableOpacity>
                     <View style={st.saveDateWrap}>
-                      <Text style={st.saveDateText}>{new Date(save.savedAt).toLocaleDateString()}</Text>
+                      <Text style={st.saveDateText}>{new Date(save.createdAt).toLocaleDateString()}</Text>
                     </View>
+                    {restoringSaveId === save.id && (
+                      <View style={st.saveLoadingOverlay}>
+                        <Text style={st.saveLoadingText}>Loading</Text>
+                      </View>
+                    )}
                   </View>
                 ))}
               </ScrollView>
             ) : (
               <View style={st.savesEmpty}>
                 <Ionicons name="images-outline" size={48} color="rgba(255,255,255,0.3)" />
-                <Text style={st.savesEmptyText}>No saved images yet.{"\n"}Take a photo to get started!</Text>
+                <Text style={st.savesEmptyText}>No saved AI camera results yet.</Text>
               </View>
             )}
           </SafeAreaView>
@@ -927,10 +1033,14 @@ const st = StyleSheet.create({
   savesCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   savesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 100 },
   saveItem: { width: (SW - 56) / 3, aspectRatio: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: '#292524' },
+  saveOpenBtn: { width: '100%', height: '100%' },
   saveThumb: { width: '100%', height: '100%' },
+  saveThumbFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#292524' },
   saveDeleteBtn: { position: 'absolute', top: 4, right: 4 },
   saveDateWrap: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingVertical: 3, backgroundColor: 'rgba(0,0,0,0.5)' },
   saveDateText: { fontFamily: 'Geist_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+  saveLoadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  saveLoadingText: { fontFamily: 'Geist_700Bold', fontSize: 9, color: '#fff', letterSpacing: 1 },
   savesEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   savesEmptyText: { fontFamily: 'Geist_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
 });

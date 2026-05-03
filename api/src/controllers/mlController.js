@@ -20,6 +20,8 @@ const DEFAULT_GEMINI_MODELS = [
 ];
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45000);
 const MAX_BASE64_LENGTH = 7 * 1024 * 1024; // roughly a 5MB image
+const MAX_SAVE_IMAGE_DATA_LENGTH = 8 * 1024 * 1024;
+const MAX_AI_CAMERA_SAVE_LIST = 50;
 const BG_REMOVAL_TIMEOUT_MS = Number(process.env.BG_REMOVAL_TIMEOUT_MS || 90000);
 const ML_LOOKUP_CACHE_TTL_MS = Number(process.env.ML_LOOKUP_CACHE_TTL_MS || 5 * 60 * 1000);
 const AI_ANALYSIS_UNAVAILABLE = 'AI analysis is temporarily unavailable. Please try again.';
@@ -777,6 +779,282 @@ exports.recommendByIngredients = async (req, res) => {
   } catch (err) {
     console.error('[ml/recommendByIngredients]', err);
     res.status(500).json({ error: 'Failed to get recommendations.' });
+  }
+};
+
+// ─── Authenticated AI Camera saves ─────────────────────────────────────────
+function isImageReference(value, { required = false } = {}) {
+  if (!value) return !required;
+  if (typeof value !== 'string') return false;
+  if (value.length > MAX_SAVE_IMAGE_DATA_LENGTH) return false;
+  return /^data:image\/[a-z0-9.+-]+;base64,/i.test(value) || /^https?:\/\//i.test(value);
+}
+
+function normalizeSaveSourceType(value) {
+  return value === 'capture' ? 'capture' : 'upload';
+}
+
+function uniqueIntegerIds(values) {
+  const seen = new Set();
+  const ids = [];
+
+  for (const value of Array.isArray(values) ? values : []) {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+
+  return ids;
+}
+
+function firstDetectedIngredient(analysisResult) {
+  const ingredients = Array.isArray(analysisResult?.detectedIngredients)
+    ? analysisResult.detectedIngredients
+    : [];
+  const first = ingredients.find((item) => item && typeof item === 'object');
+
+  return {
+    name: first?.name ? cleanDisplayText(first.name) : null,
+    description: first?.description ? cleanDisplayText(first.description) : null,
+  };
+}
+
+function recipeIdsFromAnalysis(analysisResult) {
+  const matchedRecipes = Array.isArray(analysisResult?.matchedRecipes)
+    ? analysisResult.matchedRecipes
+    : [];
+  const ids = uniqueIntegerIds(matchedRecipes.map((recipe) => recipe?.id));
+
+  return {
+    recommendedRecipeIds: ids.slice(0, 1),
+    otherRecipeIds: ids.slice(1),
+  };
+}
+
+function matchedIngredientsByRecipeId(analysisResult) {
+  const matchedRecipes = Array.isArray(analysisResult?.matchedRecipes)
+    ? analysisResult.matchedRecipes
+    : [];
+  const map = new Map();
+
+  for (const recipe of matchedRecipes) {
+    const id = Number(recipe?.id);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    map.set(id, Array.isArray(recipe.matchedIngredients) ? recipe.matchedIngredients : []);
+  }
+
+  return map;
+}
+
+function toSavedMatchedRecipe(recipe, matchedIngredients) {
+  return {
+    id: recipe.id,
+    title: recipe.title,
+    image_url: recipe.image_url,
+    category: recipe.category || recipe.region_or_origin || null,
+    difficulty: recipe.difficulty || null,
+    cook_time: recipe.cook_time_minutes
+      ? `${recipe.cook_time_minutes} min`
+      : recipe.total_time_minutes
+        ? `${recipe.total_time_minutes} min`
+        : null,
+    description: recipe.description || null,
+    matchedIngredients,
+  };
+}
+
+async function hydrateSavedAnalysisResult(save) {
+  const analysisResult =
+    save.full_analysis_result && typeof save.full_analysis_result === 'object'
+      ? { ...save.full_analysis_result }
+      : {};
+  const savedRecipeIds = [
+    ...(Array.isArray(save.recommended_recipe_ids) ? save.recommended_recipe_ids : []),
+    ...(Array.isArray(save.other_recipe_ids) ? save.other_recipe_ids : []),
+  ];
+  const fallbackRecipeIds = Array.isArray(analysisResult.matchedRecipes)
+    ? analysisResult.matchedRecipes.map((recipe) => recipe?.id)
+    : [];
+  const orderedRecipeIds = uniqueIntegerIds([...savedRecipeIds, ...fallbackRecipeIds]);
+
+  if (orderedRecipeIds.length === 0) {
+    return { ...analysisResult, matchedRecipes: [] };
+  }
+
+  const result = await pool.query(
+    `SELECT id, title, description, difficulty, cook_time_minutes,
+            total_time_minutes, region_or_origin, category, image_url
+     FROM recipes
+     WHERE id = ANY($1::int[]) AND is_published = true`,
+    [orderedRecipeIds]
+  );
+
+  const recipesById = new Map(result.rows.map((recipe) => [Number(recipe.id), recipe]));
+  const savedMatches = matchedIngredientsByRecipeId(analysisResult);
+  const matchedRecipes = orderedRecipeIds
+    .map((id) => {
+      const recipe = recipesById.get(id);
+      if (!recipe) return null;
+      return toSavedMatchedRecipe(recipe, savedMatches.get(id) || []);
+    })
+    .filter(Boolean);
+
+  return { ...analysisResult, matchedRecipes };
+}
+
+function toAiCameraSaveSummary(row) {
+  return {
+    id: Number(row.id),
+    sourceType: row.source_type,
+    thumbnailImageData: row.thumbnail_image_data || row.removed_background_image_data || null,
+    detectedIngredientName: row.detected_ingredient_name,
+    detectedIngredientDescription: row.detected_ingredient_description,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toAiCameraSaveDetail(row, analysisResult) {
+  return {
+    ...toAiCameraSaveSummary(row),
+    originalImageData: row.original_image_data,
+    removedBackgroundImageData: row.removed_background_image_data,
+    recommendedRecipeIds: Array.isArray(row.recommended_recipe_ids) ? row.recommended_recipe_ids : [],
+    otherRecipeIds: Array.isArray(row.other_recipe_ids) ? row.other_recipe_ids : [],
+    fullAnalysisResult: analysisResult,
+    analysisResult,
+  };
+}
+
+exports.createAiCameraSave = async (req, res) => {
+  const originalImageData = req.body.originalImageData || req.body.original_image_data;
+  const removedBackgroundImageData =
+    req.body.removedBackgroundImageData || req.body.removed_background_image_data || null;
+  const thumbnailImageData = req.body.thumbnailImageData || req.body.thumbnail_image_data || null;
+  const analysisResult = req.body.analysisResult || req.body.fullAnalysisResult || req.body.full_analysis_result;
+  const sourceType = normalizeSaveSourceType(req.body.sourceType || req.body.source_type);
+
+  if (!isImageReference(originalImageData, { required: true })) {
+    return res.status(400).json({ error: 'A valid original AI Camera image is required.' });
+  }
+  if (!isImageReference(removedBackgroundImageData)) {
+    return res.status(400).json({ error: 'Removed-background image must be a valid image reference.' });
+  }
+  if (!isImageReference(thumbnailImageData)) {
+    return res.status(400).json({ error: 'Thumbnail image must be a valid image reference.' });
+  }
+  if (!analysisResult || typeof analysisResult !== 'object' || Array.isArray(analysisResult)) {
+    return res.status(400).json({ error: 'A valid AI Camera analysis result is required.' });
+  }
+
+  const detected = firstDetectedIngredient(analysisResult);
+  const { recommendedRecipeIds, otherRecipeIds } = recipeIdsFromAnalysis(analysisResult);
+  const thumbnail = thumbnailImageData || removedBackgroundImageData || originalImageData;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO ai_camera_saves (
+        user_id, original_image_data, removed_background_image_data,
+        thumbnail_image_data, detected_ingredient_name, detected_ingredient_description,
+        recommended_recipe_ids, other_recipe_ids, full_analysis_result, source_type
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::int[], $8::int[], $9::jsonb, $10)
+      RETURNING *`,
+      [
+        req.userId,
+        originalImageData,
+        removedBackgroundImageData,
+        thumbnail,
+        detected.name,
+        detected.description,
+        recommendedRecipeIds,
+        otherRecipeIds,
+        JSON.stringify(analysisResult),
+        sourceType,
+      ]
+    );
+
+    const save = result.rows[0];
+    const hydratedAnalysis = await hydrateSavedAnalysisResult(save);
+    return res.status(201).json(toAiCameraSaveDetail(save, hydratedAnalysis));
+  } catch (err) {
+    console.error('[ml/ai-camera-saves/create]', err);
+    return res.status(500).json({ error: 'Failed to save AI Camera result.' });
+  }
+};
+
+exports.listAiCameraSaves = async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, MAX_AI_CAMERA_SAVE_LIST);
+
+  try {
+    const result = await pool.query(
+      `SELECT id, source_type, thumbnail_image_data, removed_background_image_data,
+              detected_ingredient_name, detected_ingredient_description,
+              created_at, updated_at
+       FROM ai_camera_saves
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [req.userId, limit]
+    );
+
+    return res.json({ saves: result.rows.map(toAiCameraSaveSummary) });
+  } catch (err) {
+    console.error('[ml/ai-camera-saves/list]', err);
+    return res.status(500).json({ error: 'Failed to load AI Camera saves.' });
+  }
+};
+
+exports.getAiCameraSave = async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid AI Camera save id.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT *
+       FROM ai_camera_saves
+       WHERE id = $1 AND user_id = $2`,
+      [id, req.userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'AI Camera save not found.' });
+    }
+
+    const save = result.rows[0];
+    const hydratedAnalysis = await hydrateSavedAnalysisResult(save);
+    return res.json(toAiCameraSaveDetail(save, hydratedAnalysis));
+  } catch (err) {
+    console.error('[ml/ai-camera-saves/get]', err);
+    return res.status(500).json({ error: 'Failed to load AI Camera save.' });
+  }
+};
+
+exports.deleteAiCameraSave = async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid AI Camera save id.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `DELETE FROM ai_camera_saves
+       WHERE id = $1 AND user_id = $2
+       RETURNING id`,
+      [id, req.userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'AI Camera save not found.' });
+    }
+
+    return res.status(204).send();
+  } catch (err) {
+    console.error('[ml/ai-camera-saves/delete]', err);
+    return res.status(500).json({ error: 'Failed to delete AI Camera save.' });
   }
 };
 

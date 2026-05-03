@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const mlController = require('../controllers/mlController');
+const { requireAuth } = require('../middleware/requireAuth');
 
 const router = Router();
 
@@ -30,6 +31,12 @@ const aiAnalyzeLimiter = rateLimit({
 
 router.post('/recommend', mlController.recommendByIngredients);
 router.post('/recommend/by-ingredients', mlController.recommendByIngredients);
+
+// Authenticated AI Camera saves shared by web and mobile
+router.post('/ai-camera-saves', requireAuth, mlController.createAiCameraSave);
+router.get('/ai-camera-saves', requireAuth, mlController.listAiCameraSaves);
+router.get('/ai-camera-saves/:id', requireAuth, mlController.getAiCameraSave);
+router.delete('/ai-camera-saves/:id', requireAuth, mlController.deleteAiCameraSave);
 
 // AI Camera queue counter shared by web and mobile image analysis
 router.get('/image-analysis/queue', mlController.imageAnalysisQueueStatus);

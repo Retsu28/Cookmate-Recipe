@@ -252,26 +252,28 @@ function cameraWarningMessage(err: unknown, fallback: string) {
 }
 
 interface SavedCameraImage {
-  id: string;
-  thumbnail: string;
-  savedAt: number;
+  id: number;
+  sourceType: 'upload' | 'capture';
+  thumbnailImageData: string | null;
+  detectedIngredientName: string | null;
+  detectedIngredientDescription: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const SAVES_KEY = 'cookmate_camera_saves';
+interface SavedCameraDetail extends SavedCameraImage {
+  originalImageData: string;
+  removedBackgroundImageData: string | null;
+  fullAnalysisResult: AnalysisResult;
+  analysisResult?: AnalysisResult;
+}
+
+interface PendingCameraSave {
+  originalImageData: string;
+  sourceType: 'upload' | 'capture';
+}
+
 const MAX_SAVES = 20;
-
-function loadSaves(): SavedCameraImage[] {
-  try {
-    const raw = localStorage.getItem(SAVES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function persistSaves(items: SavedCameraImage[]) {
-  try {
-    localStorage.setItem(SAVES_KEY, JSON.stringify(items.slice(0, MAX_SAVES)));
-  } catch { /* quota exceeded */ }
-}
 
 async function imageToThumbnail(url: string, maxEdge = 200): Promise<string> {
   const img = await loadImageFromUrl(url);
@@ -313,11 +315,17 @@ export default function AICamera() {
   const carouselRef = useRef<HTMLDivElement>(null);
   const isInitialLoading = useInitialContentLoading();
   const [saves, setSaves] = useState<SavedCameraImage[]>([]);
-  const lastSavedRequestIdRef = useRef(0);
+  const [showSaves, setShowSaves] = useState(true);
+  const [savesLoading, setSavesLoading] = useState(false);
+  const [savesError, setSavesError] = useState<string | null>(null);
+  const [restoringSaveId, setRestoringSaveId] = useState<number | null>(null);
+  const [currentSavePayload, setCurrentSavePayload] = useState<PendingCameraSave | null>(null);
+  const savedRequestIdRef = useRef(0);
+  const savingRequestIdRef = useRef(0);
 
   const replacePreviewImage = useCallback((nextUrl: string | null) => {
     const previousUrl = activePreviewUrlRef.current;
-    if (previousUrl && previousUrl !== nextUrl) {
+    if (previousUrl?.startsWith('blob:') && previousUrl !== nextUrl) {
       URL.revokeObjectURL(previousUrl);
     }
     activePreviewUrlRef.current = nextUrl;
@@ -377,13 +385,26 @@ export default function AICamera() {
       abortInFlightRequests();
       stopQueuePolling();
       if (cooldownRef.current) clearInterval(cooldownRef.current);
-      if (activePreviewUrlRef.current) {
+      if (activePreviewUrlRef.current?.startsWith('blob:')) {
         URL.revokeObjectURL(activePreviewUrlRef.current);
       }
     };
   }, [abortInFlightRequests, stopQueuePolling]);
 
-  useEffect(() => { setSaves(loadSaves()); }, []);
+  const loadCameraSaves = useCallback(async () => {
+    setSavesLoading(true);
+    setSavesError(null);
+    try {
+      const result = await api.get<{ saves: SavedCameraImage[] }>(`/api/ml/ai-camera-saves?limit=${MAX_SAVES}`);
+      setSaves(result.saves || []);
+    } catch (err) {
+      setSavesError(cameraWarningMessage(err, 'Failed to load saved AI Camera results.'));
+    } finally {
+      setSavesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadCameraSaves(); }, [loadCameraSaves]);
 
   /* Phase sequencer - keeps the sticker animation quick while bg removal finishes in the background */
   useEffect(() => {
@@ -472,11 +493,13 @@ export default function AICamera() {
     setQueueStatus(null);
     setLoading(true);
     setPhase('scanning');
+    setCurrentSavePayload(null);
 
     try {
       await yieldToBrowser();
       const prepared = await prepareCameraImage(file, previewUrl);
       if (requestIdRef.current !== requestId) return;
+      setCurrentSavePayload({ originalImageData: prepared.analysisDataUrl, sourceType: 'upload' });
 
       await startBgRemoval(prepared.bgRemovalDataUrl, requestId);
       if (requestIdRef.current !== requestId) return;
@@ -543,41 +566,89 @@ export default function AICamera() {
     stopQueuePolling();
     replacePreviewImage(null); setAnalysis(null); setError(null); setPhase('idle');
     setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setQueueStatus(null); setLoading(false);
+    setCurrentSavePayload(null);
     fileInputRef.current?.click();
   };
 
   useEffect(() => {
-    if (phase !== 'done' || !image) return;
+    if (phase !== 'done' || !image || !bgRemovalDone || loading || !analysis || !currentSavePayload) return;
     const rid = requestIdRef.current;
-    if (lastSavedRequestIdRef.current === rid) return;
-    lastSavedRequestIdRef.current = rid;
-    const sourceUrl = cutoutUrl || image;
+    if (savedRequestIdRef.current === rid || savingRequestIdRef.current === rid) return;
+    savingRequestIdRef.current = rid;
+    const sourceUrl = cutoutUrl || currentSavePayload.originalImageData;
     (async () => {
       try {
-        const thumb = await imageToThumbnail(sourceUrl);
+        const thumbnailImageData = await imageToThumbnail(sourceUrl);
         if (requestIdRef.current !== rid) return;
-        setSaves(prev => {
-          const next = [{ id: String(Date.now()), thumbnail: thumb, savedAt: Date.now() }, ...prev].slice(0, MAX_SAVES);
-          persistSaves(next);
-          return next;
+        const saved = await api.post<SavedCameraDetail>('/api/ml/ai-camera-saves', {
+          originalImageData: currentSavePayload.originalImageData,
+          removedBackgroundImageData: cutoutUrl,
+          thumbnailImageData,
+          analysisResult: analysis,
+          sourceType: currentSavePayload.sourceType,
         });
+        if (requestIdRef.current !== rid) return;
+        setSaves(prev => [saved, ...prev.filter((item) => item.id !== saved.id)].slice(0, MAX_SAVES));
+        savedRequestIdRef.current = rid;
       } catch (err) {
         console.warn('Auto-save failed:', err);
+      } finally {
+        if (savingRequestIdRef.current === rid) {
+          savingRequestIdRef.current = 0;
+        }
       }
     })();
-  }, [phase, image, cutoutUrl]);
+  }, [phase, image, cutoutUrl, bgRemovalDone, loading, analysis, currentSavePayload]);
 
-  const deleteSave = (id: string) => {
-    setSaves(prev => {
-      const next = prev.filter(s => s.id !== id);
-      persistSaves(next);
-      return next;
-    });
+  const restoreSave = async (id: number) => {
+    setRestoringSaveId(id);
+    setSavesError(null);
+    try {
+      const saved = await api.get<SavedCameraDetail>(`/api/ml/ai-camera-saves/${id}`);
+      const restoredAnalysis = saved.analysisResult || saved.fullAnalysisResult;
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      savedRequestIdRef.current = requestId;
+      savingRequestIdRef.current = 0;
+      abortInFlightRequests();
+      stopQueuePolling();
+      replacePreviewImage(saved.originalImageData);
+      setAnalysis(restoredAnalysis);
+      setError(null);
+      setCutoutUrl(saved.removedBackgroundImageData || null);
+      setBgRemovalDone(true);
+      setBgRemovalProgress('');
+      setQueueStatus(null);
+      setLoading(false);
+      setCurrentSavePayload(null);
+      setPhase('done');
+    } catch (err) {
+      setSavesError(cameraWarningMessage(err, 'Failed to restore saved AI Camera result.'));
+    } finally {
+      setRestoringSaveId(null);
+    }
   };
 
-  const clearAllSaves = () => {
+  const deleteSave = async (id: number) => {
+    const previous = saves;
+    setSaves(prev => prev.filter(s => s.id !== id));
+    try {
+      await api.delete(`/api/ml/ai-camera-saves/${id}`);
+    } catch (err) {
+      setSaves(previous);
+      setSavesError(cameraWarningMessage(err, 'Failed to delete saved AI Camera result.'));
+    }
+  };
+
+  const clearAllSaves = async () => {
+    const previous = saves;
     setSaves([]);
-    persistSaves([]);
+    try {
+      await Promise.all(previous.map((save) => api.delete(`/api/ml/ai-camera-saves/${save.id}`)));
+    } catch (err) {
+      setSaves(previous);
+      setSavesError(cameraWarningMessage(err, 'Failed to clear saved AI Camera results.'));
+    }
   };
 
   if (isInitialLoading) return <Layout><AICameraPageSkeleton /></Layout>;
@@ -970,44 +1041,100 @@ export default function AICamera() {
           </motion.section>
         )}
 
-        {saves.length > 0 && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Bookmark size={16} className="text-orange-500" />
-                <p className="text-xs font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-300">
-                  My Saves <span className="text-orange-600 dark:text-orange-400">({saves.length})</span>
-                </p>
-              </div>
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <button
+              aria-expanded={showSaves}
+              className="flex items-center gap-2 text-left"
+              onClick={() => {
+                setShowSaves((prev) => !prev);
+                if (!showSaves) void loadCameraSaves();
+              }}
+              type="button"
+            >
+              <Bookmark size={16} className="text-orange-500" />
+              <p className="text-xs font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-300">
+                My Saves <span className="text-orange-600 dark:text-orange-400">({saves.length})</span>
+              </p>
+            </button>
+            {saves.length > 0 && (
               <button
-                onClick={clearAllSaves}
+                disabled={savesLoading}
+                onClick={() => void clearAllSaves()}
                 className="text-xs text-stone-400 hover:text-red-500 transition-colors font-bold dark:text-stone-500 dark:hover:text-red-400"
                 type="button"
               >
                 Clear All
               </button>
-            </div>
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
-              {saves.map(save => (
-                <div key={save.id} className="group relative aspect-square rounded-2xl overflow-hidden border border-stone-200 bg-stone-100 shadow-sm transition-all hover:shadow-md dark:border-stone-700 dark:bg-stone-800">
-                  <img src={save.thumbnail} alt="Saved" className="w-full h-full object-cover" />
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <p className="text-[9px] text-white/80 text-center font-bold">
-                      {new Date(save.savedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteSave(save.id)}
-                    className="absolute top-1.5 right-1.5 p-1 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
-                    type="button"
-                  >
-                    <X size={10} className="text-white" />
-                  </button>
-                </div>
-              ))}
-            </div>
+            )}
           </div>
-        )}
+
+          {showSaves && (
+            savesLoading ? (
+              <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-orange-50/60 p-6 text-center text-sm font-bold text-stone-500 dark:border-stone-700 dark:bg-stone-900/30 dark:text-stone-400">
+                Loading saved AI camera results...
+              </div>
+            ) : savesError ? (
+              <div className="rounded-[1.75rem] border border-red-100 bg-red-50/70 p-6 text-center text-sm font-bold text-red-700 dark:border-red-500/20 dark:bg-red-950/20 dark:text-red-300">
+                <p>{savesError}</p>
+                <button
+                  className="mt-3 text-xs font-extrabold uppercase tracking-widest text-orange-600 dark:text-orange-400"
+                  onClick={() => void loadCameraSaves()}
+                  type="button"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : saves.length > 0 ? (
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                {saves.map(save => (
+                  <div key={save.id} className="group relative aspect-square rounded-2xl overflow-hidden border border-stone-200 bg-stone-100 shadow-sm transition-all hover:shadow-md dark:border-stone-700 dark:bg-stone-800">
+                    <button
+                      aria-label="Restore saved AI camera result"
+                      className="h-full w-full"
+                      disabled={restoringSaveId !== null}
+                      onClick={() => void restoreSave(save.id)}
+                      type="button"
+                    >
+                      {save.thumbnailImageData ? (
+                        <img src={save.thumbnailImageData} alt="Saved AI camera result" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-orange-400 dark:text-stone-500">
+                          <ChefHat size={24} />
+                        </div>
+                      )}
+                    </button>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <p className="text-[9px] text-white/80 text-center font-bold">
+                        {new Date(save.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {restoringSaveId === save.id && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] font-bold uppercase tracking-widest text-white">
+                        Loading
+                      </div>
+                    )}
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteSave(save.id);
+                      }}
+                      aria-label="Remove saved AI camera photo"
+                      className="absolute top-1.5 right-1.5 p-1 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                      type="button"
+                    >
+                      <X size={10} className="text-white" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-orange-50/60 p-6 text-center text-sm font-bold text-stone-500 dark:border-stone-700 dark:bg-stone-900/30 dark:text-stone-400">
+                No saved AI camera results yet.
+              </div>
+            )
+          )}
+        </div>
       </div>
     </Layout>
   );

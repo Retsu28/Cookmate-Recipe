@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { motion } from 'motion/react';
+import { motion, Variants } from 'motion/react';
 import { Plus, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -19,12 +19,12 @@ interface RecipeFormProps {
   formRef?: React.RefObject<HTMLDivElement>;
 }
 
-const formContainerVariants = {
+const formContainerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.02 } },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 5 },
   visible: { opacity: 1, y: 0, transition: { type: 'tween', duration: 0.2, ease: 'easeOut' } },
 };

@@ -89,6 +89,10 @@ export const mlApi = {
   analyzeCameraImage: (image) => api.post('/api/ml/camera/analyze', { image }, { timeout: 130000 }),
   analyzeIngredients: (image) => api.post('/api/ml/analyze-ingredients', { image }, { timeout: 130000 }),
   removeCameraBackground: (image) => api.post('/api/ml/camera/remove-bg', { image }, { timeout: 100000 }),
+  saveAiCameraResult: (payload) => api.post('/api/ml/ai-camera-saves', payload),
+  getAiCameraSaves: (params) => api.get('/api/ml/ai-camera-saves', { params }),
+  getAiCameraSave: (id) => api.get(`/api/ml/ai-camera-saves/${id}`),
+  deleteAiCameraSave: (id) => api.delete(`/api/ml/ai-camera-saves/${id}`),
 };
 
 export const plannerApi = {
