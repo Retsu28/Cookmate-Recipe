@@ -24,6 +24,7 @@ import AuthVideoBackground from '../components/AuthVideoBackground';
 
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
+const PASSWORD_SUCCESS_COLOR = '#22c55e';
 
 function normalizeFullName(value) {
   return value.trim().replace(/\s+/g, ' ');
@@ -46,11 +47,11 @@ function getPasswordRequirements(pw) {
 function scorePassword(requirements) {
   const score = requirements.filter((item) => item.met).length;
   if (score === 0) return { score, color: '#e7e5e4' };
-  if (score <= 1) return { score, color: '#fdba74' };
-  if (score <= 2) return { score, color: '#fb923c' };
-  if (score <= 3) return { score, color: '#f97316' };
-  if (score <= 4) return { score, color: '#ea580c' };
-  return { score, color: '#c2410c' };
+  if (score <= 1) return { score, color: '#86efac' };
+  if (score <= 2) return { score, color: '#4ade80' };
+  if (score <= 3) return { score, color: '#22c55e' };
+  if (score <= 4) return { score, color: '#16a34a' };
+  return { score, color: '#15803d' };
 }
 
 export default function SignupScreen({ navigation }) {
@@ -235,7 +236,7 @@ export default function SignupScreen({ navigation }) {
                         <Ionicons
                           name={item.met ? 'checkmark-outline' : 'close-outline'}
                           size={15}
-                          color={item.met ? colors.primary : colors.textSubtle}
+                          color={item.met ? PASSWORD_SUCCESS_COLOR : colors.textSubtle}
                         />
                         <Text style={[styles.requirementText, item.met && styles.requirementTextMet]}>
                           {item.label}
@@ -431,7 +432,7 @@ function createStyles(colors, isDark) {
       fontSize: 12,
     },
     requirementTextMet: {
-      color: '#f97316',
+      color: PASSWORD_SUCCESS_COLOR,
       fontFamily: 'Geist_700Bold',
     },
     errorBox: {

@@ -45,11 +45,11 @@ function getPasswordRequirements(pw: string) {
 function scorePassword(requirements: Array<{ met: boolean }>): { score: number; color: string } {
   const score = requirements.filter((item) => item.met).length;
   if (score === 0) return { score, color: 'bg-stone-200' };
-  if (score <= 1) return { score, color: 'bg-orange-300' };
-  if (score <= 2) return { score, color: 'bg-orange-400' };
-  if (score <= 3) return { score, color: 'bg-orange-500' };
-  if (score <= 4) return { score, color: 'bg-orange-600' };
-  return { score, color: 'bg-orange-700' };
+  if (score <= 1) return { score, color: 'bg-green-300' };
+  if (score <= 2) return { score, color: 'bg-green-400' };
+  if (score <= 3) return { score, color: 'bg-green-500' };
+  if (score <= 4) return { score, color: 'bg-green-600' };
+  return { score, color: 'bg-green-700' };
 }
 
 export default function Signup() {
@@ -245,7 +245,7 @@ export default function Signup() {
                             animate={{ opacity: item.met ? 1 : 0.75, x: item.met ? 2 : 0 }}
                             transition={{ duration: 0.18, ease: 'easeOut' }}
                             className={`flex items-center gap-2 text-[12px] font-semibold ${
-                              item.met ? 'text-orange-600' : 'text-stone-400'
+                              item.met ? 'text-green-600' : 'text-stone-400'
                             }`}
                           >
                             {item.met ? <Check size={14} /> : <X size={14} />}
