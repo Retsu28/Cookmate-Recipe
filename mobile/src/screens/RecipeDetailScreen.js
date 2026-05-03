@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
 
 const fallbackRecipes = {
@@ -45,14 +46,17 @@ const fallbackRecipes = {
 
 export default function RecipeDetailScreen({ route, navigation }) {
   const { colors, isDark } = useAppTheme();
+  const { user } = useAuth();
   const { id } = route.params;
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadedFromApi, setLoadedFromApi] = useState(false);
   const [servings, setServings] = useState(4);
   const [checkedIngredients, setCheckedIngredients] = useState({});
 
   useEffect(() => {
     const fetchRecipe = async () => {
+      setLoadedFromApi(false);
       try {
         const response = await recipeApi.getById(id);
         const r = response.data?.recipe || response.data;
@@ -74,11 +78,13 @@ export default function RecipeDetailScreen({ route, navigation }) {
           },
         };
         setRecipe(normalized);
+        setLoadedFromApi(true);
         setServings(normalized.servings || 4);
       } catch (error) {
         console.error('Failed to fetch recipe', error);
         const fallback = fallbackRecipes[id] || fallbackRecipes[1];
         setRecipe(fallback);
+        setLoadedFromApi(false);
         setServings(fallback.servings || 4);
       } finally {
         setLoading(false);
@@ -86,6 +92,14 @@ export default function RecipeDetailScreen({ route, navigation }) {
     };
     fetchRecipe();
   }, [id]);
+
+  // Record the view in the database (fire-and-forget)
+  useEffect(() => {
+    if (!loadedFromApi || !recipe?.id || !user?.id) return;
+    recipeApi.recordView(recipe.id).catch(() => {
+      /* silently ignore — view tracking is best-effort */
+    });
+  }, [loadedFromApi, recipe?.id, user?.id]);
 
   const toggleIngredient = (i) => {
     setCheckedIngredients(prev => ({ ...prev, [i]: !prev[i] }));

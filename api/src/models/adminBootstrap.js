@@ -33,30 +33,19 @@ async function ensureUserAuthConstraints() {
       SELECT
         id,
         LOWER(BTRIM(email)) AS normalized_email,
-        COALESCE(NULLIF(BTRIM(full_name), ''), split_part(LOWER(BTRIM(email)), '@', 1)) AS base_full_name
+        COALESCE(NULLIF(BTRIM(full_name), ''), split_part(LOWER(BTRIM(email)), '@', 1)) AS normalized_full_name
       FROM users
-    ),
-    ranked_users AS (
-      SELECT
-        id,
-        normalized_email,
-        CASE
-          WHEN ROW_NUMBER() OVER (PARTITION BY LOWER(BTRIM(base_full_name)) ORDER BY id) = 1
-            THEN base_full_name
-          ELSE CONCAT(base_full_name, ' #', id)
-        END AS normalized_full_name
-      FROM normalized_users
     )
     UPDATE users
     SET
-      email = ranked_users.normalized_email,
-      full_name = ranked_users.normalized_full_name,
+      email = normalized_users.normalized_email,
+      full_name = normalized_users.normalized_full_name,
       updated_at = CURRENT_TIMESTAMP
-    FROM ranked_users
-    WHERE users.id = ranked_users.id
+    FROM normalized_users
+    WHERE users.id = normalized_users.id
       AND (
-        users.email <> ranked_users.normalized_email
-        OR users.full_name IS DISTINCT FROM ranked_users.normalized_full_name
+        users.email <> normalized_users.normalized_email
+        OR users.full_name IS DISTINCT FROM normalized_users.normalized_full_name
       )
   `);
 
@@ -85,8 +74,7 @@ async function ensureUserAuthConstraints() {
   `);
 
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS users_full_name_lower_unique_idx
-    ON users (LOWER(BTRIM(full_name)))
+    DROP INDEX IF EXISTS users_full_name_lower_unique_idx
   `);
 }
 

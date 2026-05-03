@@ -11,6 +11,7 @@ import AppShell from './app/AppShell';
 import SplashScreen from '@/components/SplashScreen';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AIChatProvider } from '@/context/AIChatContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
 import AdminGate from '@/auth/AdminGate';
 import AdminLayout from './admin/AdminLayout';
@@ -24,7 +25,6 @@ const ProfilePage = lazy(() => import('./pages/Profile'));
 const NotificationsPage = lazy(() => import('./pages/Notifications'));
 const AICamera = lazy(() => import('./pages/AICamera'));
 const Settings = lazy(() => import('./pages/Settings'));
-const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const AppearanceSettings = lazy(() => import('./pages/AppearanceSettings'));
 const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 const PrivacySecuritySettings = lazy(() => import('./pages/PrivacySecuritySettings'));
@@ -75,6 +75,7 @@ export default function App() {
         <PostLoginSplash />
         <SignOutSplash />
         <Router>
+          <AIChatProvider>
           <Routes>
             <Route element={<AdminGate />}>
               <Route path="admin" element={<AdminLayout />}>
@@ -110,7 +111,6 @@ export default function App() {
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="camera" element={<AICamera />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="settings/account" element={<AccountSettings />} />
                 <Route path="settings/appearance" element={<AppearanceSettings />} />
                 <Route path="settings/notifications" element={<NotificationSettings />} />
                 <Route path="settings/privacy-security" element={<PrivacySecuritySettings />} />
@@ -119,6 +119,7 @@ export default function App() {
           </Routes>
           <Toaster position="top-right" />
           <InstallPrompt />
+          </AIChatProvider>
         </Router>
       </AuthProvider>
     </ThemeProvider>

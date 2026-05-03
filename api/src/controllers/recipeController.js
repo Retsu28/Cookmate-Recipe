@@ -1,6 +1,31 @@
 const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
+const { verifyAuthToken, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
+
+function getOptionalUserId(req) {
+  if (req.userId) return req.userId;
+
+  const header = req.header('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1] || req.cookies?.[AUTH_COOKIE_NAME];
+  if (!token) return null;
+
+  try {
+    const payload = verifyAuthToken(token);
+    const userId = Number(payload.sub);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
+const HOME_COLS = `
+  r.id, r.title, r.description, r.category, r.region_or_origin,
+  r.difficulty, r.prep_time_minutes, r.cook_time_minutes,
+  r.total_time_minutes, r.servings, r.calories, r.image_url,
+  r.tags, r.is_featured, r.created_at
+`.replace(/\s+/g, ' ').trim();
 
 // ─── Sync recipe_ingredients join table ──────────────────────────────────────
 // ingredients: [{ name }, ...]
@@ -147,7 +172,7 @@ exports.getRecent = async (_req, res) => {
 exports.getCategories = async (_req, res) => {
   try {
     const result = await pool.query(
-      `SELECT category, COUNT(*) AS count FROM recipes
+      `SELECT category, COUNT(*) AS count, MAX(image_url) AS image_url FROM recipes
        WHERE category IS NOT NULL AND is_published = true
        GROUP BY category ORDER BY count DESC`
     );
@@ -163,22 +188,13 @@ exports.getCategories = async (_req, res) => {
 // can hydrate with a single round-trip.
 //
 // Optional query params:
-//   ?userId=<id>   — biases "Recommended for You" toward the user's
-//                    historical meal-plan categories. Falls back to popular
-//                    Filipino picks when the user has no history or no userId.
 //   ?limit=<n>     — per-section recipe limit (default 8, max 12).
+// Recently Viewed is populated from the authenticated user's recipe_viewed
+// history. It is empty when there is no authenticated user or no history.
 exports.getHomeSections = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 8, 12);
-    const userId = req.query.userId ? parseInt(req.query.userId) : null;
-
-    // Lightweight projection — homepage cards never need full instructions.
-    const HOME_COLS = `
-      r.id, r.title, r.description, r.category, r.region_or_origin,
-      r.difficulty, r.prep_time_minutes, r.cook_time_minutes,
-      r.total_time_minutes, r.servings, r.calories, r.image_url,
-      r.tags, r.is_featured, r.created_at
-    `.replace(/\s+/g, ' ').trim();
+    const userId = getOptionalUserId(req);
 
     // Recipes are considered Filipino if region_or_origin is set (the seeded
     // data uses Luzon/Visayas/Bicol/etc.) or category/tags reference Filipino
@@ -244,39 +260,20 @@ exports.getHomeSections = async (req, res) => {
       [limit]
     );
 
-    // 4) Recommended for you — leans on the user's meal plan history when
-    //    available; otherwise mirrors popular Filipino picks.
-    let recommendedRows = [];
+    // 4) Recently viewed — pulls only from recipe_viewed for the current user.
+    //    The clients render "No recently viewed" when this is empty.
+    let recentlyViewedRows = [];
     if (userId) {
-      const recommendedRes = await pool.query(
-        `WITH user_history AS (
-           SELECT r.id, r.category, r.region_or_origin
-           FROM meal_plans mp
-           JOIN recipes r ON r.id = mp.recipe_id
-           WHERE mp.user_id = $1
-           ORDER BY mp.planned_date DESC NULLS LAST, mp.id DESC
-           LIMIT 30
-         ),
-         user_categories AS (
-           SELECT category FROM user_history WHERE category IS NOT NULL
-         ),
-         user_regions AS (
-           SELECT region_or_origin FROM user_history WHERE region_or_origin IS NOT NULL
-         )
-         SELECT ${HOME_COLS}, ${POPULARITY_SCORE} AS popularity_score
-         FROM recipes r
-         ${POPULARITY_JOINS}
-         WHERE r.is_published = true
-           AND r.id NOT IN (SELECT id FROM user_history)
-           AND (
-             r.category IN (SELECT category FROM user_categories)
-             OR r.region_or_origin IN (SELECT region_or_origin FROM user_regions)
-           )
-         ORDER BY popularity_score DESC, r.created_at DESC
+      const recentlyViewedRes = await pool.query(
+        `SELECT ${HOME_COLS}, rv.viewed_at
+         FROM recipe_viewed rv
+         JOIN recipes r ON r.id = rv.recipe_id
+         WHERE rv.user_id = $1 AND r.is_published = true
+         ORDER BY rv.viewed_at DESC
          LIMIT $2`,
         [userId, limit]
       );
-      recommendedRows = recommendedRes.rows;
+      recentlyViewedRows = recentlyViewedRes.rows;
     }
 
     const [categoriesRes, popularRes, recentRes] = await Promise.all([
@@ -299,20 +296,11 @@ exports.getHomeSections = async (req, res) => {
       popularFilipinoRecipes = fallback.rows;
     }
 
-    // Recommended fallback: popular Filipino → top recent if still empty.
-    let recommendedRecipes = recommendedRows;
-    if (recommendedRecipes.length === 0) {
-      recommendedRecipes = popularFilipinoRecipes.slice(0, limit);
-    }
-    if (recommendedRecipes.length === 0) {
-      recommendedRecipes = recentRes.rows.slice(0, limit);
-    }
-
     res.json({
       categories: categoriesRes.rows,
       popularFilipinoRecipes,
       recentlyAddedRecipes: recentRes.rows,
-      recommendedRecipes,
+      recentlyViewedRecipes: recentlyViewedRows,
     });
   } catch (err) {
     console.error('[recipes/getHomeSections]', err);
@@ -566,6 +554,66 @@ exports.togglePublished = async (req, res) => {
 
 // ─── POST /api/recipes/import-csv ────────────────────────────────────────────
 // Admin: import recipes from uploaded CSV
+// ─── POST /api/recipes/:id/view ─────────────────────────────────────────────
+// Records that the authenticated user viewed a recipe. Upserts so repeated
+// views just refresh the timestamp.
+exports.recordView = async (req, res) => {
+  try {
+    const recipeId = Number(req.params.id);
+    const userId = req.userId;
+
+    if (!userId || !Number.isInteger(recipeId) || recipeId <= 0) {
+      return res.status(400).json({ error: 'Authenticated user and recipeId are required.' });
+    }
+
+    await pool.query(
+      `INSERT INTO recipe_viewed (user_id, recipe_id, viewed_at, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id, recipe_id)
+       DO UPDATE SET
+         viewed_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+      [userId, recipeId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    if (err?.code === '23503') {
+      return res.status(404).json({ error: 'Recipe not found.' });
+    }
+    console.error('[recipes/recordView]', err);
+    res.status(500).json({ error: 'Failed to record recipe view.' });
+  }
+};
+
+// ─── GET /api/recipes/recently-viewed?limit=<n> ────────────────────────────
+// Returns the recipes the user has recently viewed, ordered by most recent.
+exports.getRecentlyViewed = async (req, res) => {
+  try {
+    const userId = getOptionalUserId(req);
+    const limit = Math.min(parseInt(req.query.limit) || 8, 20);
+
+    if (!userId) {
+      return res.json({ recipes: [] });
+    }
+
+    const result = await pool.query(
+      `SELECT ${HOME_COLS}, rv.viewed_at
+       FROM recipe_viewed rv
+       JOIN recipes r ON r.id = rv.recipe_id
+       WHERE rv.user_id = $1 AND r.is_published = true
+       ORDER BY rv.viewed_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+
+    res.json({ recipes: result.rows });
+  } catch (err) {
+    console.error('[recipes/getRecentlyViewed]', err);
+    res.status(500).json({ error: 'Failed to fetch recently viewed recipes.' });
+  }
+};
+
 exports.importCsv = async (req, res) => {
   try {
     const { parse } = require('csv-parse/sync');

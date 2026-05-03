@@ -116,20 +116,6 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    if (nextFullName) {
-      const duplicate = await pool.query(
-        `SELECT 1
-         FROM users
-         WHERE id <> $1
-           AND LOWER(BTRIM(full_name)) = LOWER(BTRIM($2))
-         LIMIT 1`,
-        [userId, nextFullName]
-      );
-
-      if (duplicate.rowCount > 0) {
-        return res.status(409).json({ error: 'An account with this full name already exists.' });
-      }
-    }
     if (emailChanging) {
       const duplicate = await pool.query(
         `SELECT 1
@@ -178,7 +164,7 @@ exports.updateProfile = async (req, res) => {
     if (err?.code === '23505') {
       return res
         .status(409)
-        .json({ error: 'An account with this email or full name already exists.' });
+        .json({ error: 'An account with this email already exists.' });
     }
     console.error('[profile/updateProfile]', err);
     res.status(500).json({ error: 'Failed to update profile.' });

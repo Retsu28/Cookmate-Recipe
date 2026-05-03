@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { ReactNode, Fragment, memo } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface AdminTableColumn<T> {
@@ -12,9 +12,11 @@ interface AdminTableProps<T> {
   columns: AdminTableColumn<T>[];
   getRowKey: (item: T) => string | number;
   emptyMessage?: string;
+  expandedRowId?: string | number | null;
+  renderExpandedRow?: (item: T) => ReactNode;
 }
 
-export function AdminTable<T>({ data, columns, getRowKey, emptyMessage = 'No admin records to show.' }: AdminTableProps<T>) {
+function AdminTableBase<T>({ data, columns, getRowKey, emptyMessage = 'No admin records to show.', expandedRowId, renderExpandedRow }: AdminTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-[1.5rem] border border-stone-100">
       <table className="w-full min-w-[760px] border-collapse bg-white text-left text-sm">
@@ -28,15 +30,29 @@ export function AdminTable<T>({ data, columns, getRowKey, emptyMessage = 'No adm
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-100">
-          {data.map((item) => (
-            <tr key={getRowKey(item)} className="transition-colors hover:bg-orange-50/30">
-              {columns.map((column) => (
-                <td key={column.header} className={cn('px-4 py-4 align-middle text-stone-700', column.className)}>
-                  {column.render(item)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {data.map((item) => {
+            const isExpanded = getRowKey(item) === expandedRowId;
+            return (
+              <Fragment key={getRowKey(item)}>
+                <tr className={cn('transition-colors hover:bg-orange-50/30', isExpanded && 'bg-orange-50/30')}>
+                  {columns.map((column) => (
+                    <td key={column.header} className={cn('px-4 py-4 align-middle text-stone-700', column.className)}>
+                      {column.render(item)}
+                    </td>
+                  ))}
+                </tr>
+                {isExpanded && renderExpandedRow && (
+                  <tr>
+                    <td colSpan={columns.length} className="px-4 pb-6 pt-2 bg-white">
+                      <div className="rounded-2xl border border-orange-100 bg-orange-50/20 p-6 shadow-inner animate-fade-up">
+                        {renderExpandedRow(item)}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
           {data.length === 0 && (
             <tr>
               <td className="px-4 py-12 text-center text-sm font-medium text-stone-400" colSpan={columns.length}>
@@ -49,3 +65,6 @@ export function AdminTable<T>({ data, columns, getRowKey, emptyMessage = 'No adm
     </div>
   );
 }
+
+// Add type assertion to preserve the generic typing with memo
+export const AdminTable = memo(AdminTableBase) as typeof AdminTableBase;

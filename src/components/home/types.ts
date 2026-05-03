@@ -28,5 +28,5 @@ export interface HomeSectionsResponse {
   categories: HomeCategory[];
   popularFilipinoRecipes: HomeRecipe[];
   recentlyAddedRecipes: HomeRecipe[];
-  recommendedRecipes: HomeRecipe[];
+  recentlyViewedRecipes: HomeRecipe[];
 }

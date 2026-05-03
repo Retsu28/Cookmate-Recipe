@@ -196,26 +196,21 @@ export function ProfileContentSkeleton({ colors }) {
         contentContainerStyle={st.profileContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Profile header card */}
         <View style={[st.profileHeaderBlock, { backgroundColor: colors.surfaceAlt }]}>
           <SkeletonBlock colors={colors} style={st.profileAvatarBlock} />
           <SkeletonBlock colors={colors} style={st.profileNameBlock} />
           <SkeletonBlock colors={colors} style={st.profileEmailBlock} />
 
           <View style={[st.profileStatsBlock, { borderTopColor: colors.border }]}>
-            {[0, 1, 2].map((item) => (
-              <View key={item} style={[st.profileStatBlock, item < 2 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
-                <SkeletonBlock colors={colors} style={st.profileStatNumberBlock} />
-                <SkeletonBlock colors={colors} style={st.profileStatLabelBlock} />
-              </View>
-            ))}
-          </View>
-
-          <View style={st.profileActionRowBlock}>
-            <SkeletonBlock colors={colors} style={st.profileEditButtonBlock} />
-            <SkeletonBlock colors={colors} style={st.profileShareButtonBlock} />
+            <View style={st.profileStatBlock}>
+              <SkeletonBlock colors={colors} style={st.profileStatNumberBlock} />
+              <SkeletonBlock colors={colors} style={st.profileStatLabelBlock} />
+            </View>
           </View>
         </View>
 
+        {/* Tab row */}
         <View style={[st.profileTabsBlock, { borderBottomColor: colors.border }]}>
           {[0, 1, 2].map((item) => (
             <SkeletonBlock key={item} colors={colors} style={st.profileTabBlock} />
@@ -223,32 +218,87 @@ export function ProfileContentSkeleton({ colors }) {
         </View>
 
         <View style={st.profileBodyBlock}>
-          <View style={st.profileEmptyBlock}>
-            <SkeletonBlock colors={colors} style={st.profileEmptyIconBlock} />
-            <SkeletonBlock colors={colors} style={st.profileEmptyTextBlock} />
+          {/* Account Form - Profile Details section */}
+          <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={st.profileFormHeader}>
+              <SkeletonBlock colors={colors} style={st.profileFormIcon} />
+              <View style={st.listText}>
+                <SkeletonBlock colors={colors} style={st.profileFormTitle} />
+                <SkeletonBlock colors={colors} style={st.profileFormCaption} />
+              </View>
+            </View>
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormInput} />
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormTextArea} />
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileSkillBtn} />
+            <SkeletonBlock colors={colors} style={st.profileSkillBtn} />
+            <SkeletonBlock colors={colors} style={st.profileSkillBtn} />
           </View>
 
-          <View style={st.sectionGap}>
+          {/* Email section */}
+          <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={st.profileFormHeader}>
+              <SkeletonBlock colors={colors} style={st.profileFormIcon} />
+              <View style={st.listText}>
+                <SkeletonBlock colors={colors} style={{ width: 60, height: 17 }} />
+                <SkeletonBlock colors={colors} style={st.profileFormCaption} />
+              </View>
+            </View>
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormInput} />
+          </View>
+
+          {/* Password section */}
+          <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={st.profilePasswordHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={st.profileFormHeader}>
+                  <SkeletonBlock colors={colors} style={st.profileFormIcon} />
+                  <View style={st.listText}>
+                    <SkeletonBlock colors={colors} style={{ width: 90, height: 17 }} />
+                    <SkeletonBlock colors={colors} style={st.profileFormCaption} />
+                  </View>
+                </View>
+              </View>
+              <SkeletonBlock colors={colors} style={st.profileEyeBtn} />
+            </View>
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormInput} />
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormInput} />
+            <SkeletonBlock colors={colors} style={st.profileFormLabel} />
+            <SkeletonBlock colors={colors} style={st.profileFormInput} />
+          </View>
+
+          {/* Save + Discard buttons */}
+          <SkeletonBlock colors={colors} style={st.profileSaveBlock} />
+          <SkeletonBlock colors={colors} style={st.profileDiscardBlock} />
+
+          {/* Preferences section */}
+          <View style={st.profilePrefsSection}>
             <SkeletonBlock colors={colors} style={st.smallLabel} />
             <View style={[st.settingsListBlock, { borderColor: colors.border }]}>
-              {[0, 1, 2, 3, 4].map((item) => (
+              {[0, 1, 2, 3].map((item) => (
                 <View
                   key={item}
                   style={[
                     st.settingRowBlock,
-                    item < 4 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                    item < 3 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                   ]}
                 >
                   <View style={st.settingLeftBlock}>
                     <SkeletonBlock colors={colors} style={st.settingIconBlock} />
                     <SkeletonBlock colors={colors} style={st.settingLabelBlock} />
                   </View>
-                  <SkeletonBlock colors={colors} style={item < 2 ? st.settingSwitchBlock : st.settingValueBlock} />
+                  <SkeletonBlock colors={colors} style={item === 0 ? st.settingSwitchBlock : st.settingValueBlock} />
                 </View>
               ))}
             </View>
           </View>
 
+          {/* Logout */}
           <SkeletonBlock colors={colors} style={st.profileLogoutBlock} />
         </View>
       </ScrollView>
@@ -583,6 +633,152 @@ export function AccountSettingsSkeleton({ colors }) {
   );
 }
 
+export function AllRecipesContentSkeleton({ colors }) {
+  return (
+    <SafeAreaView
+      style={[st.flex1, { backgroundColor: colors.background }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading all recipes"
+    >
+      <ScrollView
+        style={st.flex1}
+        contentContainerStyle={st.allRecipesContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Back pill */}
+        <SkeletonBlock colors={colors} style={st.allRecipesBackPill} />
+
+        {/* Eyebrow */}
+        <SkeletonBlock colors={colors} style={st.allRecipesEyebrow} />
+
+        {/* Title row: big title + sort pill */}
+        <View style={[st.allRecipesTitleRow, { borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <SkeletonBlock colors={colors} style={st.allRecipesTitle} />
+            <SkeletonBlock colors={colors} style={st.allRecipesDesc} />
+          </View>
+          <SkeletonBlock colors={colors} style={st.allRecipesSortPill} />
+        </View>
+
+        {/* Category filter section */}
+        <View style={[st.allRecipesCategorySection, { borderColor: colors.border }]}>
+          <View style={st.allRecipesCatHeader}>
+            <View>
+              <SkeletonBlock colors={colors} style={st.allRecipesCatEyebrow} />
+              <SkeletonBlock colors={colors} style={st.allRecipesCatTitle} />
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {[0, 1, 2, 3, 4].map((item) => (
+              <SkeletonBlock key={item} colors={colors} style={st.allRecipesCatChip} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Results header */}
+        <View style={[st.allRecipesResultsHeader, { borderBottomColor: colors.border }]}>
+          <SkeletonBlock colors={colors} style={st.allRecipesResultsLabel} />
+        </View>
+
+        {/* Recipe grid: 2 columns of cards */}
+        <View style={st.allRecipesGrid}>
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <View key={item} style={st.allRecipesCardSkel}>
+              <SkeletonBlock colors={colors} style={st.allRecipesCardImage} />
+              <SkeletonBlock colors={colors} style={st.allRecipesCardTitle} />
+              <SkeletonBlock colors={colors} style={st.allRecipesCardMeta} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export function NotificationSettingsContentSkeleton({ colors }) {
+  return (
+    <SafeAreaView
+      style={[st.flex1, { backgroundColor: colors.background }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading notification settings"
+    >
+      {/* Header bar */}
+      <View style={[st.notifSettingsHeader, { borderBottomColor: colors.border }]}>
+        <SkeletonBlock colors={colors} style={st.notifSettingsBackIcon} />
+        <SkeletonBlock colors={colors} style={st.notifSettingsHeaderTitle} />
+      </View>
+
+      <ScrollView
+        style={st.flex1}
+        contentContainerStyle={st.notifSettingsContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Intro text */}
+        <SkeletonBlock colors={colors} style={st.notifSettingsIntro} />
+
+        {/* Section 1: Delivery (2 toggles) */}
+        <View style={[st.notifSettingsSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={st.notifSettingsSectionHeader}>
+            <SkeletonBlock colors={colors} style={st.notifSettingsSectionIcon} />
+            <View style={st.listText}>
+              <SkeletonBlock colors={colors} style={st.notifSettingsSectionTitle} />
+              <SkeletonBlock colors={colors} style={st.notifSettingsSectionDesc} />
+            </View>
+          </View>
+          {[0, 1].map((item) => (
+            <View key={item} style={[st.notifSettingsToggleRow, { borderColor: colors.border }]}>
+              <View style={st.notifSettingsToggleLeft}>
+                <SkeletonBlock colors={colors} style={st.notifSettingsToggleIcon} />
+                <View style={st.listText}>
+                  <SkeletonBlock colors={colors} style={st.notifSettingsToggleTitle} />
+                  <SkeletonBlock colors={colors} style={st.notifSettingsToggleDesc} />
+                </View>
+              </View>
+              <SkeletonBlock colors={colors} style={st.notifSettingsSwitch} />
+            </View>
+          ))}
+        </View>
+
+        {/* Section 2: Alert types (3 toggles) */}
+        <View style={[st.notifSettingsSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={st.notifSettingsSectionHeader}>
+            <SkeletonBlock colors={colors} style={st.notifSettingsSectionIcon} />
+            <View style={st.listText}>
+              <SkeletonBlock colors={colors} style={{ width: 100, height: 20 }} />
+              <SkeletonBlock colors={colors} style={st.notifSettingsSectionDesc} />
+            </View>
+          </View>
+          {[0, 1, 2].map((item) => (
+            <View key={item} style={[st.notifSettingsToggleRow, { borderColor: colors.border }]}>
+              <View style={st.notifSettingsToggleLeft}>
+                <SkeletonBlock colors={colors} style={st.notifSettingsToggleIcon} />
+                <View style={st.listText}>
+                  <SkeletonBlock colors={colors} style={st.notifSettingsToggleTitle} />
+                  <SkeletonBlock colors={colors} style={st.notifSettingsToggleDesc} />
+                </View>
+              </View>
+              <SkeletonBlock colors={colors} style={st.notifSettingsSwitch} />
+            </View>
+          ))}
+        </View>
+
+        {/* Summary card */}
+        <View style={[st.notifSettingsSummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[st.notifSettingsSummaryHeader, { borderBottomColor: colors.border }]}>
+            <SkeletonBlock colors={colors} style={st.notifSettingsSummaryIcon} />
+            <View style={st.listText}>
+              <SkeletonBlock colors={colors} style={{ width: 100, height: 18 }} />
+              <SkeletonBlock colors={colors} style={{ width: 170, height: 13 }} />
+            </View>
+          </View>
+          <SkeletonBlock colors={colors} style={st.notifSettingsInfoBox} />
+          <SkeletonBlock colors={colors} style={st.notifSettingsSaveBtn} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 const st = StyleSheet.create({
   flex1: { flex: 1 },
   block: { borderRadius: 10, overflow: 'hidden' },
@@ -699,6 +895,49 @@ const st = StyleSheet.create({
   darkLineWide: { width: '76%', height: 12 },
   darkLine: { width: '58%', height: 12 },
   darkButton: { width: '100%', height: 44, borderRadius: 0 },
+  statsBlockRound: { width: '100%', height: 100, borderRadius: 32 },
+  // AllRecipes skeleton styles
+  allRecipesContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120, gap: 14 },
+  allRecipesBackPill: { width: 110, height: 34, borderRadius: 999 },
+  allRecipesEyebrow: { width: 180, height: 9 },
+  allRecipesTitleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, borderBottomWidth: 1, paddingBottom: 18 },
+  allRecipesTitle: { width: 160, height: 74 },
+  allRecipesDesc: { width: 220, height: 14, marginTop: 10 },
+  allRecipesSortPill: { width: 80, height: 56, borderRadius: 16 },
+  allRecipesCategorySection: { borderWidth: 1, borderRadius: 24, padding: 14, gap: 10 },
+  allRecipesCatHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  allRecipesCatEyebrow: { width: 130, height: 8 },
+  allRecipesCatTitle: { width: 120, height: 20, marginTop: 4 },
+  allRecipesCatChip: { width: 130, height: 52, borderRadius: 999, marginRight: 10 },
+  allRecipesResultsHeader: { borderBottomWidth: 1, paddingBottom: 10 },
+  allRecipesResultsLabel: { width: 200, height: 9 },
+  allRecipesGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  allRecipesCardSkel: { width: '48%', marginBottom: 22 },
+  allRecipesCardImage: { width: '100%', aspectRatio: 1, borderRadius: 24, marginBottom: 10 },
+  allRecipesCardTitle: { width: '90%', height: 15 },
+  allRecipesCardMeta: { width: '70%', height: 11, marginTop: 6 },
+  // NotificationSettings skeleton styles
+  notifSettingsHeader: { height: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: 1, gap: 16 },
+  notifSettingsBackIcon: { width: 32, height: 32, borderRadius: 8 },
+  notifSettingsHeaderTitle: { width: 200, height: 22 },
+  notifSettingsContent: { padding: 16, gap: 20, paddingBottom: 40 },
+  notifSettingsIntro: { width: '90%', height: 16 },
+  notifSettingsSection: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 12 },
+  notifSettingsSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  notifSettingsSectionIcon: { width: 44, height: 44, borderRadius: 12 },
+  notifSettingsSectionTitle: { width: 80, height: 20 },
+  notifSettingsSectionDesc: { width: '90%', height: 13 },
+  notifSettingsToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderWidth: 1, borderRadius: 12 },
+  notifSettingsToggleLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 16, gap: 12 },
+  notifSettingsToggleIcon: { width: 40, height: 40, borderRadius: 10 },
+  notifSettingsToggleTitle: { width: 120, height: 16 },
+  notifSettingsToggleDesc: { width: '90%', height: 12 },
+  notifSettingsSwitch: { width: 48, height: 28, borderRadius: 14 },
+  notifSettingsSummary: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 16 },
+  notifSettingsSummaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, paddingBottom: 16 },
+  notifSettingsSummaryIcon: { width: 48, height: 48, borderRadius: 12 },
+  notifSettingsInfoBox: { width: '100%', height: 52, borderRadius: 12 },
+  notifSettingsSaveBtn: { width: '100%', height: 48, borderRadius: 12 },
   statsBlock: { width: '100%', height: 118, borderRadius: 0 },
   profileContent: { paddingBottom: 100 },
   profileHeaderBlock: { paddingTop: 32, paddingBottom: 24, alignItems: 'center' },
@@ -726,6 +965,21 @@ const st = StyleSheet.create({
   settingSwitchBlock: { width: 48, height: 28, borderRadius: 14 },
   settingValueBlock: { width: 74, height: 14 },
   profileLogoutBlock: { width: '100%', height: 48, borderRadius: 10 },
+  // Profile form skeleton styles
+  profileFormSection: { borderWidth: 1, borderRadius: 10, padding: 16, gap: 10 },
+  profileFormHeader: { flexDirection: 'row', gap: 12, marginBottom: 6 },
+  profileFormIcon: { width: 40, height: 40, borderRadius: 10 },
+  profileFormTitle: { width: 130, height: 17 },
+  profileFormCaption: { width: '92%', height: 12 },
+  profileFormLabel: { width: 100, height: 9, marginTop: 4 },
+  profileFormInput: { width: '100%', height: 48 },
+  profileFormTextArea: { width: '100%', height: 96 },
+  profileSkillBtn: { width: '100%', height: 42 },
+  profilePasswordHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
+  profileEyeBtn: { width: 40, height: 40, borderRadius: 10 },
+  profileSaveBlock: { width: '100%', height: 52, borderRadius: 10 },
+  profileDiscardBlock: { width: '100%', height: 48, borderRadius: 10 },
+  profilePrefsSection: { gap: 12, marginTop: 8 },
   searchContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 86, gap: 16 },
   searchTitleWide: { width: 230, height: 36 },
   searchTitle: { width: 190, height: 36 },

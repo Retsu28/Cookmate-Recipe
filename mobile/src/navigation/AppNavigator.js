@@ -9,9 +9,9 @@ import { ContentSkeleton } from '../components/SkeletonPlaceholder';
 // Protected stack screens
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import CookingModeScreen from '../screens/CookingModeScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
-import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import AllRecipesScreen from '../screens/AllRecipesScreen';
 
 // Public auth-stack screens
@@ -70,26 +70,7 @@ function AppStack({ colors }) {
     <Stack.Navigator initialRouteName="Onboarding" screenOptions={headerScreenOptions}>
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Main" component={BottomTabNavigator} options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen
-        name="AccountSettings"
-        component={AccountSettingsScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.12, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
+
       <Stack.Screen
         name="AllRecipes"
         component={AllRecipesScreen}
@@ -133,6 +114,26 @@ function AppStack({ colors }) {
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
+        options={{
+          headerShown: false,
+          cardStyleInterpolator: ({ current, layouts }) => ({
+            cardStyle: {
+              opacity: current.progress,
+              transform: [
+                {
+                  translateX: current.progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [layouts.screen.width * 0.25, 0],
+                  }),
+                },
+              ],
+            },
+          }),
+        }}
+      />
+      <Stack.Screen
+        name="NotificationSettings"
+        component={NotificationSettingsScreen}
         options={{
           headerShown: false,
           cardStyleInterpolator: ({ current, layouts }) => ({

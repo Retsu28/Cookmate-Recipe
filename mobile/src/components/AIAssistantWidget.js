@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import {
   TouchableOpacity,
   View,
@@ -17,7 +17,7 @@ import { AIChatTypingSkeleton } from './SkeletonPlaceholder';
 // Sit above the FloatingTabBar (~76px tall + 12px bottom margin + safe-area inset).
 const TAB_BAR_CLEARANCE = 96;
 
-export default function AIAssistantWidget({ onPress }) {
+const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref) {
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const fabBottom = TAB_BAR_CLEARANCE + Math.max(insets.bottom, 0);
@@ -27,6 +27,10 @@ export default function AIAssistantWidget({ onPress }) {
     { role: 'assistant', text: "Hi! I'm your CookMate AI. Ask me anything about cooking, substitutions, or meal ideas." },
   ]);
   const [isReplying, setIsReplying] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    open: () => setOpen(true),
+  }));
 
   const toggle = () => setOpen(!open);
 
@@ -121,7 +125,9 @@ export default function AIAssistantWidget({ onPress }) {
       </View>
     </KeyboardAvoidingView>
   );
-}
+});
+
+export default AIAssistantWidget;
 
 const st = StyleSheet.create({
   fab: { position: 'absolute', right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center', shadowColor: '#f97316', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },

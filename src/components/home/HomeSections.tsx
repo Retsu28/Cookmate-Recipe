@@ -10,7 +10,7 @@ const DEFAULT_DATA: HomeSectionsResponse = {
   categories: [],
   popularFilipinoRecipes: [],
   recentlyAddedRecipes: [],
-  recommendedRecipes: [],
+  recentlyViewedRecipes: [],
 };
 
 export function HomeSections() {
@@ -18,29 +18,28 @@ export function HomeSections() {
   const [data, setData] = useState<HomeSectionsResponse>(DEFAULT_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasRecentlyViewed = data.recentlyViewedRecipes.length > 0;
+  const recentlyViewedLoading = loading && Boolean(user?.id);
 
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams();
-    if (user?.id) params.set('userId', String(user.id));
 
     setLoading(true);
     setError(null);
     api
-      .get<HomeSectionsResponse>(
-        `/api/recipes/home-sections${params.toString() ? `?${params.toString()}` : ''}`
-      )
+      .get<HomeSectionsResponse>('/api/recipes/home-sections')
       .then((res) => {
         if (cancelled) return;
         setData({
           categories: res.categories || [],
           popularFilipinoRecipes: res.popularFilipinoRecipes || [],
           recentlyAddedRecipes: res.recentlyAddedRecipes || [],
-          recommendedRecipes: res.recommendedRecipes || [],
+          recentlyViewedRecipes: res.recentlyViewedRecipes || [],
         });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        setData((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
         setError(err instanceof Error ? err.message : 'Failed to load homepage sections.');
       })
       .finally(() => {
@@ -96,7 +95,26 @@ export function HomeSections() {
         ))}
       </HomeSection>
 
-      {/* 3) Recently Added Recipes */}
+      {/* 3) Recently Viewed */}
+      <HomeSection
+        eyebrow="History"
+        title="Recently Viewed"
+        description="Pick up where you left off — your recently viewed recipes."
+        loading={recentlyViewedLoading}
+        scrollable={hasRecentlyViewed}
+      >
+        {!recentlyViewedLoading && !hasRecentlyViewed ? (
+          <p className="text-lg font-extrabold leading-tight text-stone-500 dark:text-stone-300 sm:text-2xl">
+            No recently viewed
+          </p>
+        ) : (
+          data.recentlyViewedRecipes.map((recipe) => (
+            <HomeRecipeCard key={`rv-${recipe.id}`} recipe={recipe} />
+          ))
+        )}
+      </HomeSection>
+
+      {/* 4) Recently Added Recipes */}
       <HomeSection
         eyebrow="Fresh"
         title="Recently Added Recipes"
@@ -109,24 +127,6 @@ export function HomeSections() {
       >
         {data.recentlyAddedRecipes.map((recipe) => (
           <HomeRecipeCard key={`recent-${recipe.id}`} recipe={recipe} />
-        ))}
-      </HomeSection>
-
-      {/* 4) Recommended for You */}
-      <HomeSection
-        eyebrow="For you"
-        title="Recommended for You"
-        description={
-          user
-            ? 'Personalised suggestions based on your meal-plan history.'
-            : 'Hand-picked starters to inspire your next cooking session.'
-        }
-        loading={loading}
-        empty={!loading && data.recommendedRecipes.length === 0}
-        emptyMessage="No recommendations yet — try adding a recipe to your meal plan."
-      >
-        {data.recommendedRecipes.map((recipe) => (
-          <HomeRecipeCard key={`rec-${recipe.id}`} recipe={recipe} />
         ))}
       </HomeSection>
     </div>

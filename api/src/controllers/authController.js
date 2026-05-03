@@ -9,7 +9,7 @@ const MIN_PASSWORD_LEN = 8;
 const BCRYPT_ROUNDS = 10;
 const JWT_EXPIRES_IN = '7d';
 const JWT_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const DUPLICATE_SIGNUP_MESSAGE = 'An account with this full name or Gmail already exists.';
+const DUPLICATE_SIGNUP_MESSAGE = 'An account with this Gmail already exists.';
 
 function normalizeEmail(value) {
   return value.trim().toLowerCase();
@@ -80,13 +80,11 @@ exports.signup = async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
 
     const duplicate = await pool.query(
-      `SELECT
-         EXISTS(SELECT 1 FROM users WHERE LOWER(BTRIM(email)) = $1) AS email_exists,
-         EXISTS(SELECT 1 FROM users WHERE LOWER(BTRIM(full_name)) = LOWER(BTRIM($2))) AS name_exists`,
-      [normalizedEmail, cleanName]
+      'SELECT 1 FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      [normalizedEmail]
     );
 
-    if (duplicate.rows[0]?.email_exists || duplicate.rows[0]?.name_exists) {
+    if (duplicate.rowCount > 0) {
       return res.status(409).json({ error: DUPLICATE_SIGNUP_MESSAGE });
     }
 

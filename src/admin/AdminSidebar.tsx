@@ -42,9 +42,9 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   return (
     <aside className="flex h-full flex-col bg-stone-100">
       <div className="border-b border-stone-200 p-6">
-        <NavLink to="/" onClick={onNavigate} className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
-            <Activity size={22} />
+        <NavLink to="/" onClick={onNavigate} className="group flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-400 text-white shadow-lg shadow-orange-500/30 transition-transform group-hover:scale-105">
+            <Activity size={22} strokeWidth={2.5} />
           </div>
           <div>
             <p className="text-xl font-extrabold tracking-tight text-stone-900">CookMate</p>

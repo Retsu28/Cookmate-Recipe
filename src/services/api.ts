@@ -8,6 +8,7 @@
 
 const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL || '';
+const AUTH_TOKEN_KEY = 'cookmate.auth.token';
 
 /**
  * Thin wrapper around fetch that:
@@ -26,12 +27,21 @@ async function request<T = unknown>(
     ...(options.headers as Record<string, string>),
   };
 
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (token && !headers.Authorization && !headers.authorization) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    /* storage unavailable — continue without auth header */
+  }
+
   // Auto-set JSON content type for requests with bodies
   if (options.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { credentials: 'include', ...options, headers });
 
   // Handle 204 No Content
   if (res.status === 204) return undefined as unknown as T;

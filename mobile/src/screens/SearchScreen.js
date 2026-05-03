@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,14 @@ import {
   FlatList,
   ActivityIndicator,
   StyleSheet,
+  Animated,
+  Image,
+  ScrollView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { mlApi, recipeApi } from '../api/api';
+import api, { mlApi, recipeApi } from '../api/api';
 import IngredientTag from '../components/IngredientTag';
 import RecipeCard from '../components/RecipeCard';
 import { useAppTheme } from '../context/ThemeContext';
@@ -38,7 +42,28 @@ export default function SearchScreen({ navigation, route }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState(categoryParam);
+  const [allIngredients, setAllIngredients] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   const isInitialLoading = useInitialContentLoading();
+  const dropdownAnim = useRef(new Animated.Value(0)).current;
+  const inputRef = useRef(null);
+
+  // Animate dropdown open/close
+  useEffect(() => {
+    Animated.timing(dropdownAnim, {
+      toValue: suggestions.length > 0 ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [suggestions.length]);
+
+  useEffect(() => {
+    api.get('/api/ingredients')
+      .then(res => {
+        setAllIngredients(res.data.ingredients || []);
+      })
+      .catch(err => console.error('Failed to load ingredients', err));
+  }, []);
 
   // When the user lands here with a category param (e.g. tapping a category
   // chip on the homepage), hydrate the results grid using the existing
@@ -141,15 +166,82 @@ export default function SearchScreen({ navigation, route }) {
         <Text style={[st.inputLabel, { color: colors.textSubtle }]}>INGREDIENT INPUT STACK</Text>
         <View style={[st.inputRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <TextInput
-            style={[st.input, { color: colors.text }]}
-            placeholder="Chicken, Garlic, Rosemary, Lemon..."
+            ref={inputRef}
+            style={[st.input, { color: colors.text, flex: 1 }]}
+            placeholder="Type an ingredient..."
             placeholderTextColor={colors.textSubtle}
             value={ingredient}
-            onChangeText={setIngredient}
+            autoFocus
+            autoCorrect={false}
+            autoCapitalize="none"
+            onChangeText={(text) => {
+              setIngredient(text);
+              if (text.trim().length > 0) {
+                const matches = allIngredients
+                  .filter(ing => ing.name.toLowerCase().includes(text.toLowerCase()))
+                  .slice(0, 8);
+                setSuggestions(matches);
+              } else {
+                setSuggestions([]);
+              }
+            }}
             onSubmitEditing={addIngredient}
             returnKeyType="done"
           />
         </View>
+
+        {/* Suggestions — inline animated dropdown */}
+        <Animated.View
+          style={{
+            maxHeight: dropdownAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 280] }),
+            opacity: dropdownAnim,
+            overflow: 'hidden',
+          }}
+        >
+          {suggestions.length > 0 && (
+            <View style={[st.suggestionsDropdown, { backgroundColor: isDark ? colors.surfaceAlt : '#fff', borderColor: colors.border }]}>
+              <ScrollView
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                style={{ maxHeight: 220 }}
+              >
+                {suggestions.map((sugg, i) => (
+                  <TouchableOpacity
+                    key={sugg.id || i}
+                    style={[st.suggestionItem, i < suggestions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
+                    activeOpacity={0.65}
+                    onPress={() => {
+                      if (!ingredients.includes(sugg.name)) {
+                        setIngredients([...ingredients, sugg.name]);
+                      }
+                      setIngredient('');
+                      setSuggestions([]);
+                      // Re-focus the input so the user can keep typing
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                  >
+                    <View style={st.suggLeft}>
+                      <View style={[st.suggImageWrap, { backgroundColor: isDark ? colors.surface : '#fff7ed' }]}>
+                        {sugg.image_url ? (
+                          <Image source={{ uri: sugg.image_url }} style={st.suggImage} />
+                        ) : (
+                          <Text style={[st.suggImageFallback, { color: colors.primary }]}>{sugg.name.charAt(0).toUpperCase()}</Text>
+                        )}
+                      </View>
+                      <Text style={[st.suggestionText, { color: colors.text }]}>{sugg.name}</Text>
+                    </View>
+                    <View style={st.suggRight}>
+                      <Text style={[st.suggestionAdd, { color: colors.primary }]}>ADD</Text>
+                      <Ionicons name="add-circle" size={18} color={colors.primary} />
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </Animated.View>
+
         <TouchableOpacity
           onPress={ingredients.length > 0 ? handleSearch : addIngredient}
           disabled={loading}
@@ -239,6 +331,8 @@ export default function SearchScreen({ navigation, route }) {
         ListEmptyComponent={renderEmpty}
         numColumns={2}
         columnWrapperStyle={st.colWrapper}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
         renderItem={({ item }) => (
           <RecipeCard
             recipe={item.recipe || item}
@@ -282,4 +376,19 @@ const st = StyleSheet.create({
     borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
   },
   clearCategoryText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+  suggestionsDropdown: {
+    borderWidth: 1, borderRadius: 16, overflow: 'hidden', marginTop: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 5,
+  },
+  suggestionItem: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+  },
+  suggLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  suggImageWrap: { width: 32, height: 32, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  suggImage: { width: '100%', height: '100%' },
+  suggImageFallback: { fontFamily: 'Geist_700Bold', fontSize: 12 },
+  suggestionText: { fontFamily: 'Geist_600SemiBold', fontSize: 15 },
+  suggRight: { flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.8 },
+  suggestionAdd: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5 },
 });

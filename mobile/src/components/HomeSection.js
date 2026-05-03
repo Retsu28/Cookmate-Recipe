@@ -29,6 +29,7 @@ export default function HomeSection({
   error = null,
   emptyText = 'Nothing here yet — check back soon.',
   itemSpacing = 12,
+  showContent = true,
 }) {
   const { colors, isDark } = useAppTheme();
 
@@ -61,7 +62,7 @@ export default function HomeSection({
         ) : null}
       </View>
 
-      {loading ? (
+      {!showContent ? null : loading ? (
         <View style={st.loadingRow}>
           <ActivityIndicator color={colors.primary} />
         </View>

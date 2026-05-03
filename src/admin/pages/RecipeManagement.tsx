@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Upload, Search, Filter, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
 import { AdminTable, type AdminTableColumn } from '../components/AdminTable';
+import { RecipeForm } from '../components/RecipeForm';
 import { StatusBadge, statusToneFromLabel } from '../components/StatusBadge';
 import api from '@/services/api';
 
@@ -54,9 +55,8 @@ export default function RecipeManagement() {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyIngredientRow()]);
-  const [saving, setSaving] = useState(false);
+  const [initialForm, setInitialForm] = useState(emptyForm);
+  const [initialIngredientRows, setInitialIngredientRows] = useState<IngredientRow[]>([emptyIngredientRow()]);
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
 
@@ -78,18 +78,21 @@ export default function RecipeManagement() {
     }
   }, [search, catFilter, diffFilter]);
 
+  const formRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => { fetchRecipes(); }, [fetchRecipes]);
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
-    setIngredientRows([emptyIngredientRow()]);
+    setInitialForm(emptyForm);
+    setInitialIngredientRows([emptyIngredientRow()]);
     setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
   const openEdit = async (r: DbRecipe) => {
     setEditingId(r.id);
-    setForm({
+    setInitialForm({
       title: r.title,
       description: r.description || '',
       instructions: Array.isArray(r.instructions) ? r.instructions.join('\n') : '',
@@ -111,46 +114,35 @@ export default function RecipeManagement() {
       const detail = await api.get<{ recipe: any }>(`/api/recipes/${r.id}`);
       const ings: any[] = detail.recipe?.ingredients || [];
       if (ings.length > 0) {
-        setIngredientRows(ings.map((i: any) => ({
+        setInitialIngredientRows(ings.map((i: any) => ({
           name: i.name || '',
         })));
       } else {
-        setIngredientRows([emptyIngredientRow()]);
+        setInitialIngredientRows([emptyIngredientRow()]);
       }
     } catch {
-      setIngredientRows([emptyIngredientRow()]);
+      setInitialIngredientRows([emptyIngredientRow()]);
     }
     setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
-  const updateIngredientRow = (index: number, field: keyof IngredientRow, value: string) => {
-    setIngredientRows((prev) => prev.map((row, i) => i === index ? { ...row, [field]: value } : row));
-  };
-
-  const addIngredientRow = () => setIngredientRows((prev) => [...prev, emptyIngredientRow()]);
-
-  const removeIngredientRow = (index: number) => {
-    setIngredientRows((prev) => prev.length <= 1 ? [emptyIngredientRow()] : prev.filter((_, i) => i !== index));
-  };
-
-  const handleSave = async () => {
-    if (!form.title.trim()) { toast.error('Recipe title is required.'); return; }
-    setSaving(true);
+  const handleSaveRecipe = useCallback(async (formData: any, ingredientRowsData: any[]) => {
     try {
       // Build ingredients array from rows (filter empty names)
-      const ingredients = ingredientRows.filter((r) => r.name.trim()).map((r) => ({
+      const ingredients = ingredientRowsData.filter((r) => r.name.trim()).map((r) => ({
         name: r.name.trim(),
       }));
 
       // Auto-generate normalized_ingredients from ingredient names
       const autoNormalized = ingredients.map((i) => i.name.toLowerCase());
-      const manualNormalized = form.normalized_ingredients.split(';').map(t => t.trim().toLowerCase()).filter(Boolean);
+      const manualNormalized = formData.normalized_ingredients.split(';').map((t: string) => t.trim().toLowerCase()).filter(Boolean);
       const mergedNormalized = [...new Set([...autoNormalized, ...manualNormalized])];
 
       const body = {
-        ...form,
-        instructions: form.instructions.split('\n').map(s => s.trim()).filter(Boolean),
-        tags: form.tags.split(';').map(t => t.trim()).filter(Boolean),
+        ...formData,
+        instructions: formData.instructions.split('\n').map((s: string) => s.trim()).filter(Boolean),
+        tags: formData.tags.split(';').map((t: string) => t.trim()).filter(Boolean),
         normalized_ingredients: mergedNormalized,
         ingredients,
       };
@@ -165,12 +157,11 @@ export default function RecipeManagement() {
       fetchRecipes();
     } catch (err: any) {
       toast.error(err.message || 'Failed to save recipe.');
-    } finally {
-      setSaving(false);
+      throw err;
     }
-  };
+  }, [editingId, fetchRecipes]);
 
-  const handleDelete = async (id: number, title: string) => {
+  const handleDelete = useCallback(async (id: number, title: string) => {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
     try {
       await api.delete(`/api/recipes/${id}`);
@@ -179,9 +170,9 @@ export default function RecipeManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete.');
     }
-  };
+  }, [fetchRecipes]);
 
-  const handleToggleFeatured = async (id: number) => {
+  const handleToggleFeatured = useCallback(async (id: number) => {
     try {
       const data = await api.patch<{ recipe: { is_featured: boolean } }>(`/api/recipes/${id}/featured`);
       toast.success(data.recipe.is_featured ? 'Marked as featured.' : 'Removed from featured.');
@@ -189,9 +180,9 @@ export default function RecipeManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to toggle featured.');
     }
-  };
+  }, [fetchRecipes]);
 
-  const handleTogglePublished = async (id: number) => {
+  const handleTogglePublished = useCallback(async (id: number) => {
     try {
       const data = await api.patch<{ recipe: { is_published: boolean } }>(`/api/recipes/${id}/published`);
       toast.success(data.recipe.is_published ? 'Recipe published.' : 'Recipe unpublished.');
@@ -199,7 +190,7 @@ export default function RecipeManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to toggle published.');
     }
-  };
+  }, [fetchRecipes]);
 
   const handleCsvImport = async () => {
     if (!csvText.trim()) { toast.error('Paste CSV content first.'); return; }
@@ -217,7 +208,7 @@ export default function RecipeManagement() {
     }
   };
 
-  const columns: AdminTableColumn<DbRecipe>[] = [
+  const columns: AdminTableColumn<DbRecipe>[] = useMemo(() => [
     {
       header: 'Recipe name',
       render: (recipe) => (
@@ -227,8 +218,8 @@ export default function RecipeManagement() {
           ) : (
             <div className="h-10 w-10 rounded-lg bg-orange-50 shrink-0" />
           )}
-          <div>
-            <p className="font-extrabold text-stone-900">{recipe.title}</p>
+          <div className="cursor-pointer hover:underline" onClick={() => openEdit(recipe)}>
+            <p className="font-extrabold text-stone-900 transition-colors hover:text-orange-600">{recipe.title}</p>
             <p className="text-xs font-medium text-stone-400">#{recipe.id} &middot; {recipe.region_or_origin || 'No region'}</p>
           </div>
         </div>
@@ -249,7 +240,7 @@ export default function RecipeManagement() {
       header: 'Actions',
       render: (recipe) => (
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon-sm" className="rounded-full text-stone-500" aria-label={`Edit ${recipe.title}`} onClick={() => openEdit(recipe)}>
+          <Button variant="ghost" size="icon-sm" className="rounded-full text-stone-500 hover:bg-orange-50 hover:text-orange-600" aria-label={`Edit ${recipe.title}`} onClick={() => openEdit(recipe)}>
             <Edit3 size={14} />
           </Button>
           <Button
@@ -273,7 +264,7 @@ export default function RecipeManagement() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-full text-orange-500 hover:bg-orange-50"
+            className="rounded-full text-orange-500 hover:bg-orange-50 hover:text-red-600"
             aria-label={`Delete ${recipe.title}`}
             onClick={() => handleDelete(recipe.id, recipe.title)}
           >
@@ -282,7 +273,18 @@ export default function RecipeManagement() {
         </div>
       ),
     },
-  ];
+  ], [handleDelete, handleToggleFeatured, handleTogglePublished]);
+
+  const renderForm = useCallback(() => (
+    <RecipeForm
+      formRef={formRef}
+      initialForm={initialForm}
+      initialIngredientRows={initialIngredientRows}
+      isEdit={!!editingId}
+      onSave={handleSaveRecipe}
+      onCancel={() => { setShowForm(false); setEditingId(null); }}
+    />
+  ), [initialForm, initialIngredientRows, editingId, handleSaveRecipe]);
 
   return (
     <div>
@@ -313,11 +315,11 @@ export default function RecipeManagement() {
         </div>
         <select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 shadow-sm outline-none">
           <option value="">All categories</option>
-          {['Main Dish','Side Dish','Dessert','Soup','Appetizer','Beverage','Snack','Breakfast','Condiment'].map(c => <option key={c} value={c}>{c}</option>)}
+          {['Main Dish', 'Side Dish', 'Dessert', 'Soup', 'Appetizer', 'Beverage', 'Snack', 'Breakfast', 'Condiment'].map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={diffFilter} onChange={e => setDiffFilter(e.target.value)} className="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 shadow-sm outline-none">
           <option value="">All difficulties</option>
-          {['Easy','Medium','Hard'].map(d => <option key={d} value={d}>{d}</option>)}
+          {['Easy', 'Medium', 'Hard'].map(d => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
 
@@ -336,112 +338,6 @@ export default function RecipeManagement() {
         </AdminSectionCard>
       )}
 
-      {/* Recipe Form Modal */}
-      {showForm && (
-        <AdminSectionCard title={editingId ? 'Edit Recipe' : 'Add New Recipe'} description="Fill in the recipe details below.">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Title *</label>
-              <input value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Description</label>
-              <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} rows={2} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Region / Origin</label>
-              <input value={form.region_or_origin} onChange={e => setForm({...form, region_or_origin: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Category</label>
-              <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300">
-                <option value="">Select category</option>
-                {['Main Dish','Side Dish','Dessert','Soup','Appetizer','Beverage','Snack','Breakfast','Condiment'].map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Difficulty</label>
-              <select value={form.difficulty} onChange={e => setForm({...form, difficulty: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300">
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Image URL</label>
-              <input value={form.image_url} onChange={e => setForm({...form, image_url: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="https://..." />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Prep Time (min)</label>
-              <input type="number" value={form.prep_time_minutes} onChange={e => setForm({...form, prep_time_minutes: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Cook Time (min)</label>
-              <input type="number" value={form.cook_time_minutes} onChange={e => setForm({...form, cook_time_minutes: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Servings</label>
-              <input type="number" value={form.servings} onChange={e => setForm({...form, servings: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Calories</label>
-              <input type="number" value={form.calories} onChange={e => setForm({...form, calories: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Tags (semicolon-separated)</label>
-              <input value={form.tags} onChange={e => setForm({...form, tags: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="savory; braised; rice meal" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Ingredients</label>
-              <div className="space-y-2">
-                {ingredientRows.map((row, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      value={row.name}
-                      onChange={e => updateIngredientRow(idx, 'name', e.target.value)}
-                      placeholder="Ingredient name"
-                      className="flex-1 rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-orange-300"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeIngredientRow(idx)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button type="button" onClick={addIngredientRow} className="mt-2 flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-600">
-                <Plus size={14} /> Add Ingredient
-              </button>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Extra Normalized Ingredients (optional, semicolon-separated)</label>
-              <input value={form.normalized_ingredients} onChange={e => setForm({...form, normalized_ingredients: e.target.value})} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="additional keywords; alternate names" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Instructions (one step per line)</label>
-              <textarea value={form.instructions} onChange={e => setForm({...form, instructions: e.target.value})} rows={4} className="w-full rounded-xl border border-stone-200 px-4 py-2 text-sm outline-none focus:border-orange-300" placeholder="Step 1...\nStep 2..." />
-            </div>
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 text-sm font-bold text-stone-700">
-                <input type="checkbox" checked={form.is_featured} onChange={e => setForm({...form, is_featured: e.target.checked})} className="accent-orange-500" /> Featured
-              </label>
-              <label className="flex items-center gap-2 text-sm font-bold text-stone-700">
-                <input type="checkbox" checked={form.is_published} onChange={e => setForm({...form, is_published: e.target.checked})} className="accent-orange-500" /> Published
-              </label>
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" className="rounded-full" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button className="rounded-full bg-orange-500 px-6 text-white hover:bg-orange-600" onClick={handleSave} disabled={saving}>
-              {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : editingId ? 'Update Recipe' : 'Create Recipe'}
-            </Button>
-          </div>
-        </AdminSectionCard>
-      )}
-
       <AdminSectionCard
         title="Recipe Library"
         description={`${total} recipes from PostgreSQL database.`}
@@ -451,9 +347,26 @@ export default function RecipeManagement() {
             <Loader2 size={24} className="animate-spin" />
           </div>
         ) : (
-          <AdminTable data={recipes} columns={columns} getRowKey={(recipe) => recipe.id} emptyMessage="No recipes found. Import CSV or add a recipe." />
+          <AdminTable
+            data={recipes}
+            columns={columns}
+            getRowKey={(recipe) => recipe.id}
+            emptyMessage="No recipes found. Import CSV or add a recipe."
+            expandedRowId={showForm ? editingId : null}
+            renderExpandedRow={(recipe) => showForm && recipe.id === editingId ? renderForm() : null}
+          />
         )}
       </AdminSectionCard>
+
+      {/* Recipe Create Form Modal - Moved to Bottom, only for new recipes */}
+      {showForm && !editingId && (
+        <div className="mt-8">
+          <AdminSectionCard title="Add New Recipe" description="Fill in the recipe details below.">
+            {renderForm()}
+          </AdminSectionCard>
+        </div>
+      )}
+
     </div>
   );
 }

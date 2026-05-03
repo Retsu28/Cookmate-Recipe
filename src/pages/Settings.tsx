@@ -76,7 +76,7 @@ export default function Settings() {
           <SettingsCard
             title="Account"
             description="Update your email, password, and profile details"
-            to="/settings/account"
+            to="/profile"
             icon={User}
             ariaLabel="Open account settings"
           />

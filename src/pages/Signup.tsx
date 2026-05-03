@@ -341,7 +341,7 @@ export default function Signup() {
                 </motion.button>
 
                 <p className="text-[11px] text-stone-400 text-center leading-relaxed px-2">
-                  By continuing you agree to CookMate&apos;s Terms of Service and acknowledge our Privacy Policy.
+                  By continuing you agree to CookMate's Terms of Service and acknowledge our Privacy Policy.
                 </p>
               </form>
 

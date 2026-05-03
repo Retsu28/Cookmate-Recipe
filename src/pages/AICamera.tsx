@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle, ChevronLeft, ChevronRight, Bookmark, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import api from '@/services/api';
@@ -251,6 +251,46 @@ function cameraWarningMessage(err: unknown, fallback: string) {
   return message || fallback;
 }
 
+interface SavedCameraImage {
+  id: string;
+  thumbnail: string;
+  savedAt: number;
+}
+
+const SAVES_KEY = 'cookmate_camera_saves';
+const MAX_SAVES = 20;
+
+function loadSaves(): SavedCameraImage[] {
+  try {
+    const raw = localStorage.getItem(SAVES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function persistSaves(items: SavedCameraImage[]) {
+  try {
+    localStorage.setItem(SAVES_KEY, JSON.stringify(items.slice(0, MAX_SAVES)));
+  } catch { /* quota exceeded */ }
+}
+
+async function imageToThumbnail(url: string, maxEdge = 200): Promise<string> {
+  const img = await loadImageFromUrl(url);
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const { width, height } = getScaledSize(w, h, maxEdge);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas unavailable');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  canvas.width = 0;
+  canvas.height = 0;
+  return dataUrl;
+}
 
 export default function AICamera() {
   const [image, setImage] = useState<string | null>(null);
@@ -272,6 +312,8 @@ export default function AICamera() {
   const bgRemovalAbortRef = useRef<AbortController | null>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const isInitialLoading = useInitialContentLoading();
+  const [saves, setSaves] = useState<SavedCameraImage[]>([]);
+  const lastSavedRequestIdRef = useRef(0);
 
   const replacePreviewImage = useCallback((nextUrl: string | null) => {
     const previousUrl = activePreviewUrlRef.current;
@@ -341,6 +383,8 @@ export default function AICamera() {
     };
   }, [abortInFlightRequests, stopQueuePolling]);
 
+  useEffect(() => { setSaves(loadSaves()); }, []);
+
   /* Phase sequencer - keeps the sticker animation quick while bg removal finishes in the background */
   useEffect(() => {
     if (phase === 'scanning') {
@@ -384,7 +428,6 @@ export default function AICamera() {
     } catch (err) {
       if (isAbortError(err) || requestIdRef.current !== requestId) return;
       console.warn('Background removal warning:', cameraWarningMessage(err, 'Background removal is temporarily unavailable. The original photo will be used.'));
-      // Fallback: no cutout, sticker will use original image with border
     } finally {
       if (bgRemovalAbortRef.current === controller) {
         bgRemovalAbortRef.current = null;
@@ -501,6 +544,40 @@ export default function AICamera() {
     replacePreviewImage(null); setAnalysis(null); setError(null); setPhase('idle');
     setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setQueueStatus(null); setLoading(false);
     fileInputRef.current?.click();
+  };
+
+  useEffect(() => {
+    if (phase !== 'done' || !image) return;
+    const rid = requestIdRef.current;
+    if (lastSavedRequestIdRef.current === rid) return;
+    lastSavedRequestIdRef.current = rid;
+    const sourceUrl = cutoutUrl || image;
+    (async () => {
+      try {
+        const thumb = await imageToThumbnail(sourceUrl);
+        if (requestIdRef.current !== rid) return;
+        setSaves(prev => {
+          const next = [{ id: String(Date.now()), thumbnail: thumb, savedAt: Date.now() }, ...prev].slice(0, MAX_SAVES);
+          persistSaves(next);
+          return next;
+        });
+      } catch (err) {
+        console.warn('Auto-save failed:', err);
+      }
+    })();
+  }, [phase, image, cutoutUrl]);
+
+  const deleteSave = (id: string) => {
+    setSaves(prev => {
+      const next = prev.filter(s => s.id !== id);
+      persistSaves(next);
+      return next;
+    });
+  };
+
+  const clearAllSaves = () => {
+    setSaves([]);
+    persistSaves([]);
   };
 
   if (isInitialLoading) return <Layout><AICameraPageSkeleton /></Layout>;
@@ -788,52 +865,6 @@ export default function AICamera() {
                 </Card>
               </motion.div>
 
-              {/* ════ More Recipes Carousel ════ */}
-              {otherRecipes.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs font-bold text-stone-400 uppercase tracking-widest dark:text-stone-500">More Recipes ({otherRecipes.length})</p>
-                    <div className="flex gap-2">
-                      <button onClick={() => carouselRef.current?.scrollBy({ left: -280, behavior: 'smooth' })} className="w-8 h-8 flex items-center justify-center rounded-full border border-stone-200 text-stone-400 hover:border-orange-400 hover:text-orange-500 transition-colors dark:border-stone-700 dark:text-stone-500 dark:hover:border-orange-500 dark:hover:text-orange-400"><ChevronLeft size={16} /></button>
-                      <button onClick={() => carouselRef.current?.scrollBy({ left: 280, behavior: 'smooth' })} className="w-8 h-8 flex items-center justify-center rounded-full border border-stone-200 text-stone-400 hover:border-orange-400 hover:text-orange-500 transition-colors dark:border-stone-700 dark:text-stone-500 dark:hover:border-orange-500 dark:hover:text-orange-400"><ChevronRight size={16} /></button>
-                    </div>
-                  </div>
-                  <div ref={carouselRef} className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    {otherRecipes.map((recipe) => (
-                      <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="block group shrink-0 w-[240px]">
-                        <div className="rounded-2xl border border-stone-200 bg-stone-50 overflow-hidden transition-all group-hover:shadow-lg group-hover:border-orange-300 dark:border-stone-700/50 dark:bg-stone-800/60 dark:group-hover:border-orange-500/30 h-full flex flex-col">
-                          <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-200 dark:bg-stone-700">
-                            {recipe.image_url ? (
-                              <img src={recipe.image_url} alt={recipe.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-stone-400 dark:text-stone-500"><ChefHat size={32} /></div>
-                            )}
-                          </div>
-                          <div className="p-4 flex-1 flex flex-col">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <h5 className="font-bold text-sm text-stone-900 truncate group-hover:text-orange-600 transition-colors dark:text-white dark:group-hover:text-orange-400">{recipe.title}</h5>
-                              <ArrowRight size={14} className="text-orange-500 mt-0.5 shrink-0 group-hover:translate-x-1 transition-transform" />
-                            </div>
-                            {recipe.description && <p className="text-stone-500 text-xs leading-relaxed line-clamp-2 mb-2 dark:text-stone-400">{recipe.description}</p>}
-                            <div className="flex flex-wrap gap-1 mt-auto">
-                              {recipe.matchedIngredients.slice(0, 2).map((mi) => (
-                                <span key={mi} className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold capitalize dark:bg-orange-500/15 dark:text-orange-400">{mi}</span>
-                              ))}
-                            </div>
-                            {(recipe.difficulty || recipe.cook_time || recipe.category) && (
-                              <div className="flex items-center gap-2 mt-2 text-[10px] text-stone-400 dark:text-stone-500">
-                                {recipe.difficulty && <span>{recipe.difficulty}</span>}
-                                {recipe.cook_time && <span>{recipe.cook_time}</span>}
-                                {recipe.category && <span>{recipe.category}</span>}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
               </>
             ) : (
               <div className="flex h-full min-h-[400px] flex-col items-center justify-center space-y-6 rounded-[2.5rem] border border-dashed border-orange-200 bg-orange-50/60 p-12 text-center dark:border-stone-700 dark:bg-stone-900/30">
@@ -846,6 +877,137 @@ export default function AICamera() {
             )}
           </div>
         </div>
+
+        {showAnalysisResult && analysis && otherRecipes.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mt-6 overflow-hidden rounded-[1.75rem] border border-orange-100 bg-white/95 p-5 shadow-2xl shadow-orange-950/10 dark:border-white/10 dark:bg-stone-950/95 dark:shadow-stone-950/30"
+          >
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <p className="text-xs font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-300">
+                More Recipes <span className="text-orange-600 dark:text-orange-400">({otherRecipes.length})</span>
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  aria-label="Previous recipes"
+                  className="flex size-9 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600 dark:border-white/10 dark:bg-white/5 dark:text-stone-400 dark:hover:border-orange-500 dark:hover:text-orange-400"
+                  onClick={() => carouselRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+                  type="button"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  aria-label="Next recipes"
+                  className="flex size-9 items-center justify-center rounded-full border border-orange-300 bg-orange-50 text-orange-600 shadow-sm transition-colors hover:bg-orange-500 hover:text-white dark:border-orange-500 dark:bg-orange-500/10 dark:text-orange-400 dark:hover:bg-orange-500 dark:hover:text-white"
+                  onClick={() => carouselRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
+                  type="button"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={carouselRef}
+              className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {otherRecipes.map((recipe) => (
+                <Link key={recipe.id} to={`/recipe/${recipe.id}`} className="group block w-[260px] shrink-0">
+                  <article className="flex h-full gap-3 rounded-2xl border border-stone-200 bg-orange-50/50 p-3 shadow-sm shadow-orange-950/5 transition-all hover:border-orange-300 hover:bg-orange-50 dark:border-white/10 dark:bg-white/[0.06] dark:shadow-none dark:hover:border-orange-500/70 dark:hover:bg-white/[0.09]">
+                    <div className="size-24 shrink-0 overflow-hidden rounded-xl bg-orange-100 dark:bg-stone-800">
+                      {recipe.image_url ? (
+                        <img
+                          src={recipe.image_url}
+                          alt={recipe.title}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-orange-400 dark:text-stone-500">
+                          <ChefHat size={28} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex min-w-0 flex-1 flex-col py-1">
+                      <div className="mb-1 flex items-start justify-between gap-2">
+                        <h5 className="truncate text-sm font-extrabold text-stone-900 transition-colors group-hover:text-orange-600 dark:text-white dark:group-hover:text-orange-300">
+                          {recipe.title}
+                        </h5>
+                        <ArrowRight size={15} className="mt-0.5 shrink-0 text-orange-400 transition-transform group-hover:translate-x-1" />
+                      </div>
+
+                      {recipe.description && (
+                        <p className="line-clamp-2 text-xs leading-relaxed text-stone-500 dark:text-stone-300">
+                          {recipe.description}
+                        </p>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {recipe.matchedIngredients.slice(0, 2).map((mi) => (
+                          <span key={mi} className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold capitalize text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
+                            {mi}
+                          </span>
+                        ))}
+                      </div>
+
+                      {(recipe.difficulty || recipe.cook_time || recipe.category) && (
+                        <div className="mt-auto flex flex-wrap items-center gap-2 pt-2 text-[10px] text-stone-400 dark:text-stone-400">
+                          {recipe.difficulty && <span>{recipe.difficulty}</span>}
+                          {recipe.cook_time && <span>{recipe.cook_time}</span>}
+                          {recipe.category && <span>{recipe.category}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                </Link>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {saves.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Bookmark size={16} className="text-orange-500" />
+                <p className="text-xs font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-300">
+                  My Saves <span className="text-orange-600 dark:text-orange-400">({saves.length})</span>
+                </p>
+              </div>
+              <button
+                onClick={clearAllSaves}
+                className="text-xs text-stone-400 hover:text-red-500 transition-colors font-bold dark:text-stone-500 dark:hover:text-red-400"
+                type="button"
+              >
+                Clear All
+              </button>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              {saves.map(save => (
+                <div key={save.id} className="group relative aspect-square rounded-2xl overflow-hidden border border-stone-200 bg-stone-100 shadow-sm transition-all hover:shadow-md dark:border-stone-700 dark:bg-stone-800">
+                  <img src={save.thumbnail} alt="Saved" className="w-full h-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[9px] text-white/80 text-center font-bold">
+                      {new Date(save.savedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteSave(save.id)}
+                    className="absolute top-1.5 right-1.5 p-1 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                    type="button"
+                  >
+                    <X size={10} className="text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

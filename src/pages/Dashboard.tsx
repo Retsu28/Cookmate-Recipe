@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '@/components/ui/button';
-import { Plus, Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat } from 'lucide-react';
+import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat } from 'lucide-react';
 import { motion } from 'motion/react';
 import { DashboardSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { HomeSections } from '@/components/home/HomeSections';
 import api from '@/services/api';
+import { useAIChat } from '@/context/AIChatContext';
 
 interface ApiRecipe {
   id: number;
@@ -28,6 +29,7 @@ interface ApiRecipe {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { openChat } = useAIChat();
   const isInitialLoading = useInitialContentLoading();
   const [featuredRecipe, setFeaturedRecipe] = useState<ApiRecipe | null>(null);
   const [recentRecipes, setRecentRecipes] = useState<ApiRecipe[]>([]);
@@ -72,11 +74,11 @@ export default function Dashboard() {
               <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-4 dark:text-stone-400">Quick Start</h3>
               <div className="space-y-3">
                 <button
-                  onClick={() => navigate('/recipe/new')}
+                  onClick={() => navigate('/recipes')}
                   className="group flex w-full items-center justify-between rounded-2xl border border-orange-100 bg-white p-4 shadow-sm shadow-orange-100/50 hover-lift hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none"
                 >
-                  <span className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors dark:text-stone-100 dark:group-hover:text-orange-400">New Recipe</span>
-                  <Plus size={20} className="text-orange-400 transition-transform group-hover:scale-110 group-hover:text-orange-600" />
+                  <span className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors dark:text-stone-100 dark:group-hover:text-orange-400">View All Recipes</span>
+                  <BookOpen size={20} className="text-orange-400 transition-transform group-hover:scale-110 group-hover:text-orange-600" />
                 </button>
                 <button
                   onClick={() => navigate('/camera')}
@@ -221,32 +223,32 @@ export default function Dashboard() {
 
             <section className="rounded-3xl orange-gradient p-8 text-white shadow-xl shadow-orange-500/20">
               <div className="flex flex-col items-center gap-4 mb-6">
-                <div className="rounded-2xl bg-white/95 p-2.5">
-                  <ChefHat size={18} className="text-orange-600" />
+                <div className="rounded-full bg-[#1c1917] p-3">
+                  <ChefHat size={20} className="text-orange-500" />
                 </div>
-                <h3 className="font-bold text-base leading-tight text-center">AI Cooking<br />Assistant</h3>
+                <h3 className="font-bold text-lg leading-tight text-center">AI Cooking<br />Assistant</h3>
               </div>
-              <p className="text-stone-400 text-xs mb-6 leading-relaxed text-center dark:text-stone-500">
+              <p className="text-white/90 text-xs mb-6 leading-relaxed text-center">
                 Ask me anything about your pantry or current recipe. I can suggest substitutes in real-time.
               </p>
-              <div className="mb-6 rounded-2xl border border-white/15 bg-white/10 p-4">
-                <p className="text-orange-50 text-xs italic">"What can I use instead of heavy cream for this sauce?"</p>
+              <div className="mb-6 rounded-2xl border border-white/20 bg-white/10 p-5">
+                <p className="text-white text-xs italic font-medium">"What can I use instead of heavy cream for this sauce?"</p>
               </div>
-              <Button className="w-full rounded-2xl bg-white py-4 text-[9px] font-bold uppercase tracking-widest text-orange-700 hover:bg-orange-50">
+              <Button onClick={openChat} className="w-full rounded-full bg-[#1c1917] py-6 text-[10px] font-bold uppercase tracking-widest text-[#ea580c] hover:bg-stone-800 border-0">
                 Start Conversation
               </Button>
             </section>
 
-            <section className="flex flex-col rounded-3xl border border-orange-100 bg-orange-50/70 p-6 text-center">
-              <p className="text-[9px] font-bold text-stone-500 uppercase tracking-widest mb-4 text-left dark:text-stone-400">Kitchen Stats</p>
-              <div className="flex divide-x divide-orange-200 dark:divide-stone-700">
-                <div className="flex-1 px-2">
-                  <h4 className="text-2xl font-extrabold text-orange-700 dark:text-orange-500">12</h4>
-                  <p className="text-[8px] font-bold text-stone-500 uppercase tracking-wider mt-1 dark:text-stone-400">Recipes Made</p>
+            <section className="flex flex-col rounded-3xl bg-[#b5afa8] p-6 text-center border border-white/10 shadow-lg">
+              <p className="text-[10px] font-extrabold text-white/90 uppercase tracking-widest mb-4 text-left">Kitchen Stats</p>
+              <div className="flex divide-x divide-stone-500/30">
+                <div className="flex-1 px-2 flex flex-col items-center justify-center">
+                  <h4 className="text-3xl font-extrabold text-[#ea580c]">12</h4>
+                  <p className="text-[9px] font-extrabold text-white/90 uppercase tracking-wider mt-1">Recipes Made</p>
                 </div>
-                <div className="flex-1 px-2">
-                  <h4 className="text-2xl font-extrabold text-orange-700 dark:text-orange-500">4.8</h4>
-                  <p className="text-[8px] font-bold text-stone-500 uppercase tracking-wider mt-1 dark:text-stone-400">Avg Rating</p>
+                <div className="flex-1 px-2 flex flex-col items-center justify-center">
+                  <h4 className="text-3xl font-extrabold text-[#ea580c]">4.8</h4>
+                  <p className="text-[9px] font-extrabold text-white/90 uppercase tracking-wider mt-1">Avg Rating</p>
                 </div>
               </div>
             </section>

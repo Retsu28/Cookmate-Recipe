@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AIChatMessagesSkeleton } from '@/components/SkeletonScreen';
+import { useAIChat } from '@/context/AIChatContext';
 
 export function AIChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+  const { isOpen, closeChat, toggleChat } = useAIChat();
   const [messages, setMessages] = useState([
     { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?" }
   ]);
@@ -58,7 +59,7 @@ export function AIChatWidget() {
                 </div>
               </div>
               <button 
-                onClick={() => setIsOpen(false)}
+                onClick={closeChat}
                 className="p-1 hover:bg-white/10 rounded-lg transition-colors"
               >
                 <X size={20} />
@@ -108,7 +109,7 @@ export function AIChatWidget() {
       </AnimatePresence>
 
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleChat}
         className="group relative flex h-14 w-14 items-center justify-center rounded-full orange-gradient text-white shadow-xl shadow-orange-500/30 transition-transform hover:scale-110 active:scale-95"
       >
         <MessageSquare size={24} className={isOpen ? 'hidden' : 'block'} />

@@ -17,7 +17,6 @@ CREATE TABLE users (
 );
 
 CREATE UNIQUE INDEX users_email_normalized_unique_idx ON users (LOWER(BTRIM(email)));
-CREATE UNIQUE INDEX users_full_name_lower_unique_idx ON users (LOWER(BTRIM(full_name)));
 
 -- Ingredients table
 CREATE TABLE ingredients (
@@ -66,6 +65,19 @@ CREATE TABLE recipe_ingredients (
     unit VARCHAR(50),
     PRIMARY KEY (recipe_id, ingredient_id)
 );
+
+-- Recipe Viewed table
+CREATE TABLE recipe_viewed (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    viewed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, recipe_id)
+);
+
+CREATE INDEX idx_recipe_viewed_user_recent ON recipe_viewed (user_id, viewed_at DESC);
 
 -- Meal Plans table
 CREATE TABLE meal_plans (

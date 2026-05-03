@@ -435,102 +435,103 @@ export function AIChatMessagesSkeleton() {
 export function ProfilePageSkeleton() {
   return (
     <div
-      className="w-full max-w-5xl mx-auto py-8"
+      className="w-full max-w-5xl mx-auto py-8 animate-fade-up"
       role="status"
       aria-label="Loading profile"
     >
+      {/* Page title */}
       <Skeleton className="mb-8 h-9 w-64" />
 
-      <div className="relative mb-8 flex flex-col items-center gap-8 overflow-hidden bg-white p-8 sm:flex-row sm:items-start dark:bg-stone-900">
-        <Skeleton className="size-32 shrink-0 rounded-none" />
-        <div className="flex w-full flex-1 flex-col items-center justify-between gap-6 sm:flex-row sm:items-start">
-          <div className="w-full space-y-5 text-center sm:text-left">
-            <div className="space-y-3">
-              <Skeleton className="mx-auto h-10 w-72 max-w-full sm:mx-0" />
-              <Skeleton className="mx-auto h-5 w-64 max-w-full sm:mx-0" />
-            </div>
-            <div className="flex justify-center gap-8 sm:justify-start">
-              {repeat(3).map((item) => (
-                <div key={item} className="space-y-2">
-                  <Skeleton className="h-3 w-20 rounded-none" />
-                  <Skeleton className="h-8 w-12 rounded-none" />
-                </div>
-              ))}
-            </div>
+      {/* Profile header card */}
+      <div className="relative mb-8 flex flex-col items-center gap-8 overflow-hidden rounded-[2rem] border border-orange-100 bg-white p-8 shadow-xl shadow-orange-100/60 sm:flex-row sm:items-start dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
+        <div className="absolute right-0 top-0 -z-10 h-full w-1/2 -skew-x-12 translate-x-10 bg-orange-50 dark:bg-stone-700/30" />
+        <Skeleton className="size-32 shrink-0 rounded-[2rem]" />
+        <div className="flex w-full flex-1 flex-col items-center gap-6 sm:items-start">
+          <div className="space-y-3 text-center sm:text-left w-full">
+            <Skeleton className="mx-auto h-10 w-64 max-w-full sm:mx-0" />
+            <Skeleton className="mx-auto h-5 w-56 max-w-full sm:mx-0" />
           </div>
-          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto">
-            <Skeleton className="h-12 w-full rounded-none sm:w-40" />
-            <Skeleton className="h-12 w-full rounded-none sm:w-40" />
+          <div className="flex justify-center gap-8 sm:justify-start">
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-12" />
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Main grid: sidebar + content */}
       <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
+        {/* Sidebar */}
         <div className="space-y-1 md:col-span-3">
-          <Skeleton className="mb-4 ml-4 h-3 w-24 rounded-none" />
-          {repeat(6).map((item) => (
-            <Skeleton key={item} className="h-[44px] w-full rounded-none" />
-          ))}
+          <Skeleton className="mb-4 ml-4 h-3 w-20" />
+          <Skeleton className="h-[48px] w-full rounded-2xl" />
+          <Skeleton className="h-[48px] w-full rounded-2xl" />
         </div>
 
-        <div className="bg-white p-8 md:col-span-9 dark:bg-stone-900">
+        {/* Content panel */}
+        <div className="rounded-[2rem] border border-orange-100 bg-white p-8 shadow-lg shadow-orange-100/50 md:col-span-9 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
           <div className="space-y-10">
+            {/* Section title */}
             <div className="space-y-3">
-              <Skeleton className="h-8 w-64 max-w-full" />
-              <Skeleton className="h-5 w-full max-w-xl" />
+              <Skeleton className="h-8 w-56" />
+              <Skeleton className="h-5 w-80 max-w-full" />
             </div>
 
-            <div>
-              <Skeleton className="mb-4 h-3 w-36 rounded-none" />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {repeat(3).map((item) => (
-                  <div key={item} className="border border-stone-100 bg-stone-100 p-6 dark:border-stone-800 dark:bg-stone-950">
-                    <Skeleton className="mb-4 size-8 rounded-none" />
-                    <Skeleton className="mb-3 h-5 w-28 rounded-none" />
-                    <Skeleton className="h-4 w-full rounded-none" />
-                  </div>
-                ))}
+            {/* Profile Details section */}
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/50 p-6 space-y-4 dark:border-stone-700 dark:bg-stone-800/30">
+              <Skeleton className="h-4 w-32" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-10" />
+                <Skeleton className="h-[100px] w-full rounded-lg" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-24" />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {repeat(3).map((item) => (
+                    <Skeleton key={item} className="h-11 w-full rounded-xl" />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div>
-              <Skeleton className="mb-4 h-3 w-40 rounded-none" />
-              <div className="grid grid-cols-2 gap-y-4">
-                {repeat(6).map((item) => (
-                  <div key={item} className="flex items-center gap-3">
-                    <Skeleton className="size-5 rounded-none" />
-                    <Skeleton className="h-4 w-28 rounded-none" />
-                  </div>
-                ))}
+            {/* Security section */}
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/50 p-6 space-y-4 dark:border-stone-700 dark:bg-stone-800/30">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-5 w-14" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-56 max-w-full" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-36" />
+                  <Skeleton className="h-12 w-full rounded-lg" />
+                </div>
               </div>
             </div>
 
-            <Skeleton className="h-28 w-full rounded-none" />
-            <div className="flex items-center justify-end gap-4 border-t border-stone-100 pt-6 dark:border-stone-800">
-              <Skeleton className="h-10 w-36 rounded-none" />
-              <Skeleton className="h-12 w-44 rounded-none" />
+            {/* Footer actions */}
+            <div className="flex items-center justify-end gap-4 border-t border-orange-100 pt-6 dark:border-stone-700">
+              <Skeleton className="h-10 w-36 rounded-lg" />
+              <Skeleton className="h-12 w-40 rounded-2xl" />
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
-        <div className="h-48 bg-stone-100 p-8 md:col-span-2 dark:bg-stone-900">
-          <Skeleton className="mb-8 h-3 w-36 rounded-none" />
-          <div className="flex h-20 w-full items-end gap-2">
-            {repeat(14).map((item) => (
-              <Skeleton key={item} className="flex-1 rounded-none" style={{ height: `${28 + (item % 6) * 12}%` }} />
-            ))}
-          </div>
-          <Skeleton className="mt-4 h-3 w-full max-w-md rounded-none" />
-        </div>
-
-        <div className="flex h-48 flex-col justify-between bg-stone-100 p-8 dark:bg-stone-900">
-          <Skeleton className="h-3 w-28 rounded-none" />
-          <Skeleton className="h-12 w-20 rounded-none" />
-          <div className="space-y-4">
-            <Skeleton className="h-3 w-full rounded-none" />
-            <Skeleton className="h-1 w-full rounded-none" />
           </div>
         </div>
       </div>

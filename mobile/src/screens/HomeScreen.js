@@ -89,13 +89,16 @@ export default function HomeScreen({ navigation }) {
     categories: [],
     popularFilipinoRecipes: [],
     recentlyAddedRecipes: [],
-    recommendedRecipes: [],
+    recentlyViewedRecipes: [],
   });
   const [homeSectionsLoading, setHomeSectionsLoading] = useState(true);
   const [homeSectionsError, setHomeSectionsError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
+  const aiChatRef = useRef(null);
+  const hasRecentlyViewed = homeSections.recentlyViewedRecipes.length > 0;
+  const recentlyViewedLoading = homeSectionsLoading && Boolean(user?.id);
 
   const profileInitial = user?.name ? user.name.charAt(0).toUpperCase() : '?';
 
@@ -115,11 +118,10 @@ export default function HomeScreen({ navigation }) {
     setHomeSectionsLoading(true);
     setHomeSectionsError(null);
     try {
-      const homeParams = user?.id ? { userId: user.id } : undefined;
       const [featuredRes, recentRes, sectionsRes] = await Promise.all([
         recipeApi.getFeatured(),
         recipeApi.getRecent(),
-        recipeApi.getHomeSections(homeParams),
+        recipeApi.getHomeSections(),
       ]);
       setFeaturedRecipes(withFallback(featuredRes?.data?.recipes, fallbackFeatured));
       setRecentRecipes(withFallback(recentRes?.data?.recipes, fallbackRecent));
@@ -128,12 +130,13 @@ export default function HomeScreen({ navigation }) {
         categories: Array.isArray(payload.categories) ? payload.categories : [],
         popularFilipinoRecipes: Array.isArray(payload.popularFilipinoRecipes) ? payload.popularFilipinoRecipes : [],
         recentlyAddedRecipes: Array.isArray(payload.recentlyAddedRecipes) ? payload.recentlyAddedRecipes : [],
-        recommendedRecipes: Array.isArray(payload.recommendedRecipes) ? payload.recommendedRecipes : [],
+        recentlyViewedRecipes: Array.isArray(payload.recentlyViewedRecipes) ? payload.recentlyViewedRecipes : [],
       });
     } catch (error) {
       console.error('Failed to fetch home data', error);
       setFeaturedRecipes(fallbackFeatured);
       setRecentRecipes(fallbackRecent);
+      setHomeSections((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
       setHomeSectionsError('Could not load homepage sections. Pull to refresh.');
     } finally {
       setRefreshing(false);
@@ -148,7 +151,7 @@ export default function HomeScreen({ navigation }) {
       duration: 420,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [user?.id]);
 
   const introStyle = {
     opacity: introAnim,
@@ -209,16 +212,6 @@ export default function HomeScreen({ navigation }) {
         }
       >
         <Animated.View style={[s.content, introStyle]}>
-          {/* Search Bar */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Search')}
-            activeOpacity={0.7}
-            style={[s.searchBar, { backgroundColor: isDark ? colors.surfaceAlt : 'rgba(214,211,209,0.3)', borderRadius: 999 }]}
-          >
-            <Ionicons name="search" size={16} color={colors.textSubtle} />
-            <Text style={[s.searchText, { color: colors.textSubtle }]}>Search recipes, ingredients...</Text>
-          </TouchableOpacity>
-
           {/* Featured Hero Card — matches web center column */}
           <TouchableOpacity
             activeOpacity={0.9}
@@ -247,11 +240,11 @@ export default function HomeScreen({ navigation }) {
             <Text style={[s.sectionLabel, { color: colors.textMuted }]}>QUICK START</Text>
             <View style={s.quickRow}>
               <TouchableOpacity
-                onPress={() => navigation.navigate('RecipeDetail', { id: 1 })}
+                onPress={() => navigation.navigate('AllRecipes')}
                 style={[s.quickCard, cardStyle]}
               >
-                <Text style={[s.quickCardText, { color: colors.text }]}>New Recipe</Text>
-                <Ionicons name="add" size={20} color={colors.primary} />
+                <Text style={[s.quickCardText, { color: colors.text }]}>View All Recipes</Text>
+                <Ionicons name="book-outline" size={20} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => navigation.navigate('Camera')}
@@ -321,6 +314,38 @@ export default function HomeScreen({ navigation }) {
             )}
           />
 
+          {/* Recently Viewed */}
+          {recentlyViewedLoading || hasRecentlyViewed ? (
+            <HomeSection
+              eyebrow="History"
+              title="Recently Viewed"
+              description="Pick up where you left off — your recently viewed recipes."
+              data={homeSections.recentlyViewedRecipes}
+              keyExtractor={(item, index) => `rv-${item.id || index}`}
+              loading={recentlyViewedLoading}
+              error={null}
+              emptyText="No recently viewed"
+              renderItem={({ item }) => (
+                <HomeRecipeCard
+                  recipe={item}
+                  onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
+                />
+              )}
+            />
+          ) : (
+            <View style={s.historySection}>
+              <HomeSection
+                eyebrow="History"
+                title="Recently Viewed"
+                description="Pick up where you left off — your recently viewed recipes."
+                showContent={false}
+              />
+              <Text style={[s.historyEmptyText, { color: colors.textMuted }]}>
+                No recently viewed
+              </Text>
+            </View>
+          )}
+
           {/* Recently Added Recipes */}
           <HomeSection
             eyebrow="Fresh"
@@ -333,24 +358,6 @@ export default function HomeScreen({ navigation }) {
             loading={homeSectionsLoading}
             error={homeSectionsError}
             emptyText="No recipes have been added yet."
-            renderItem={({ item }) => (
-              <HomeRecipeCard
-                recipe={item}
-                onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
-              />
-            )}
-          />
-
-          {/* Recommended for You */}
-          <HomeSection
-            eyebrow="For you"
-            title="Recommended for You"
-            description={user ? 'Personalised suggestions based on your meal-plan history.' : 'Hand-picked starters to inspire your next cooking session.'}
-            data={homeSections.recommendedRecipes}
-            keyExtractor={(item, index) => `rec-${item.id || index}`}
-            loading={homeSectionsLoading}
-            error={homeSectionsError}
-            emptyText="No recommendations yet — try adding a recipe to your meal plan."
             renderItem={({ item }) => (
               <HomeRecipeCard
                 recipe={item}
@@ -432,40 +439,40 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           {/* AI Cooking Assistant — matches web right column dark AI panel */}
-          <View style={[s.aiPanel, { backgroundColor: colors.dark }]}>
+          <View style={[s.aiPanel, { backgroundColor: colors.primary }]}>
             <View style={s.aiPanelHeader}>
-              <View style={[s.aiIconBox, { backgroundColor: colors.surface }]}>
+              <View style={[s.aiIconBox, { backgroundColor: '#1c1917' }]}>
                 <Ionicons name="restaurant" size={16} color={colors.primary} />
               </View>
-              <Text style={[s.aiPanelTitle, { color: colors.text }]}>AI Cooking{'\n'}Assistant</Text>
+              <Text style={[s.aiPanelTitle, { color: '#fff' }]}>AI Cooking{'\n'}Assistant</Text>
             </View>
-            <Text style={[s.aiPanelDesc, { color: colors.textSubtle }]}>Ask me anything about your pantry or current recipe. I can suggest substitutes in real-time.</Text>
-            <View style={[s.aiQuoteBox, { borderColor: colors.border }]}>
-              <Text style={[s.aiQuoteText, { color: colors.textMuted }]}>"What can I use instead of heavy cream for this sauce?"</Text>
+            <Text style={[s.aiPanelDesc, { color: 'rgba(255,255,255,0.9)' }]}>Ask me anything about your pantry or current recipe. I can suggest substitutes in real-time.</Text>
+            <View style={[s.aiQuoteBox, { borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+              <Text style={[s.aiQuoteText, { color: '#fff' }]}>"What can I use instead of heavy cream for this sauce?"</Text>
             </View>
-            <TouchableOpacity style={[s.aiBtn, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity style={[s.aiBtn, { backgroundColor: '#1c1917' }]} onPress={() => aiChatRef.current?.open()}>
               <Text style={[s.aiBtnText, { color: colors.primary }]}>START CONVERSATION</Text>
             </TouchableOpacity>
           </View>
 
           {/* Kitchen Stats — matches web right column stats */}
-          <View style={[s.statsCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
-            <Text style={[s.sectionLabel, { color: colors.textMuted, marginBottom: 12 }]}>KITCHEN STATS</Text>
+          <View style={[s.statsCard, { backgroundColor: '#b5afa8', borderRadius: 32 }]}>
+            <Text style={[s.sectionLabel, { color: 'rgba(255,255,255,0.9)', marginBottom: 12 }]}>KITCHEN STATS</Text>
             <View style={s.statsRow}>
-              <View style={[s.statCol, { borderRightWidth: 1, borderRightColor: isDark ? colors.border : '#d6d3d1' }]}>
+              <View style={[s.statCol, { borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.15)' }]}>
                 <Text style={[s.statNumber, { color: colors.primary }]}>12</Text>
-                <Text style={[s.statLabel, { color: colors.textMuted }]}>RECIPES MADE</Text>
+                <Text style={[s.statLabel, { color: 'rgba(255,255,255,0.9)' }]}>RECIPES MADE</Text>
               </View>
               <View style={s.statCol}>
                 <Text style={[s.statNumber, { color: colors.primary }]}>4.8</Text>
-                <Text style={[s.statLabel, { color: colors.textMuted }]}>AVG RATING</Text>
+                <Text style={[s.statLabel, { color: 'rgba(255,255,255,0.9)' }]}>AVG RATING</Text>
               </View>
             </View>
           </View>
         </Animated.View>
       </ScrollView>
 
-      <AIAssistantWidget onPress={() => console.log('AI Assistant Pressed')} />
+      <AIAssistantWidget ref={aiChatRef} onPress={() => console.log('AI Assistant Pressed')} />
     </SafeAreaView>
   );
 }
@@ -509,6 +516,8 @@ const s = StyleSheet.create({
   editBtn: { padding: 4 },
   viewAllBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   viewAllText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.4 },
+  historySection: { gap: 10 },
+  historyEmptyText: { fontFamily: 'Geist_800ExtraBold', fontSize: 20, lineHeight: 25 },
   // Info Cards
   infoRow: { flexDirection: 'row', gap: 12 },
   infoCard: { flex: 1, padding: 20, borderRadius: 0 },
@@ -529,15 +538,15 @@ const s = StyleSheet.create({
   recentTitle: { fontFamily: 'Geist_700Bold', fontSize: 13, lineHeight: 17 },
   recentTime: { fontFamily: 'Geist_400Regular', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginTop: 3 },
   // AI Panel
-  aiPanel: { backgroundColor: '#24160f', padding: 24, alignItems: 'center', borderRadius: 24 },
+  aiPanel: { padding: 24, alignItems: 'center', borderRadius: 32 },
   aiPanelHeader: { alignItems: 'center', gap: 10, marginBottom: 14 },
-  aiIconBox: { width: 36, height: 36, backgroundColor: '#fff', borderRadius: 0, alignItems: 'center', justifyContent: 'center' },
-  aiPanelTitle: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff', textAlign: 'center', lineHeight: 20 },
-  aiPanelDesc: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#a8a29e', textAlign: 'center', lineHeight: 17, marginBottom: 16 },
-  aiQuoteBox: { width: '100%', padding: 14, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 16 },
-  aiQuoteText: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#d6d3d1', fontStyle: 'italic' },
-  aiBtn: { width: '100%', backgroundColor: '#fff', alignItems: 'center', paddingVertical: 14 },
-  aiBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 2, color: '#ea580c' },
+  aiIconBox: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  aiPanelTitle: { fontFamily: 'Geist_700Bold', fontSize: 18, textAlign: 'center', lineHeight: 22 },
+  aiPanelDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, textAlign: 'center', lineHeight: 18, marginBottom: 16 },
+  aiQuoteBox: { width: '100%', padding: 16, borderWidth: 1, borderRadius: 16, marginBottom: 16 },
+  aiQuoteText: { fontFamily: 'Geist_500Medium', fontSize: 12, fontStyle: 'italic' },
+  aiBtn: { width: '100%', alignItems: 'center', paddingVertical: 18, borderRadius: 32 },
+  aiBtnText: { fontFamily: 'Geist_800ExtraBold', fontSize: 10, letterSpacing: 2 },
   // Stats
   statsCard: { padding: 20, alignItems: 'center', borderRadius: 0 },
   statsRow: { flexDirection: 'row', width: '100%' },

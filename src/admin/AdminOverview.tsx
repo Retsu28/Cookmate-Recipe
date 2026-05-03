@@ -142,8 +142,8 @@ export default function AdminOverview() {
             )}
             {recentRecipeItems.map((item) => (
               <div key={item.id} className="flex gap-4 rounded-2xl border border-stone-100 bg-white p-4">
-                <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
-                  <ChefHat size={18} />
+                <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-orange-200/60 bg-gradient-to-tr from-orange-100 to-amber-50 text-orange-600 shadow-sm">
+                  <ChefHat size={18} strokeWidth={2.5} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

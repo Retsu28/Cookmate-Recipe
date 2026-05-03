@@ -9,6 +9,7 @@ const notificationRoutes = require('./notifications');
 const profileRoutes = require('./profile');
 const inventoryRoutes = require('./inventory');
 const mlRoutes = require('./ml');
+const adminRoutes = require('./admin');
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/profile', profileRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/ml', mlRoutes);
+router.use('/admin', adminRoutes);
 
 module.exports = router;

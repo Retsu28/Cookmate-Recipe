@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import api from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 interface Ingredient {
   id: number;
@@ -45,6 +46,7 @@ interface DbRecipe {
 export default function RecipeDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [recipe, setRecipe] = useState<DbRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,6 +66,14 @@ export default function RecipeDetail() {
       .catch(err => setError(err.message || 'Recipe not found.'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Record the view in the database (fire-and-forget)
+  useEffect(() => {
+    if (!recipe || !user?.id) return;
+    api.post(`/api/recipes/${recipe.id}/view`).catch(() => {
+      /* silently ignore — view tracking is best-effort */
+    });
+  }, [recipe?.id, user?.id]);
 
   const baseServings = recipe?.servings || 4;
   const scale = servings / baseServings;

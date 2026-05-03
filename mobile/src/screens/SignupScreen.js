@@ -284,7 +284,7 @@ export default function SignupScreen({ navigation }) {
               </Animated.View>
 
               <Text style={styles.terms}>
-                By continuing you agree to CookMate&apos;s Terms of Service and Privacy Policy.
+                By continuing you agree to CookMate's Terms of Service and Privacy Policy.
               </Text>
 
               <View style={styles.footer}>

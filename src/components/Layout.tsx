@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, Settings as SettingsIcon,
-  Bell, Menu, ShieldCheck, UtensilsCrossed, X
+  Bell, Menu, ShieldCheck, UtensilsCrossed, X, LogOut
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,7 +17,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isNestedInAppShell = useContext(LayoutShellContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';
   const isAdmin = isAdminUser(user);
@@ -67,15 +67,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 key={link.name}
                 to={link.path}
                 className={cn(
-                  "group relative flex items-center gap-4 overflow-hidden rounded-2xl px-4 py-3 font-bold transition-all duration-200",
-                  isActive ? "orange-gradient text-white shadow-lg shadow-orange-500/20" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400"
+                  "group relative flex items-center gap-4 rounded-2xl px-4 py-3 font-bold transition-colors duration-200",
+                  isActive ? "text-white" : "text-stone-500 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                 )}
               >
                 {isActive && (
-                  <motion.div layoutId="activeNavIndicator" className="absolute inset-y-2 left-1 w-1 rounded-full bg-white/80 dark:bg-stone-800/80" />
+                  <motion.div
+                    layoutId="activeNavBackground"
+                    className="absolute inset-0 z-0 rounded-2xl orange-gradient shadow-lg shadow-orange-500/20"
+                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  />
                 )}
-                <Icon size={20} className={cn("transition-transform group-hover:scale-110", isActive ? "text-white" : "text-stone-400 group-hover:text-orange-600 dark:group-hover:text-orange-500")} />
-                {link.name}
+                <Icon size={20} className={cn("relative z-10 transition-transform group-hover:scale-110", isActive ? "text-white" : "text-stone-400 group-hover:text-orange-600 dark:group-hover:text-orange-500")} />
+                <span className="relative z-10">{link.name}</span>
               </Link>
             );
           })}
@@ -151,14 +155,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu size={24} />
             </button>
 
-            <div className="max-w-md w-full relative hidden sm:block">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
-              <input
-                type="text"
-                placeholder="Search recipes, ingredients..."
-                className="w-full rounded-full border border-orange-100 bg-white/75 py-2.5 pl-12 pr-4 font-medium text-stone-700 outline-none shadow-sm placeholder:text-stone-400 transition-all focus:border-orange-300 focus:ring-2 focus:ring-orange-500/20 dark:border-stone-700 dark:bg-stone-800/75 dark:text-stone-200 dark:placeholder:text-stone-500"
-              />
-            </div>
+
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
@@ -176,22 +173,64 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link
               to="/notifications"
               aria-label="Notifications"
-              className="relative rounded-full bg-white p-2.5 text-stone-500 shadow-sm ring-1 ring-orange-100 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:bg-stone-800 dark:ring-stone-700 dark:hover:bg-stone-700 dark:hover:text-orange-400"
+              className="relative rounded-full bg-white p-2.5 text-stone-500 shadow-sm ring-1 ring-orange-100 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:bg-stone-800 dark:ring-stone-700"
             >
               <Bell size={20} />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-stone-800" />
             </Link>
-            <Link
-              to="/profile"
-              aria-label={`${profileLabel} profile`}
-              className="rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300"
-            >
-              <div className="flex h-9 w-9 select-none items-center justify-center rounded-full orange-gradient shadow-lg shadow-orange-500/20">
-                <span className="text-white text-sm font-extrabold tracking-tight">
-                  {profileInitial}
-                </span>
+            <div className="group/profile relative">
+              <Link
+                to="/profile"
+                aria-label={`${profileLabel} profile`}
+                aria-haspopup="true"
+                className="block rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300 focus-visible:ring-orange-400"
+              >
+                <div className="flex h-9 w-9 select-none items-center justify-center rounded-full orange-gradient shadow-lg shadow-orange-500/20">
+                  <span className="text-white text-sm font-extrabold tracking-tight">
+                    {profileInitial}
+                  </span>
+                </div>
+              </Link>
+
+              {/* Hover dropdown */}
+              <div className="pointer-events-none absolute right-0 top-full z-50 pt-2 opacity-0 translate-y-1 transition-all duration-200 ease-out group-hover/profile:pointer-events-auto group-hover/profile:opacity-100 group-hover/profile:translate-y-0">
+                <div className="w-52 overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-xl shadow-orange-900/8 dark:border-stone-700 dark:bg-stone-800 dark:shadow-black/30">
+                  {/* User info header */}
+                  <div className="border-b border-orange-100 px-4 py-3 dark:border-stone-700">
+                    <p className="text-sm font-extrabold text-stone-900 dark:text-stone-100 truncate">{user?.name || 'Guest'}</p>
+                    <p className="text-[11px] font-medium text-stone-500 dark:text-stone-400 truncate mt-0.5">{user?.email || 'Not signed in'}</p>
+                  </div>
+
+                  <div className="py-1.5">
+                    <Link
+                      to="/profile"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400"
+                    >
+                      <User size={16} className="text-stone-400 dark:text-stone-500" />
+                      Profile
+                    </Link>
+                    <Link
+                      to="/settings"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400"
+                    >
+                      <SettingsIcon size={16} className="text-stone-400 dark:text-stone-500" />
+                      Settings
+                    </Link>
+                  </div>
+
+                  <div className="border-t border-orange-100 py-1.5 dark:border-stone-700">
+                    <button
+                      type="button"
+                      onClick={async () => { await logout(); window.location.href = '/login'; }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                    >
+                      <LogOut size={16} />
+                      Sign out
+                    </button>
+                  </div>
+                </div>
               </div>
-            </Link>
+            </div>
           </div>
         </header>
 

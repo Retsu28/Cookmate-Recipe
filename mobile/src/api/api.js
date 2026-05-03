@@ -76,6 +76,8 @@ export const recipeApi = {
   getCategories: () => api.get('/api/recipes/categories'),
   getHomeSections: (params) => api.get('/api/recipes/home-sections', { params }),
   getById: (id) => api.get(`/api/recipes/${id}`),
+  recordView: (recipeId) => api.post(`/api/recipes/${recipeId}/view`),
+  getRecentlyViewed: () => api.get('/api/recipes/recently-viewed'),
   search: (query) => api.get('/api/recipes', { params: { search: query, published: 'true' } }),
   byCategory: (category, limit = 24) =>
     api.get('/api/recipes', { params: { category, published: 'true', limit } }),

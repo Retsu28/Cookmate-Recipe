@@ -7,10 +7,10 @@ import type { StatusTone } from '../data/adminMockData';
 import { StatusBadge } from './StatusBadge';
 
 const iconToneClasses: Record<StatusTone, string> = {
-  success: 'bg-orange-100 text-orange-700',
-  warning: 'bg-orange-50 text-orange-700',
+  success: 'bg-orange-100 text-orange-600',
+  warning: 'bg-orange-200 text-orange-700',
   danger: 'bg-orange-100 text-orange-800',
-  info: 'bg-orange-50 text-orange-700',
+  info: 'bg-orange-50 text-orange-600',
   neutral: 'bg-stone-100 text-stone-700',
 };
 

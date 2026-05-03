@@ -19,6 +19,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { apiBaseUrl, mlApi } from '../api/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -41,6 +42,8 @@ const P = { IDLE: 0, SCAN: 1, SELECTING: 2, SELECTED: 3, STICKER: 4, DONE: 5 };
 const MAX_CAMERA_BASE64_LENGTH = 7 * 1024 * 1024;
 const TARGET_CAPTURE_MAX_EDGE = 1280;
 const CAMERA_CAPTURE_QUALITY = 0.28;
+const SAVES_KEY = 'cookmate_camera_saves';
+const MAX_SAVES = 20;
 
 function parsePictureSize(size) {
   const match = String(size || '').match(/^(\d+)x(\d+)$/);
@@ -119,10 +122,13 @@ export default function CameraScreen({ navigation }) {
   const [queueStatus, setQueueStatus] = useState(null);
   const [cooldown, setCooldown] = useState(0);
   const [showMoreRecipes, setShowMoreRecipes] = useState(false);
+  const [saves, setSaves] = useState([]);
+  const [showSaves, setShowSaves] = useState(false);
   const cooldownRef = useRef(null);
   const queuePollRef = useRef(null);
   const cameraRef = useRef(null);
   const requestIdRef = useRef(0);
+  const lastSavedRequestIdRef = useRef(0);
   const isInitialLoading = useInitialContentLoading();
 
   /* ── Animated values ── */
@@ -184,12 +190,30 @@ export default function CameraScreen({ navigation }) {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
+      try {
+        const raw = await AsyncStorage.getItem(SAVES_KEY);
+        if (raw) setSaves(JSON.parse(raw));
+      } catch {}
     })();
     return () => {
       if (cooldownRef.current) clearInterval(cooldownRef.current);
       stopQueuePolling();
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== P.DONE || !capturedImage) return;
+    const rid = requestIdRef.current;
+    if (lastSavedRequestIdRef.current === rid) return;
+    lastSavedRequestIdRef.current = rid;
+    const imageUri = cutoutUri || capturedImage;
+    const newSave = { id: String(Date.now()), image: imageUri, savedAt: Date.now() };
+    setSaves(prev => {
+      const next = [newSave, ...prev].slice(0, MAX_SAVES);
+      AsyncStorage.setItem(SAVES_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, [phase, capturedImage, cutoutUri]);
 
   const configurePictureSize = async () => {
     try {
@@ -428,6 +452,19 @@ export default function CameraScreen({ navigation }) {
     setShowMoreRecipes(false);
     setPhase(P.IDLE);
     reset();
+  };
+
+  const deleteSave = (id) => {
+    setSaves(prev => {
+      const next = prev.filter(s => s.id !== id);
+      AsyncStorage.setItem(SAVES_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const clearAllSaves = () => {
+    setSaves([]);
+    AsyncStorage.removeItem(SAVES_KEY).catch(() => {});
   };
 
   if (isInitialLoading || hasPermission === null) return <CameraPermissionSkeleton colors={colors} />;
@@ -732,11 +769,57 @@ export default function CameraScreen({ navigation }) {
                 <Text style={st.hintText}>{cooldown > 0 ? `Please wait ${cooldown}s` : 'Point at ingredients or a dish'}</Text>
               </View>
               <View style={st.captureRow}>
-                <TouchableOpacity style={st.sideBtn}><Ionicons name="images-outline" size={20} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity style={st.sideBtn} onPress={() => setShowSaves(true)}>
+                  <Ionicons name="images-outline" size={20} color="#fff" />
+                  {saves.length > 0 && (
+                    <View style={st.savesBadgeCount}>
+                      <Text style={st.savesBadgeCountText}>{saves.length}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
                 <TouchableOpacity onPress={takePicture} disabled={cooldown > 0} style={[st.captureOuter, cooldown > 0 && { opacity: 0.4 }]}><View style={st.captureInner} /></TouchableOpacity>
                 <TouchableOpacity style={st.sideBtn}><Ionicons name="flash-outline" size={20} color="#fff" /></TouchableOpacity>
               </View>
             </View>
+          </SafeAreaView>
+        </View>
+      )}
+      {showSaves && (
+        <View style={st.savesOverlay}>
+          <SafeAreaView style={st.savesSafe}>
+            <View style={st.savesHeader}>
+              <Text style={st.savesTitle}>My Saves ({saves.length})</Text>
+              <View style={st.savesHeaderRight}>
+                {saves.length > 0 && (
+                  <TouchableOpacity onPress={clearAllSaves}>
+                    <Text style={st.savesClearText}>Clear All</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setShowSaves(false)} style={st.savesCloseBtn}>
+                  <Ionicons name="close" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {saves.length > 0 ? (
+              <ScrollView contentContainerStyle={st.savesGrid}>
+                {saves.map(save => (
+                  <View key={save.id} style={st.saveItem}>
+                    <Image source={{ uri: save.image }} style={st.saveThumb} />
+                    <TouchableOpacity onPress={() => deleteSave(save.id)} style={st.saveDeleteBtn}>
+                      <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.85)" />
+                    </TouchableOpacity>
+                    <View style={st.saveDateWrap}>
+                      <Text style={st.saveDateText}>{new Date(save.savedAt).toLocaleDateString()}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={st.savesEmpty}>
+                <Ionicons name="images-outline" size={48} color="rgba(255,255,255,0.3)" />
+                <Text style={st.savesEmptyText}>No saved images yet.{"\n"}Take a photo to get started!</Text>
+              </View>
+            )}
           </SafeAreaView>
         </View>
       )}
@@ -832,4 +915,22 @@ const st = StyleSheet.create({
   recipeThumb: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#e7e5e4' },
   recipeThumbSmall: { width: 48, height: 48, borderRadius: 8, backgroundColor: '#e7e5e4' },
   recipeThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  // ── My Saves
+  savesBadgeCount: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  savesBadgeCountText: { fontFamily: 'Geist_700Bold', fontSize: 9, color: '#fff' },
+  savesOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 50 },
+  savesSafe: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  savesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingTop: 8 },
+  savesTitle: { fontFamily: 'Geist_700Bold', fontSize: 18, color: '#fff' },
+  savesHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  savesClearText: { fontFamily: 'Geist_700Bold', fontSize: 11, color: '#f97316', letterSpacing: 0.5 },
+  savesCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  savesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 100 },
+  saveItem: { width: (SW - 56) / 3, aspectRatio: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: '#292524' },
+  saveThumb: { width: '100%', height: '100%' },
+  saveDeleteBtn: { position: 'absolute', top: 4, right: 4 },
+  saveDateWrap: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingVertical: 3, backgroundColor: 'rgba(0,0,0,0.5)' },
+  saveDateText: { fontFamily: 'Geist_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+  savesEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  savesEmptyText: { fontFamily: 'Geist_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
 });

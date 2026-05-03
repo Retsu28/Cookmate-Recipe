@@ -13,7 +13,9 @@ interface HomeSectionProps {
   emptyMessage?: string;
   /** Set to false to render the children inline (no horizontal scroll wrapper). */
   scrollable?: boolean;
-  children: React.ReactNode;
+  /** Set to false when the section should render only its header and description. */
+  showContent?: boolean;
+  children?: React.ReactNode;
 }
 
 export function HomeSection({
@@ -26,6 +28,7 @@ export function HomeSection({
   empty = false,
   emptyMessage = 'Nothing here yet — check back soon.',
   scrollable = true,
+  showContent = true,
   children,
 }: HomeSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -51,7 +54,7 @@ export function HomeSection({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {scrollable ? (
+          {showContent && scrollable ? (
             <>
               <button
                 type="button"
@@ -82,7 +85,7 @@ export function HomeSection({
         </div>
       </div>
 
-      {loading ? (
+      {!showContent ? null : loading ? (
         <div className="flex gap-4 overflow-hidden">
           {[0, 1, 2, 3].map((i) => (
             <div
