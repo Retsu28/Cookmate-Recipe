@@ -5,6 +5,7 @@ import TabSceneAnimator from './TabSceneAnimator';
 
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
+import AllRecipesScreen from '../screens/AllRecipesScreen';
 import MealPlannerScreen from '../screens/MealPlannerScreen';
 import CameraScreen from '../screens/CameraScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -26,6 +27,7 @@ const withTabFade = (Component) => {
 
 const HomeTab = withTabFade(HomeScreen);
 const SearchTab = withTabFade(SearchScreen);
+const RecipesTab = withTabFade(AllRecipesScreen);
 const PlannerTab = withTabFade(MealPlannerScreen);
 const CameraTab = withTabFade(CameraScreen);
 const ProfileTab = withTabFade(ProfileScreen);
@@ -42,6 +44,7 @@ export default function BottomTabNavigator() {
     >
       <Tab.Screen name="Home" component={HomeTab} />
       <Tab.Screen name="Search" component={SearchTab} />
+      <Tab.Screen name="Recipes" component={RecipesTab} />
       <Tab.Screen name="Planner" component={PlannerTab} />
       <Tab.Screen name="Camera" component={CameraTab} />
       <Tab.Screen name="Profile" component={ProfileTab} />

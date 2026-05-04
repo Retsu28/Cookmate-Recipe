@@ -34,6 +34,56 @@ const mockResults = [
   { id: 4, title: 'Crispy Garlic Smashed Taters', match: '74%', time: '15 MIN' },
 ];
 
+const PAGE_SIZE = 200;
+
+function sortResultsByTitle(items) {
+  return [...items].sort((a, b) => {
+    const aTitle = (a.recipe || a).title || '';
+    const bTitle = (b.recipe || b).title || '';
+    return aTitle.localeCompare(bTitle, undefined, { sensitivity: 'base' });
+  });
+}
+
+function mapRecipeToResult(recipe) {
+  const totalMinutes =
+    recipe.total_time_minutes ?? ((recipe.prep_time_minutes || 0) + (recipe.cook_time_minutes || 0));
+  const time = totalMinutes > 0 ? `${totalMinutes} MIN` : recipe.time || null;
+
+  return {
+    recipe: {
+      ...recipe,
+      time,
+      image: recipe.image_url || recipe.image,
+    },
+    matchPercentage: 100,
+    score: 1,
+  };
+}
+
+async function fetchRecipeLibrary(category) {
+  const firstResponse = await recipeApi.getAllRecipesAz({
+    limit: PAGE_SIZE,
+    offset: 0,
+    ...(category ? { category } : {}),
+  });
+  const firstPayload = firstResponse?.data || {};
+  const recipes = Array.isArray(firstPayload.recipes) ? [...firstPayload.recipes] : [];
+  const expectedTotal = firstPayload.total || recipes.length;
+
+  while (recipes.length < expectedTotal) {
+    const nextResponse = await recipeApi.getAllRecipesAz({
+      limit: PAGE_SIZE,
+      offset: recipes.length,
+      ...(category ? { category } : {}),
+    });
+    const nextRecipes = Array.isArray(nextResponse?.data?.recipes) ? nextResponse.data.recipes : [];
+    if (nextRecipes.length === 0) break;
+    recipes.push(...nextRecipes);
+  }
+
+  return sortResultsByTitle(recipes.map(mapRecipeToResult));
+}
+
 export default function SearchScreen({ navigation, route }) {
   const { colors, isDark } = useAppTheme();
   const categoryParam = route?.params?.category?.trim?.() || '';
@@ -42,11 +92,13 @@ export default function SearchScreen({ navigation, route }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState(categoryParam);
+  const [resultsMode, setResultsMode] = useState(categoryParam ? 'category' : 'all');
   const [allIngredients, setAllIngredients] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const isInitialLoading = useInitialContentLoading();
   const dropdownAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef(null);
+  const resultsRequestIdRef = useRef(0);
 
   // Animate dropdown open/close
   useEffect(() => {
@@ -65,46 +117,43 @@ export default function SearchScreen({ navigation, route }) {
       .catch(err => console.error('Failed to load ingredients', err));
   }, []);
 
-  // When the user lands here with a category param (e.g. tapping a category
-  // chip on the homepage), hydrate the results grid using the existing
-  // /api/recipes endpoint without disturbing the ingredient-based flow.
-  useEffect(() => {
-    if (!categoryParam) return;
-    let cancelled = false;
-    setActiveCategory(categoryParam);
+  const loadRecipeResults = useCallback(async (category = '') => {
+    const requestId = resultsRequestIdRef.current + 1;
+    resultsRequestIdRef.current = requestId;
+    const nextCategory = category?.trim?.() || '';
+    setActiveCategory(nextCategory);
+    setResultsMode(nextCategory ? 'category' : 'all');
     setIngredients([]);
+    setIngredient('');
+    setSuggestions([]);
     setLoading(true);
-    recipeApi
-      .byCategory(categoryParam)
-      .then((res) => {
-        if (cancelled) return;
-        const recipes = res?.data?.recipes || [];
-        const mapped = recipes.map((r) => ({
-          recipe: {
-            ...r,
-            time:
-              r.total_time_minutes
-                ? `${r.total_time_minutes} MIN`
-                : `${(r.prep_time_minutes || 0) + (r.cook_time_minutes || 0)} MIN`,
-            image: r.image_url,
-          },
-          matchPercentage: 100,
-          score: 1,
-        }));
+
+    try {
+      const mapped = await fetchRecipeLibrary(nextCategory || undefined);
+      if (resultsRequestIdRef.current === requestId) {
         setResults(mapped);
-      })
-      .catch((err) => {
-        console.error('Failed to load category recipes', err);
-        if (!cancelled) setResults([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      }
+    } catch (err) {
+      console.error(nextCategory ? 'Failed to load category recipes' : 'Failed to load all recipes', err);
+      if (resultsRequestIdRef.current === requestId) {
+        setResults([]);
+      }
+    } finally {
+      if (resultsRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  // Match web Search: landing on Search shows the full A-Z recipe library.
+  // Category links reuse the same A-Z loader with a category filter.
+  useEffect(() => {
+    void loadRecipeResults(categoryParam || '');
 
     return () => {
-      cancelled = true;
+      resultsRequestIdRef.current += 1;
     };
-  }, [categoryParam]);
+  }, [categoryParam, loadRecipeResults]);
 
   const addIngredient = () => {
     if (ingredient.trim() && !ingredients.includes(ingredient.trim())) {
@@ -119,25 +168,55 @@ export default function SearchScreen({ navigation, route }) {
 
   const handleSearch = async () => {
     if (ingredients.length === 0) return;
+    const requestId = resultsRequestIdRef.current + 1;
+    resultsRequestIdRef.current = requestId;
+    setActiveCategory('');
+    setResultsMode('recommendations');
     setLoading(true);
     try {
       const response = await mlApi.recommendByIngredients(ingredients);
-      setResults(response.data.recommendations || []);
+      if (resultsRequestIdRef.current === requestId) {
+        setResults(sortResultsByTitle(response.data.recommendations || []));
+      }
     } catch (error) {
       console.error('Search failed', error);
-      setResults(mockResults.map(r => ({ recipe: { ...r, image: `https://picsum.photos/seed/r${r.id}/400/400` } })));
+      if (resultsRequestIdRef.current === requestId) {
+        setResults(sortResultsByTitle(mockResults.map(r => ({ recipe: { ...r, image: `https://picsum.photos/seed/r${r.id}/400/400` } }))));
+      }
     } finally {
-      setLoading(false);
+      if (resultsRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
-  const clearCategoryFilter = () => {
-    setActiveCategory('');
-    setResults([]);
+  const handleShowAllRecipes = async () => {
+    Keyboard.dismiss();
     if (route?.params?.category) {
       navigation.setParams({ category: undefined });
+      return;
     }
+
+    await loadRecipeResults('');
   };
+
+  const clearCategoryFilter = () => {
+    if (route?.params?.category) {
+      navigation.setParams({ category: undefined });
+      return;
+    }
+
+    void loadRecipeResults('');
+  };
+
+  const resultsLabel =
+    resultsMode === 'all'
+      ? `ALL RECIPES (${results.length} RESULTS)`
+      : resultsMode === 'category'
+        ? `${activeCategory.toUpperCase()} RECIPES (${results.length} RESULTS)`
+        : `RECIPE BLUEPRINTS (${results.length} RESULTS)`;
+  const sortLabel = resultsMode === 'recommendations' ? 'SORT: RELEVANCE' : 'SORT: NAME A-Z';
+  const brandOrange = colors.primary || '#f97316';
 
   const renderHeader = () => (
     <View style={st.headerWrap}>
@@ -148,7 +227,7 @@ export default function SearchScreen({ navigation, route }) {
       <Text style={[st.pageDesc, { color: colors.textMuted }]}>
         {activeCategory
           ? `Every published recipe filed under ${activeCategory}. Tap a card to view the full step-by-step.`
-          : "Enter the items currently in your pantry and we'll find the perfect recipe for your next meal."}
+          : 'Enter the items currently in your pantry, or browse the full A-Z recipe library below.'}
       </Text>
 
       {activeCategory ? (
@@ -156,8 +235,8 @@ export default function SearchScreen({ navigation, route }) {
           onPress={clearCategoryFilter}
           style={[st.clearCategoryBtn, { borderColor: colors.border }]}
         >
-          <Ionicons name="close" size={12} color={colors.primary} />
-          <Text style={[st.clearCategoryText, { color: colors.primary }]}>CLEAR CATEGORY</Text>
+          <Ionicons name="close" size={12} color={brandOrange} />
+          <Text style={[st.clearCategoryText, { color: brandOrange }]}>CLEAR CATEGORY</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -165,6 +244,7 @@ export default function SearchScreen({ navigation, route }) {
       <View style={st.inputSection}>
         <Text style={[st.inputLabel, { color: colors.textSubtle }]}>INGREDIENT INPUT STACK</Text>
         <View style={[st.inputRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="search" size={20} color={brandOrange} />
           <TextInput
             ref={inputRef}
             style={[st.input, { color: colors.text, flex: 1 }]}
@@ -226,14 +306,14 @@ export default function SearchScreen({ navigation, route }) {
                         {sugg.image_url ? (
                           <Image source={{ uri: sugg.image_url }} style={st.suggImage} />
                         ) : (
-                          <Text style={[st.suggImageFallback, { color: colors.primary }]}>{sugg.name.charAt(0).toUpperCase()}</Text>
+                          <Text style={[st.suggImageFallback, { color: brandOrange }]}>{sugg.name.charAt(0).toUpperCase()}</Text>
                         )}
                       </View>
                       <Text style={[st.suggestionText, { color: colors.text }]}>{sugg.name}</Text>
                     </View>
                     <View style={st.suggRight}>
-                      <Text style={[st.suggestionAdd, { color: colors.primary }]}>ADD</Text>
-                      <Ionicons name="add-circle" size={18} color={colors.primary} />
+                      <Text style={[st.suggestionAdd, { color: brandOrange }]}>ADD</Text>
+                      <Ionicons name="add-circle" size={18} color={brandOrange} />
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -247,7 +327,7 @@ export default function SearchScreen({ navigation, route }) {
           disabled={loading}
           style={[
             st.processBtn,
-            { backgroundColor: ingredients.length === 0 ? colors.border : colors.primary },
+            { backgroundColor: ingredients.length === 0 ? colors.border : brandOrange },
           ]}
         >
           {loading ? (
@@ -255,6 +335,15 @@ export default function SearchScreen({ navigation, route }) {
           ) : (
             <Text style={st.processBtnText}>{ingredients.length > 0 ? 'PROCESS' : 'ADD'}</Text>
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleShowAllRecipes}
+          disabled={loading}
+          style={[st.allRecipesBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="book-outline" size={16} color={brandOrange} />
+          <Text style={[st.allRecipesBtnText, { color: brandOrange }]}>ALL RECIPES A-Z</Text>
         </TouchableOpacity>
       </View>
 
@@ -267,8 +356,7 @@ export default function SearchScreen({ navigation, route }) {
       )}
 
       {/* Suggested Combinations — matches web */}
-      {results.length === 0 && (
-        <View style={st.combosSection}>
+      <View style={st.combosSection}>
           <Text style={[st.comboLabel, { color: colors.textSubtle, borderBottomColor: colors.border }]}>SUGGESTED COMBINATIONS</Text>
           {suggestedCombinations.map((combo, i) => (
             <TouchableOpacity
@@ -280,25 +368,26 @@ export default function SearchScreen({ navigation, route }) {
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name={combo.icon} size={28} color={colors.primaryLight || colors.primary} style={{ marginBottom: 16 }} />
+              <Ionicons name={combo.icon} size={28} color={brandOrange} style={{ marginBottom: 16 }} />
               <Text style={[st.comboTitle, { color: colors.text }]}>{combo.title}</Text>
               <Text style={[st.comboItems, { color: colors.textMuted }]}>{combo.items}</Text>
             </TouchableOpacity>
           ))}
-        </View>
-      )}
+      </View>
 
       {/* Results header */}
       {results.length > 0 && (
         <View style={[st.resultsHeader, { borderBottomColor: colors.border }]}>
-          <Text style={[st.resultsLabel, { color: colors.textSubtle }]}>RECIPE BLUEPRINTS ({results.length} RESULTS)</Text>
+          <Text style={[st.resultsLabel, { color: colors.textSubtle }]}>{resultsLabel}</Text>
           <View style={st.filterRow}>
-            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.primary }]}>
-              <Text style={[st.filterBtnText, { color: colors.primary }]}>SORT: RELEVANCE</Text>
+            <TouchableOpacity style={[st.filterBtn, { borderColor: brandOrange }]}>
+              <Text style={[st.filterBtnText, { color: brandOrange }]}>{sortLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[st.filterBtn, { borderColor: colors.border }]}>
-              <Text style={[st.filterBtnText, { color: colors.textMuted }]}>FILTER: TIME</Text>
-            </TouchableOpacity>
+            {resultsMode === 'recommendations' ? (
+              <TouchableOpacity style={[st.filterBtn, { borderColor: colors.border }]}>
+                <Text style={[st.filterBtnText, { color: colors.textMuted }]}>FILTER: TIME</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       )}
@@ -352,10 +441,12 @@ const st = StyleSheet.create({
   pageDesc: { fontFamily: 'Geist_400Regular', fontSize: 14, lineHeight: 21, maxWidth: 320 },
   inputSection: { gap: 8 },
   inputLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2 },
-  inputRow: { borderWidth: 1, paddingHorizontal: 16, height: 56, justifyContent: 'center' },
+  inputRow: { borderWidth: 1, paddingHorizontal: 16, height: 56, flexDirection: 'row', alignItems: 'center', gap: 10 },
   input: { fontFamily: 'Geist_400Regular', fontSize: 15 },
   processBtn: { height: 52, alignItems: 'center', justifyContent: 'center' },
   processBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 2, color: '#fff' },
+  allRecipesBtn: { height: 46, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  allRecipesBtnText: { fontFamily: 'Geist_800ExtraBold', fontSize: 10, letterSpacing: 1.7 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap' },
   // Combos
   combosSection: { gap: 12 },

@@ -1,10 +1,12 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
+import { Animated, Easing, View } from 'react-native';
 import BottomTabNavigator from './BottomTabNavigator';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { ContentSkeleton } from '../components/SkeletonPlaceholder';
+import AuthVideoBackground from '../components/AuthVideoBackground';
 
 // Protected stack screens
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
@@ -20,30 +22,82 @@ import SignupScreen from '../screens/SignupScreen';
 
 const Stack = createStackNavigator();
 
+const authTransitionSpec = {
+  animation: 'timing',
+  config: {
+    duration: 360,
+    easing: Easing.out(Easing.cubic),
+  },
+};
+
+function authCardStyleInterpolator({ current, next, inverted, layouts }) {
+  const foregroundTranslate = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [layouts.screen.width * 0.12, 0],
+  });
+  const backgroundTranslate = next
+    ? next.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -layouts.screen.width * 0.04],
+      })
+    : current.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 0],
+      });
+  const scale = next
+    ? next.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0.985],
+      })
+    : current.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.985, 1],
+      });
+
+  return {
+    cardStyle: {
+      opacity: current.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.96, 1],
+      }),
+      transform: [
+        {
+          translateX: Animated.multiply(
+            Animated.add(foregroundTranslate, backgroundTranslate),
+            inverted
+          ),
+        },
+        { scale },
+      ],
+    },
+  };
+}
+
 function AuthStack() {
+  const { colors, isDark } = useAppTheme();
+  const authBackgroundColor = isDark ? colors.background : colors.primary;
+
   return (
-    <Stack.Navigator
-      initialRouteName="Login"
-      screenOptions={{
-        headerShown: false,
-        cardStyleInterpolator: ({ current, layouts }) => ({
-          cardStyle: {
-            opacity: current.progress,
-            transform: [
-              {
-                translateX: current.progress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [layouts.screen.width * 0.2, 0],
-                }),
-              },
-            ],
+    <View style={{ flex: 1, backgroundColor: authBackgroundColor }}>
+      <AuthVideoBackground />
+      <Stack.Navigator
+        initialRouteName="Login"
+        screenOptions={{
+          headerShown: false,
+          gestureDirection: 'horizontal',
+          cardShadowEnabled: false,
+          cardStyle: { backgroundColor: 'transparent' },
+          transitionSpec: {
+            open: authTransitionSpec,
+            close: authTransitionSpec,
           },
-        }),
-      }}
-    >
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Signup" component={SignupScreen} />
-    </Stack.Navigator>
+          cardStyleInterpolator: authCardStyleInterpolator,
+        }}
+      >
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Signup" component={SignupScreen} />
+      </Stack.Navigator>
+    </View>
   );
 }
 

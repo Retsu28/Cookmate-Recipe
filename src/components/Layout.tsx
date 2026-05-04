@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Home, Search, Calendar, Camera, User, Settings as SettingsIcon,
+  Home, Search, Calendar, Camera, User, Settings as SettingsIcon, BookOpen,
   Bell, Menu, ShieldCheck, UtensilsCrossed, X, LogOut
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
@@ -31,6 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const baseNavLinks = [
     { name: 'Home', path: '/', icon: Home },
     { name: 'Search', path: '/search', icon: Search },
+    { name: 'Recipes', path: '/recipes', icon: BookOpen },
     { name: 'Planner', path: '/planner', icon: Calendar },
     { name: 'AI Camera', path: '/camera', icon: Camera },
     { name: 'Profile', path: '/profile', icon: User },
@@ -39,7 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navLinks = isAdmin
     ? [...baseNavLinks, { name: 'Admin Dashboard', path: '/admin', icon: ShieldCheck }]
     : baseNavLinks;
-  const bottomNavLinks = navLinks.filter((link) => ['Home', 'Search', 'Planner', 'AI Camera', 'Profile'].includes(link.name));
+  const bottomNavLinks = navLinks.filter((link) => ['Home', 'Search', 'Recipes', 'Planner', 'AI Camera', 'Profile'].includes(link.name));
 
   return (
     <div className="flex h-screen overflow-hidden bg-orange-50/50 font-sans text-stone-900 dark:bg-stone-950 dark:text-stone-100">
@@ -250,7 +251,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </AnimatePresence>
         </main>
 
-        <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.5rem] border border-orange-100 bg-white/95 p-1.5 shadow-2xl shadow-orange-950/10 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 dark:shadow-black/20 md:hidden">
+        <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-6 rounded-[1.5rem] border border-orange-100 bg-white/95 p-1.5 shadow-2xl shadow-orange-950/10 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 dark:shadow-black/20 md:hidden">
           {bottomNavLinks.map((link) => {
             const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search'));
             const Icon = link.icon;

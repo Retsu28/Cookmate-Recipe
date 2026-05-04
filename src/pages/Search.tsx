@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Flame, UtensilsCrossed, Wheat, ChefHat } from 'lucide-react';
+import { BookOpen, Flame, UtensilsCrossed, Wheat, ChefHat } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { SearchPageSkeleton, SearchResultsSkeleton } from '@/components/SkeletonScreen';
@@ -29,14 +29,73 @@ interface MlResult {
   matchPercentage: number;
 }
 
+const PAGE_SIZE = 200;
+
+type ResultsMode = 'all' | 'category' | 'recommendations';
+
+function sortResultsByTitle(results: MlResult[]) {
+  return [...results].sort((a, b) =>
+    a.recipe.title.localeCompare(b.recipe.title, undefined, { sensitivity: 'base' })
+  );
+}
+
+function mapRecipeToResult(recipe: MlResult['recipe']): MlResult {
+  const totalMinutes =
+    recipe.total_time_minutes ??
+    ((recipe.prep_time_minutes || 0) + (recipe.cook_time_minutes || 0));
+
+  return {
+    recipe: {
+      ...recipe,
+      time: totalMinutes > 0 ? `${totalMinutes} min` : recipe.time || null,
+      image: recipe.image_url || recipe.image || null,
+    },
+    score: 1,
+    matchPercentage: 100,
+  };
+}
+
+function fetchRecipePage(offset: number, category?: string | null) {
+  const params = new URLSearchParams({
+    published: 'true',
+    limit: String(PAGE_SIZE),
+    offset: String(offset),
+    sort: 'title_asc',
+  });
+
+  if (category) params.set('category', category);
+
+  return api.get<{ recipes: MlResult['recipe'][]; total: number }>(
+    `/api/recipes?${params.toString()}`
+  );
+}
+
+async function fetchRecipeLibrary(category?: string | null) {
+  const firstPage = await fetchRecipePage(0, category);
+  const recipes = [...(firstPage.recipes || [])];
+  const expectedTotal = firstPage.total || recipes.length;
+
+  while (recipes.length < expectedTotal) {
+    const nextPage = await fetchRecipePage(recipes.length, category);
+    const nextRecipes = nextPage.recipes || [];
+    if (nextRecipes.length === 0) break;
+    recipes.push(...nextRecipes);
+  }
+
+  return sortResultsByTitle(recipes.map(mapRecipeToResult));
+}
+
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const categoryParam = searchParams.get('category')?.trim() || '';
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<MlResult[]>([]);
   const [searched, setSearched] = useState(false);
+  const [resultsMode, setResultsMode] = useState<ResultsMode>('all');
   const isInitialLoading = useInitialContentLoading();
+  const resultsRequestIdRef = useRef(0);
 
   const suggestedCombinations = [
     { title: 'Filipino Adobo', items: 'Chicken, Soy Sauce, Vinegar, Garlic', icon: UtensilsCrossed },
@@ -61,7 +120,7 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
-    api.get<{ ingredients: { id: number; name: string }[] }>('/api/ingredients')
+    api.get<{ ingredients: { id: number; name: string; image_url: string | null }[] }>('/api/ingredients')
       .then(res => setAllIngredients(res.ingredients || []))
       .catch(err => console.error('Failed to load ingredients', err));
   }, []);
@@ -89,19 +148,66 @@ export default function SearchPage() {
     // Refocus logic could go here if needed
   };
 
-  const handleProcess = async () => {
-    if (!inputValue.trim()) return;
+  const loadAllRecipes = async (category?: string | null) => {
+    const requestId = resultsRequestIdRef.current + 1;
+    resultsRequestIdRef.current = requestId;
     setLoading(true);
     setSearched(true);
     setShowSuggestions(false);
+    setResultsMode(category ? 'category' : 'all');
+    setInputValue(category || '');
+
+    try {
+      const allResults = await fetchRecipeLibrary(category);
+      if (resultsRequestIdRef.current === requestId) {
+        setResults(allResults);
+      }
+    } catch {
+      if (resultsRequestIdRef.current === requestId) {
+        setResults([]);
+      }
+    } finally {
+      if (resultsRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleShowAllRecipes = () => {
+    if (categoryParam) {
+      navigate('/search');
+      return;
+    }
+
+    void loadAllRecipes();
+  };
+
+  const handleProcess = async () => {
+    if (!inputValue.trim()) {
+      handleShowAllRecipes();
+      return;
+    }
+
+    const requestId = resultsRequestIdRef.current + 1;
+    resultsRequestIdRef.current = requestId;
+    setLoading(true);
+    setSearched(true);
+    setShowSuggestions(false);
+    setResultsMode('recommendations');
     try {
       const ingredients = inputValue.split(',').map(s => s.trim()).filter(Boolean);
       const data = await api.post<{ recommendations: MlResult[] }>('/api/ml/recommend', { ingredients });
-      setResults(data.recommendations || []);
+      if (resultsRequestIdRef.current === requestId) {
+        setResults(sortResultsByTitle(data.recommendations || []));
+      }
     } catch {
-      setResults([]);
+      if (resultsRequestIdRef.current === requestId) {
+        setResults([]);
+      }
     } finally {
-      setLoading(false);
+      if (resultsRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -109,44 +215,13 @@ export default function SearchPage() {
     setInputValue(items);
   };
 
-  // When the user lands on /search?category=<name> (e.g. from the homepage
-  // “Browse by Category” chips), pre-populate the results with recipes from
-  // that category using the existing /api/recipes endpoint.
+  // Populate /search with the full A-Z recipe library. Category links reuse
+  // the same loader with a category filter.
   useEffect(() => {
-    if (!categoryParam) return;
-    let cancelled = false;
-    setInputValue(categoryParam);
-    setLoading(true);
-    setSearched(true);
-    api
-      .get<{ recipes: MlResult['recipe'][] }>(
-        `/api/recipes?category=${encodeURIComponent(categoryParam)}&published=true&limit=24`
-      )
-      .then((data) => {
-        if (cancelled) return;
-        const mapped: MlResult[] = (data.recipes || []).map((r) => ({
-          recipe: {
-            ...r,
-            time:
-              r.total_time_minutes
-                ? `${r.total_time_minutes} min`
-                : r.time || null,
-            image: r.image_url || r.image || null,
-          },
-          score: 1,
-          matchPercentage: 100,
-        }));
-        setResults(mapped);
-      })
-      .catch(() => {
-        if (!cancelled) setResults([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    void loadAllRecipes(categoryParam || null);
 
     return () => {
-      cancelled = true;
+      resultsRequestIdRef.current += 1;
     };
   }, [categoryParam]);
 
@@ -168,7 +243,7 @@ export default function SearchPage() {
           <p className="max-w-2xl text-lg text-stone-500 dark:text-stone-400">
             {categoryParam
               ? `Explore every published recipe filed under ${categoryParam}. Tap any card to view the full step-by-step.`
-              : "Enter the items currently in your pantry and we'll engineer the perfect culinary blueprint for your next meal."}
+              : "Enter the items currently in your pantry, or browse the full A-Z recipe library below."}
           </p>
 
           <div className="space-y-2 pt-4 relative" ref={dropdownRef}>
@@ -201,6 +276,15 @@ export default function SearchPage() {
                 {loading ? 'Processing...' : 'Process'}
               </Button>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleShowAllRecipes}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border-orange-200 bg-white px-5 text-[11px] font-bold uppercase tracking-widest text-orange-700 shadow-sm hover:bg-orange-50 sm:w-auto dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400 dark:hover:bg-stone-700"
+            >
+              <BookOpen size={15} />
+              All Recipes A-Z
+            </Button>
             
             {/* Suggestions Dropdown */}
             <AnimatePresence>
@@ -277,17 +361,27 @@ export default function SearchPage() {
           <div>
             <div className="mb-8 flex flex-col justify-between gap-4 border-b border-orange-100 pb-2 sm:flex-row sm:items-center dark:border-stone-700">
               <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
-                {searched ? `Recipe Blueprints (${results.length} Results)` : 'Enter ingredients above to search'}
+                {searched
+                  ? resultsMode === 'category'
+                    ? `${categoryParam} Recipes (${results.length} Results)`
+                    : resultsMode === 'all'
+                      ? `All Recipes (${results.length} Results)`
+                      : `Recipe Blueprints (${results.length} Results)`
+                  : 'Enter ingredients above to search'}
               </p>
               <div className="flex items-center gap-3">
                 <Button variant="outline" className="h-8 rounded-full border-orange-300 px-4 text-[10px] font-bold uppercase tracking-widest text-orange-700 dark:border-stone-700 dark:text-orange-400">
-                  Sort: Relevance
+                  Sort: Name A-Z
                 </Button>
               </div>
             </div>
 
             {searched && results.length === 0 && (
-              <p className="py-12 text-center text-stone-400 dark:text-stone-500">No matching recipes found. Try different ingredients.</p>
+              <p className="py-12 text-center text-stone-400 dark:text-stone-500">
+                {resultsMode === 'recommendations'
+                  ? 'No matching recipes found. Try different ingredients.'
+                  : 'No published recipes found yet.'}
+              </p>
             )}
 
             <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -314,7 +408,10 @@ export default function SearchPage() {
                     <h4 className="mb-2 pr-4 text-lg font-bold uppercase leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
                       {result.recipe.title}
                     </h4>
-                    <p className="text-sm text-stone-500 dark:text-stone-400">{result.matchPercentage}% Match &middot; {result.recipe.category || 'Philippine'} &middot; {result.recipe.difficulty || ''}</p>
+                    <p className="text-sm text-stone-500 dark:text-stone-400">
+                      {resultsMode === 'recommendations' && <>{result.matchPercentage}% Match &middot; </>}
+                      {result.recipe.category || 'Philippine'} &middot; {result.recipe.difficulty || 'Any level'}
+                    </p>
                   </Link>
                 </motion.div>
               ))}

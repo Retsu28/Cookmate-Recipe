@@ -34,7 +34,8 @@ const TRANSITION_SKELETON_MS = 450;
 // Bottom-tab routes get a smooth focus-fade via TabSceneAnimator instead of the
 // full-screen transition skeleton, so we exclude them here. Stack pushes (e.g.,
 // RecipeDetail, Notifications, AccountSettings) still get the skeleton overlay.
-const TAB_ROUTE_NAMES = new Set(['Home', 'Search', 'Planner', 'Camera', 'Profile', 'Main']);
+const TAB_ROUTE_NAMES = new Set(['Home', 'Search', 'Recipes', 'Planner', 'Camera', 'Profile', 'Main']);
+const AUTH_ROUTE_NAMES = new Set(['Login', 'Signup']);
 
 const transitionSkeletons = {
   AccountSettings: AccountSettingsSkeleton,
@@ -132,7 +133,7 @@ function AppContent({ fontsLoaded }) {
     if (route?.key && previousRouteKey.current && route.key !== previousRouteKey.current) {
       // Tab switches are handled by TabSceneAnimator's focus-triggered fade —
       // skip the full-screen skeleton overlay so the transition stays smooth.
-      if (!TAB_ROUTE_NAMES.has(route.name)) {
+      if (!TAB_ROUTE_NAMES.has(route.name) && !AUTH_ROUTE_NAMES.has(route.name)) {
         showTransitionSkeleton(route);
       }
     }

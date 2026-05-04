@@ -17,6 +17,7 @@ import { useAppTheme } from '../context/ThemeContext';
 const ICONS = {
   Home: ['home', 'home-outline'],
   Search: ['search', 'search-outline'],
+  Recipes: ['book', 'book-outline'],
   Planner: ['calendar', 'calendar-outline'],
   Camera: ['camera', 'camera-outline'],
   Profile: ['person', 'person-outline'],

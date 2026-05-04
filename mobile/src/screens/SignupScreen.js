@@ -20,7 +20,6 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
-import AuthVideoBackground from '../components/AuthVideoBackground';
 
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -112,7 +111,6 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView
@@ -327,7 +325,7 @@ function AnimatedField({ index, fieldStyle, children }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? colors.background : colors.primary },
+    container: { flex: 1, backgroundColor: 'transparent' },
     safeArea: { flex: 1 },
     scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
