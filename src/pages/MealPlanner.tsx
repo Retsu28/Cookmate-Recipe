@@ -582,7 +582,7 @@ function EditPlanModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm">
       <form
         onSubmit={save}
         className="w-full max-w-md overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 dark:border-stone-700 dark:bg-stone-900"
