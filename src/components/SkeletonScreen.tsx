@@ -232,11 +232,11 @@ export function SearchResultsSkeleton() {
 export function MealPlannerPageSkeleton() {
   return (
     <div
-      className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 flex flex-col xl:flex-row gap-8 items-start"
+      className="w-full max-w-7xl xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 flex flex-col xl:flex-row gap-8 items-start"
       role="status"
       aria-label="Loading meal planner"
     >
-      <div className="w-full flex-1 space-y-8">
+      <div className="w-full flex-1 min-w-0 space-y-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div className="space-y-3">
             <Skeleton className="h-12 w-72 max-w-full" />
@@ -255,7 +255,7 @@ export function MealPlannerPageSkeleton() {
         </div>
 
         <div className="overflow-x-auto pb-4 scrollbar-hide">
-          <div className="grid min-w-[800px] grid-cols-7 gap-4">
+          <div className="grid grid-cols-[repeat(7,minmax(140px,1fr))] gap-4">
             {repeat(7).map((day) => (
               <div key={day} className="space-y-4">
                 <Skeleton className="h-[90px] w-full rounded-[1.5rem]" />
