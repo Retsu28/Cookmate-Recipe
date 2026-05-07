@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
-export default function RecipeCard({ recipe, horizontal, onPress }) {
+function RecipeCard({ recipe, horizontal, onPress }) {
   const { colors, isDark } = useAppTheme();
 
   if (horizontal) {
@@ -40,6 +40,8 @@ export default function RecipeCard({ recipe, horizontal, onPress }) {
     </TouchableOpacity>
   );
 }
+
+export default memo(RecipeCard);
 
 const st = StyleSheet.create({
   // Horizontal

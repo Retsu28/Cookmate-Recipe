@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -12,6 +13,8 @@ import { recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
+import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
+import { getRecipeByIdCached } from '../offline/cacheService';
 
 const fallbackRecipes = {
   1: {
@@ -47,6 +50,7 @@ const fallbackRecipes = {
 export default function RecipeDetailScreen({ route, navigation }) {
   const { colors, isDark } = useAppTheme();
   const { user } = useAuth();
+  const { isOnline } = useNetwork();
   const { id } = route.params;
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +62,8 @@ export default function RecipeDetailScreen({ route, navigation }) {
     const fetchRecipe = async () => {
       setLoadedFromApi(false);
       try {
-        const response = await recipeApi.getById(id);
+        // Read-through cache: online → API + cache; offline → SQLite.
+        const response = await getRecipeByIdCached(id, () => recipeApi.getById(id));
         const r = response.data?.recipe || response.data;
         // Normalize API fields to match component expectations
         const normalized = {
@@ -268,8 +273,15 @@ export default function RecipeDetailScreen({ route, navigation }) {
           <Ionicons name="bookmark-outline" size={22} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => navigation.navigate('CookingMode', { recipe })}
-          style={[st.cookBtn, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            if (!isOnline) {
+              Alert.alert('You are offline', OFFLINE_MESSAGE);
+              return;
+            }
+            navigation.navigate('CookingMode', { recipe });
+          }}
+          activeOpacity={isOnline ? 0.7 : 0.9}
+          style={[st.cookBtn, { backgroundColor: colors.primary, opacity: isOnline ? 1 : 0.5 }]}
         >
           <Text style={st.cookBtnText}>START COOKING</Text>
         </TouchableOpacity>

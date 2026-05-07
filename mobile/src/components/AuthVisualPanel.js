@@ -1,11 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ── Floating food icons ─────────────────────────────────────────────
 const ICON_NAMES = [

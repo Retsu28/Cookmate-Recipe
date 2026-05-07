@@ -17,6 +17,7 @@ import AdminGate from '@/auth/AdminGate';
 import AdminLayout from './admin/AdminLayout';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const SearchPage = lazy(() => import('./pages/Search'));
@@ -97,6 +98,7 @@ export default function App() {
               <Route element={<GuestGate />}>
                 <Route path="login" element={<Login />} />
                 <Route path="signup" element={<Signup />} />
+                <Route path="forgot-password" element={<ForgotPassword />} />
               </Route>
 
               {/* Protected routes — AuthGate redirects to /login if signed out */}

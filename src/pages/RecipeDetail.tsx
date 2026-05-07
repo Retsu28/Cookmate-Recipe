@@ -10,7 +10,11 @@ import {
   ShoppingCart, Star, ArrowLeft, Play, X, Sparkles, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import api from '@/services/api';
+import { getRecipeByIdCached } from '@/offline/cacheService';
+import { OFFLINE_MESSAGE } from '@/offline/network';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
 
 interface Ingredient {
@@ -47,6 +51,7 @@ export default function RecipeDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isOnline = useOnlineStatus();
   const [recipe, setRecipe] = useState<DbRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,7 +63,10 @@ export default function RecipeDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api.get<{ recipe: DbRecipe }>(`/api/recipes/${id}`)
+    // Read-through cache: online → API + IndexedDB; offline → IndexedDB.
+    getRecipeByIdCached<{ recipe: DbRecipe }>(id, () =>
+      api.get<{ recipe: DbRecipe }>(`/api/recipes/${id}`),
+    )
       .then(data => {
         setRecipe(data.recipe);
         if (data.recipe.servings) setServings(data.recipe.servings);
@@ -190,8 +198,17 @@ export default function RecipeDetail() {
 
             <div className="flex gap-4">
               <Button
-                onClick={() => { setCurrentStep(0); setIsCooking(true); }}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-14 font-bold text-lg gap-2 shadow-lg shadow-orange-500/20"
+                onClick={() => {
+                  if (!isOnline) {
+                    toast.error('You are offline', { description: OFFLINE_MESSAGE });
+                    return;
+                  }
+                  setCurrentStep(0);
+                  setIsCooking(true);
+                }}
+                aria-disabled={!isOnline || steps.length === 0}
+                title={!isOnline ? OFFLINE_MESSAGE : undefined}
+                className={`flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-14 font-bold text-lg gap-2 shadow-lg shadow-orange-500/20 ${!isOnline ? 'opacity-50 cursor-not-allowed hover:bg-orange-500' : ''}`}
                 disabled={steps.length === 0}
               >
                 <Play size={20} fill="currentColor" /> Start Cooking

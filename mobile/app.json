@@ -26,7 +26,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#fff8f1"
       },
-      "usesCleartextTraffic": true,
       "package": "com.cookmate.app",
       "permissions": [
         "CAMERA",
@@ -37,10 +36,19 @@
     "plugins": [
       "expo-secure-store",
       "expo-font",
-      "expo-video"
+      "expo-video",
+      "expo-sqlite",
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
-      "apiBaseUrl": ""
-    }
+      "apiBaseUrl": "http://192.168.1.8:5000",
+      "googleWebClientId": "878930590445-q6keo0r1i8kul6l38tlssrv8cq5vvims.apps.googleusercontent.com",
+      "googleAndroidClientId": "878930590445-vtobh05t50hbl7k9b67220alh104gt4q.apps.googleusercontent.com",
+      "eas": {
+        "projectId": "7d854313-ed87-4eb7-96f2-6064d436abb6"
+      }
+    },
+    "scheme": "cookmate"
   }
 }

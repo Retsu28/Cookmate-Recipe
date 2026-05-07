@@ -1,16 +1,26 @@
 /**
  * CookMate authentication service (Web).
  *
- * Calls the Express API backend via the centralized api client.
- * The API base URL is controlled by VITE_API_BASE_URL.
+ * Identity is owned by Firebase Auth. Each call signs in/up against Firebase
+ * first, then exchanges the resulting ID token with the Express backend at
+ * POST /api/auth/firebase to get the existing CookMate session JWT and
+ * PostgreSQL user row.
  *
- * Storage:
- *  - The JWT is kept in localStorage for now so the SPA can read it
- *    across reloads. This is still a compromise; for production,
- *    prefer an httpOnly cookie set by the server. Swap is isolated to
- *    this file plus the AuthContext.
+ * Email verification and password reset are delegated to Firebase, which
+ * sends the templated emails directly.
  */
 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  signOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { firebaseAuth, googleProvider } from '@/lib/firebase';
 import api from '@/services/api';
 
 const AUTH_TOKEN_KEY = 'cookmate.auth.token';
@@ -47,22 +57,94 @@ function persist(result: AuthResult) {
   }
 }
 
+/**
+ * Exchange a Firebase user for a CookMate backend session.
+ * Forces a token refresh so the latest email_verified claim is sent.
+ */
+async function exchangeFirebaseUser(fbUser: FirebaseUser, name?: string): Promise<AuthResult> {
+  const idToken = await fbUser.getIdToken(true);
+  const data = await api.post<AuthResult>('/api/auth/firebase', {
+    idToken,
+    name: name || fbUser.displayName || undefined,
+  });
+  const result = { ...data, user: normalizeUser(data.user) };
+  persist(result);
+  return result;
+}
+
 export const authService = {
+  /**
+   * Sign in with Firebase Email/Password, then exchange the resulting
+   * ID token for a CookMate backend session.
+   */
   async login(email: string, password: string): Promise<AuthResult> {
-    const data = await api.post<AuthResult>('/api/auth/login', { email, password });
-    const result = { ...data, user: normalizeUser(data.user) };
-    persist(result);
-    return result;
+    const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+    return exchangeFirebaseUser(cred.user);
   },
 
+  /**
+   * Create a Firebase user, send the verification email, then bootstrap
+   * the matching CookMate row via the same /firebase exchange. Returns
+   * the freshly created session.
+   */
   async signup(name: string, email: string, password: string): Promise<AuthResult> {
-    const data = await api.post<AuthResult>('/api/auth/signup', { name, email, password });
-    const result = { ...data, user: normalizeUser(data.user) };
-    persist(result);
-    return result;
+    const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+    if (name && name.trim()) {
+      try {
+        await updateProfile(cred.user, { displayName: name.trim() });
+      } catch {
+        /* non-fatal: backend stores the name regardless */
+      }
+    }
+    // Fire and forget — failure here shouldn't block account creation.
+    sendEmailVerification(cred.user).catch(() => {});
+    return exchangeFirebaseUser(cred.user, name);
+  },
+
+  /**
+   * Sign in with Google via Firebase popup. The backend `/api/auth/firebase`
+   * exchange links/creates the PostgreSQL user.
+   */
+  async googleLogin(_credential?: string): Promise<AuthResult> {
+    const cred = await signInWithPopup(firebaseAuth, googleProvider);
+    return exchangeFirebaseUser(cred.user);
+  },
+
+  /**
+   * Trigger Firebase's password-reset email. Resolves silently even if the
+   * email is not registered, so the UI doesn't leak account existence.
+   */
+  async sendPasswordReset(email: string): Promise<void> {
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email.trim());
+    } catch (err) {
+      // Hide "user-not-found" so we don't expose which emails are registered.
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-email') return;
+      throw err;
+    }
+  },
+
+  /**
+   * Re-send the Firebase verification email for the currently signed-in
+   * Firebase user. Throws if no Firebase session is active.
+   */
+  async resendVerificationEmail(): Promise<void> {
+    const fbUser = firebaseAuth.currentUser;
+    if (!fbUser) throw new Error('You must be signed in to resend the verification email.');
+    await sendEmailVerification(fbUser);
+  },
+
+  isEmailVerified(): boolean {
+    return firebaseAuth.currentUser?.emailVerified === true;
   },
 
   async logout(): Promise<void> {
+    try {
+      await signOut(firebaseAuth);
+    } catch {
+      /* ignore — local cleanup still runs */
+    }
     try {
       await api.post('/api/auth/logout');
     } catch {

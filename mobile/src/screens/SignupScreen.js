@@ -20,6 +20,8 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
+import AuthVideoBackground from '../components/AuthVideoBackground';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -57,8 +59,8 @@ export default function SignupScreen({ navigation }) {
   const { login } = useAuth();
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const { cardStyle, fieldStyle, shakeStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
-    useAuthAnimations(5);
+  const { cardStyle, fieldStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
+    useAuthAnimations(5, 1);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -111,6 +113,7 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView
@@ -130,7 +133,7 @@ export default function SignupScreen({ navigation }) {
               subheading="Create an account to save recipes, plan meals, and cook with AI."
             />
 
-            <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
+            <Animated.View style={[styles.card, cardStyle]}>
               <View style={styles.brand}>
                 <View style={styles.logo}>
                   <Ionicons name="restaurant" size={26} color="#fff" />
@@ -286,6 +289,14 @@ export default function SignupScreen({ navigation }) {
                 By continuing you agree to CookMate's Terms of Service and Privacy Policy.
               </Text>
 
+              <View style={styles.divider} aria-hidden>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <GoogleSignInButton label="Sign up with Google" onError={setError} />
+
               <View style={styles.footer}>
                 <Text style={styles.footerText}>Already have an account?</Text>
                 <Pressable
@@ -325,12 +336,12 @@ function AnimatedField({ index, fieldStyle, children }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'transparent' },
-    safeArea: { flex: 1 },
+    container: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
+    safeArea: { flex: 1, zIndex: 1 },
     scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
     card: {
-      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.92)' : 'rgba(255, 255, 255, 0.94)',
+      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.84)' : 'rgba(255, 255, 255, 0.86)',
       borderRadius: 24,
       padding: 28,
       shadowColor: '#000',
@@ -464,6 +475,24 @@ function createStyles(colors, isDark) {
       marginTop: 12,
       paddingHorizontal: 8,
       lineHeight: 16,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 16,
+      marginBottom: 12,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    dividerText: {
+      fontFamily: 'Geist_700Bold',
+      fontSize: 10,
+      color: colors.textMuted,
+      letterSpacing: 1.5,
     },
     footer: {
       flexDirection: 'row',

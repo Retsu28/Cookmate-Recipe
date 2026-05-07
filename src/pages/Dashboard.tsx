@@ -8,6 +8,7 @@ import { DashboardSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { HomeSections } from '@/components/home/HomeSections';
 import api from '@/services/api';
+import { getRecipesCached } from '@/offline/cacheService';
 import { useAIChat } from '@/context/AIChatContext';
 
 interface ApiRecipe {
@@ -35,10 +36,15 @@ export default function Dashboard() {
   const [recentRecipes, setRecentRecipes] = useState<ApiRecipe[]>([]);
 
   useEffect(() => {
-    api.get<{ recipes: ApiRecipe[] }>('/api/recipes/featured')
+    // Read-through cache: online → API + IndexedDB; offline → IndexedDB.
+    getRecipesCached<{ recipes: ApiRecipe[] }>(() =>
+      api.get<{ recipes: ApiRecipe[] }>('/api/recipes/featured'),
+    )
       .then(data => { if (data.recipes?.length) setFeaturedRecipe(data.recipes[0]); })
       .catch(() => {});
-    api.get<{ recipes: ApiRecipe[] }>('/api/recipes/recent')
+    getRecipesCached<{ recipes: ApiRecipe[] }>(() =>
+      api.get<{ recipes: ApiRecipe[] }>('/api/recipes/recent'),
+    )
       .then(data => setRecentRecipes(data.recipes || []))
       .catch(() => {});
   }, []);

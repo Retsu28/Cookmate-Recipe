@@ -1,6 +1,7 @@
 import { registerSW } from 'virtual:pwa-register';
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const AUTH_PATHS = new Set(['/login', '/signup']);
 
 function isLocalhost() {
   const { hostname } = window.location;
@@ -8,8 +9,16 @@ function isLocalhost() {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
+function isAuthPath() {
+  return AUTH_PATHS.has(window.location.pathname);
+}
+
 function canRegisterServiceWorker() {
-  return 'serviceWorker' in navigator && (window.location.protocol === 'https:' || isLocalhost());
+  return (
+    !isAuthPath() &&
+    'serviceWorker' in navigator &&
+    (window.location.protocol === 'https:' || isLocalhost())
+  );
 }
 
 export function registerServiceWorker() {
@@ -29,7 +38,7 @@ export function registerServiceWorker() {
         console.info(`[PWA] Service worker registered: ${swUrl}`);
 
         window.setInterval(() => {
-          if (document.visibilityState === 'visible') {
+          if (document.visibilityState === 'visible' && !isAuthPath()) {
             registration.update().catch((error) => {
               console.warn('[PWA] Service worker update check failed.', error);
             });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -83,6 +83,22 @@ async function fetchRecipeLibrary(category) {
 
   return sortResultsByTitle(recipes.map(mapRecipeToResult));
 }
+
+const SearchResultCard = memo(function SearchResultCard({ item, navigation }) {
+  const recipe = item.recipe || item;
+  const recipeId = recipe.id || 1;
+
+  const handlePress = useCallback(() => {
+    navigation.navigate('RecipeDetail', { id: recipeId });
+  }, [navigation, recipeId]);
+
+  return (
+    <RecipeCard
+      recipe={recipe}
+      onPress={handlePress}
+    />
+  );
+});
 
 export default function SearchScreen({ navigation, route }) {
   const { colors, isDark } = useAppTheme();
@@ -217,6 +233,14 @@ export default function SearchScreen({ navigation, route }) {
         : `RECIPE BLUEPRINTS (${results.length} RESULTS)`;
   const sortLabel = resultsMode === 'recommendations' ? 'SORT: RELEVANCE' : 'SORT: NAME A-Z';
   const brandOrange = colors.primary || '#f97316';
+  const keyExtractor = useCallback((item, index) => {
+    const recipe = item.recipe || item;
+    return recipe.id != null ? String(recipe.id) : `result-${index}`;
+  }, []);
+
+  const renderResult = useCallback(({ item }) => (
+    <SearchResultCard item={item} navigation={navigation} />
+  ), [navigation]);
 
   const renderHeader = () => (
     <View style={st.headerWrap}>
@@ -415,19 +439,19 @@ export default function SearchScreen({ navigation, route }) {
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}>
       <FlatList
         data={loading ? [] : results}
-        keyExtractor={(item, index) => index.toString()}
+        keyExtractor={keyExtractor}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
         numColumns={2}
         columnWrapperStyle={st.colWrapper}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
-        renderItem={({ item }) => (
-          <RecipeCard
-            recipe={item.recipe || item}
-            onPress={() => navigation.navigate('RecipeDetail', { id: (item.recipe || item).id || 1 })}
-          />
-        )}
+        renderItem={renderResult}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
+        removeClippedSubviews
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
       />
     </SafeAreaView>

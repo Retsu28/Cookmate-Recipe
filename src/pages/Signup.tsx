@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -20,6 +21,8 @@ const fieldVariants = {
 // that threshold only for visual feedback — the 8-char rule is the hard
 // requirement enforced on both client and server.
 const MIN_PASSWORD_LEN = 8;
+const authCardClass =
+  'bg-white/[0.88] dark:bg-stone-900/[0.84] backdrop-blur-xl shadow-2xl shadow-stone-950/20 rounded-2xl overflow-hidden border border-white/45 dark:border-white/10';
 
 // Business rule: only @gmail.com addresses are accepted (matches backend).
 const GMAIL_RE = /^[^\s@]+@gmail\.com$/i;
@@ -134,7 +137,7 @@ export default function Signup() {
               animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}
               transition={{ duration: 0.45 }}
             >
-              <Card className="bg-white/95 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden border border-white/60">
+              <Card className={authCardClass}>
                 <CardContent className="p-8">
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
@@ -341,6 +344,16 @@ export default function Signup() {
                   By continuing you agree to CookMate's Terms of Service and acknowledge our Privacy Policy.
                 </p>
               </form>
+
+                  <div className="mt-6 flex items-center gap-3" aria-hidden>
+                    <div className="h-px flex-1 bg-stone-200" />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-stone-400">or</span>
+                    <div className="h-px flex-1 bg-stone-200" />
+                  </div>
+
+                  <div className="mt-4">
+                    <GoogleSignInButton text="signup_with" onError={setError} />
+                  </div>
 
                   <motion.p
                     initial={{ opacity: 0 }}

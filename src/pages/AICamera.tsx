@@ -6,6 +6,7 @@ import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Fo
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import api from '@/services/api';
+import { offlineCache } from '@/offline/cacheService';
 import { Badge } from '../components/ui/badge';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -396,9 +397,30 @@ export default function AICamera() {
     setSavesError(null);
     try {
       const result = await api.get<{ saves: SavedCameraImage[] }>(`/api/ml/ai-camera-saves?limit=${MAX_SAVES}`);
-      setSaves(result.saves || []);
+      const list = result.saves || [];
+      setSaves(list);
+      // Mirror "My Saves" locally so they remain visible when offline.
+      if (list.length > 0) {
+        offlineCache.savedRecipes
+          .upsertMany(list as Array<{ id: string | number }>)
+          .catch(() => {});
+      } else {
+        offlineCache.savedRecipes.clear().catch(() => {});
+      }
     } catch (err) {
-      setSavesError(cameraWarningMessage(err, 'Failed to load saved AI Camera results.'));
+      // Offline fallback — serve the locally cached saves if present.
+      try {
+        const rows = await offlineCache.savedRecipes.getAll({ limit: MAX_SAVES });
+        const cached = rows.map((r) => r.data).filter(Boolean) as SavedCameraImage[];
+        if (cached.length > 0) {
+          setSaves(cached);
+          setSavesError(null);
+        } else {
+          setSavesError(cameraWarningMessage(err, 'Failed to load saved AI Camera results.'));
+        }
+      } catch {
+        setSavesError(cameraWarningMessage(err, 'Failed to load saved AI Camera results.'));
+      }
     } finally {
       setSavesLoading(false);
     }
@@ -634,6 +656,8 @@ export default function AICamera() {
     setSaves(prev => prev.filter(s => s.id !== id));
     try {
       await api.delete(`/api/ml/ai-camera-saves/${id}`);
+      // Also purge from offline cache so it doesn't reappear when offline.
+      offlineCache.savedRecipes.delete(id).catch(() => {});
     } catch (err) {
       setSaves(previous);
       setSavesError(cameraWarningMessage(err, 'Failed to delete saved AI Camera result.'));
@@ -645,6 +669,8 @@ export default function AICamera() {
     setSaves([]);
     try {
       await Promise.all(previous.map((save) => api.delete(`/api/ml/ai-camera-saves/${save.id}`)));
+      // Server deletes succeeded — wipe the mirrored offline cache too.
+      offlineCache.savedRecipes.clear().catch(() => {});
     } catch (err) {
       setSaves(previous);
       setSavesError(cameraWarningMessage(err, 'Failed to clear saved AI Camera results.'));

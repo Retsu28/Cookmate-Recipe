@@ -9,8 +9,6 @@ import {
   Alert,
   ScrollView,
   LayoutAnimation,
-  UIManager,
-  Platform,
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +17,8 @@ import { useAppTheme } from '../context/ThemeContext';
 import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { apiBaseUrl, mlApi } from '../api/api';
+import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
+import { offlineCache } from '../offline/cacheService';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -31,10 +31,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 const { width: SW } = Dimensions.get('window');
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 /* Phases: idle → scanning → selecting → selected → sticker → done */
 const P = { IDLE: 0, SCAN: 1, SELECTING: 2, SELECTED: 3, STICKER: 4, DONE: 5 };
@@ -106,6 +102,7 @@ function apiErrorMessage(err, fallback) {
 
 export default function CameraScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
+  const { isOnline } = useNetwork();
   const [hasPermission, setHasPermission] = useState(null);
   const [type, setType] = useState('back');
   const [pictureSize, setPictureSize] = useState(null);
@@ -194,9 +191,26 @@ export default function CameraScreen({ navigation }) {
     setSavesError(null);
     try {
       const response = await mlApi.getAiCameraSaves({ limit: MAX_SAVES });
-      setSaves(response.data?.saves || []);
+      const list = response.data?.saves || [];
+      setSaves(list);
+      // Mirror "My Saves" locally so they remain visible offline.
+      if (list.length > 0) {
+        offlineCache.savedRecipes.upsertMany(list).catch(() => {});
+      }
     } catch (err) {
-      setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
+      // Offline fallback: serve the locally cached saves if present.
+      try {
+        const cachedRows = await offlineCache.savedRecipes.getAll({ limit: MAX_SAVES });
+        const cached = cachedRows.map((r) => r.data).filter(Boolean);
+        if (cached.length > 0) {
+          setSaves(cached);
+          setSavesError(null);
+        } else {
+          setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
+        }
+      } catch {
+        setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
+      }
     } finally {
       setSavesLoading(false);
     }
@@ -530,6 +544,8 @@ export default function CameraScreen({ navigation }) {
     setSaves(prev => prev.filter(s => s.id !== id));
     try {
       await mlApi.deleteAiCameraSave(id);
+      // Also purge from offline cache so it doesn't reappear when offline.
+      offlineCache.savedRecipes.delete(id).catch(() => {});
     } catch (err) {
       setSaves(previous);
       setSavesError(apiErrorMessage(err, 'Failed to delete saved AI Camera result.'));
@@ -541,6 +557,8 @@ export default function CameraScreen({ navigation }) {
     setSaves([]);
     try {
       await Promise.all(previous.map((save) => mlApi.deleteAiCameraSave(save.id)));
+      // Server deletes succeeded — wipe the mirrored offline cache too.
+      offlineCache.savedRecipes.clear().catch(() => {});
     } catch (err) {
       setSaves(previous);
       setSavesError(apiErrorMessage(err, 'Failed to clear saved AI Camera results.'));
@@ -550,6 +568,16 @@ export default function CameraScreen({ navigation }) {
   if (isInitialLoading || hasPermission === null) return <CameraPermissionSkeleton colors={colors} />;
   if (hasPermission === false) return (
     <View style={st.permWrap}><Text style={st.permText}>No access to camera. Please enable permissions in settings.</Text></View>
+  );
+  // Offline gate — AI Camera needs the server; block entry without touching camera logic.
+  if (!isOnline) return (
+    <View style={st.permWrap}>
+      <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} style={{ marginBottom: 12 }} />
+      <Text style={[st.permText, { color: colors.text }]}>{OFFLINE_MESSAGE}</Text>
+      <Text style={[st.permText, { color: colors.textMuted, marginTop: 8, fontSize: 12 }]}>
+        Reconnect to the internet to use the AI Camera.
+      </Text>
+    </View>
   );
 
   const displayLabels = {

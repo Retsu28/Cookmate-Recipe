@@ -27,6 +27,8 @@ import {
   RecipeDetailSkeleton,
   SearchContentSkeleton,
 } from './src/components/SkeletonPlaceholder';
+import { NetworkProvider } from './src/offline/network';
+import { startAutoFlush } from './src/offline/syncQueue';
 
 const navigationRef = createNavigationContainerRef();
 const TRANSITION_SKELETON_MS = 450;
@@ -99,6 +101,8 @@ function AppContent({ fontsLoaded }) {
   const transitionTimer = useRef(null);
 
   useEffect(() => {
+    // Drain any pending offline actions as soon as connectivity is available.
+    startAutoFlush();
     return () => {
       if (transitionTimer.current) {
         clearTimeout(transitionTimer.current);
@@ -152,31 +156,33 @@ function AppContent({ fontsLoaded }) {
 
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: colors.background }]}>
-      <SafeAreaProvider style={styles.safeArea}>
-        <AuthProvider>
-          <NavigationContainer
-            ref={navigationRef}
-            theme={navigationTheme}
-            onReady={handleNavigationReady}
-            onStateChange={handleNavigationStateChange}
-          >
-            <AppNavigator />
-            <StatusBar style={isDark ? 'light' : 'dark'} />
-          </NavigationContainer>
-          {transitionRouteName && splashDone && (
-            <NavigationTransitionSkeleton colors={colors} routeName={transitionRouteName} />
-          )}
-          <PostLoginSplash colors={colors} isDark={isDark} />
-          <SignOutSplash colors={colors} isDark={isDark} />
-        </AuthProvider>
-      </SafeAreaProvider>
-      {!splashDone && (
-        <SplashScreen
-          colors={colors}
-          isDark={isDark}
-          onFinished={() => setSplashDone(true)}
-        />
-      )}
+      <NetworkProvider>
+        <SafeAreaProvider style={styles.safeArea}>
+          <AuthProvider>
+            <NavigationContainer
+              ref={navigationRef}
+              theme={navigationTheme}
+              onReady={handleNavigationReady}
+              onStateChange={handleNavigationStateChange}
+            >
+              <AppNavigator />
+              <StatusBar style={isDark ? 'light' : 'dark'} />
+            </NavigationContainer>
+            {transitionRouteName && splashDone && (
+              <NavigationTransitionSkeleton colors={colors} routeName={transitionRouteName} />
+            )}
+            <PostLoginSplash colors={colors} isDark={isDark} />
+            <SignOutSplash colors={colors} isDark={isDark} />
+          </AuthProvider>
+        </SafeAreaProvider>
+        {!splashDone && (
+          <SplashScreen
+            colors={colors}
+            isDark={isDark}
+            onFinished={() => setSplashDone(true)}
+          />
+        )}
+      </NetworkProvider>
     </GestureHandlerRootView>
   );
 }

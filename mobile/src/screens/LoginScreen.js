@@ -20,6 +20,8 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
+import AuthVideoBackground from '../components/AuthVideoBackground';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,8 +29,8 @@ export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const { cardStyle, fieldStyle, shakeStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
-    useAuthAnimations(3);
+  const { cardStyle, fieldStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
+    useAuthAnimations(3, -1);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,6 +69,7 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView
@@ -86,7 +89,7 @@ export default function LoginScreen({ navigation }) {
               subheading="Plan meals, discover recipes, and let AI be your sous-chef."
             />
 
-            <Animated.View style={[styles.card, cardStyle, shakeStyle]}>
+            <Animated.View style={[styles.card, cardStyle]}>
               <View style={styles.brand}>
                 <View style={styles.logo}>
                   <Ionicons name="restaurant" size={26} color="#fff" />
@@ -143,6 +146,16 @@ export default function LoginScreen({ navigation }) {
                 </View>
               </Animated.View>
 
+              <Animated.View style={[styles.forgotRow, fieldStyle(1)]}>
+                <Pressable
+                  onPress={() => navigation.navigate('ForgotPassword')}
+                  hitSlop={8}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={styles.forgotLink}>Forgot password?</Text>
+                </Pressable>
+              </Animated.View>
+
               {error ? (
                 <Animated.View style={[styles.errorBox, fieldStyle(2)]}>
                   <Text style={styles.errorText}>{error}</Text>
@@ -165,6 +178,14 @@ export default function LoginScreen({ navigation }) {
                 </Pressable>
               </Animated.View>
 
+              <View style={styles.divider} aria-hidden>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <GoogleSignInButton label="Sign in with Google" onError={setError} />
+
               <View style={styles.footer}>
                 <Text style={styles.footerText}>New to CookMate?</Text>
                 <Pressable
@@ -184,12 +205,12 @@ export default function LoginScreen({ navigation }) {
 
 function createStyles(colors, isDark) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'transparent' },
-    safeArea: { flex: 1 },
+    container: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
+    safeArea: { flex: 1, zIndex: 1 },
     scrollView: { zIndex: 1 },
     scroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
     card: {
-      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.92)' : 'rgba(255, 255, 255, 0.94)',
+      backgroundColor: isDark ? 'rgba(28, 25, 23, 0.84)' : 'rgba(255, 255, 255, 0.86)',
       borderRadius: 24,
       padding: 28,
       shadowColor: '#000',
@@ -242,6 +263,17 @@ function createStyles(colors, isDark) {
     },
     passwordWrap: { position: 'relative', justifyContent: 'center' },
     eyeBtn: { position: 'absolute', right: 10, padding: 6 },
+    forgotRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: -4,
+      marginBottom: 12,
+    },
+    forgotLink: {
+      fontFamily: 'Geist_700Bold',
+      fontSize: 12,
+      color: colors.primaryDark,
+    },
     errorBox: {
       backgroundColor: isDark ? 'rgba(127, 29, 29, 0.2)' : '#fef2f2',
       borderColor: isDark ? 'rgba(252, 165, 165, 0.35)' : '#fecaca',
@@ -264,6 +296,24 @@ function createStyles(colors, isDark) {
       color: '#fff',
       fontFamily: 'Geist_700Bold',
       fontSize: 16,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 18,
+      marginBottom: 12,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    dividerText: {
+      fontFamily: 'Geist_700Bold',
+      fontSize: 10,
+      color: colors.textMuted,
+      letterSpacing: 1.5,
     },
     footer: {
       flexDirection: 'row',

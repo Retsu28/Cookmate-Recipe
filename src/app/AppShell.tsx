@@ -7,7 +7,7 @@ import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
 import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
-const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup']);
+const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup', '/forgot-password']);
 
 function OfflineBanner() {
   return (
@@ -34,7 +34,10 @@ export default function AppShell() {
   const isOnline = useOnlineStatus();
   const location = useLocation();
   const shouldUsePersistentLayout = !SHELLLESS_PATHS.has(location.pathname);
-  const isAuthPath = location.pathname === '/login' || location.pathname === '/signup';
+  const isAuthPath =
+    location.pathname === '/login' ||
+    location.pathname === '/signup' ||
+    location.pathname === '/forgot-password';
 
   const routeContent = (
     <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : isAuthPath ? null : <AuthPageSkeleton />}>
@@ -43,22 +46,24 @@ export default function AppShell() {
   );
 
   if (isAuthPath) {
+    // NOTE: We intentionally do NOT wrap the auth Outlet in an
+    // AnimatePresence keyed by pathname. React Router's <Outlet /> updates
+    // synchronously when the URL changes, so combining it with
+    // `mode="wait"` would keep the old motion.div mounted while it shows
+    // the *new* page, producing a fade-out then remount, which made the
+    // login/signup/forgot-password forms appear to vanish when switching
+    // between them. Each auth page already animates its own card in, so
+    // we just render the Outlet directly here.
     return (
       <>
         <div className="relative min-h-screen overflow-hidden bg-stone-950">
           <AuthVideoBackground />
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 min-h-screen"
-          >
+          <div className="relative z-10 min-h-screen">
             <header className="sr-only">
               <Link to="/">CookMate</Link>
             </header>
             {routeContent}
-          </motion.div>
+          </div>
         </div>
 
         {!isOnline && <OfflineBanner />}

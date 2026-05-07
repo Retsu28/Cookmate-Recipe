@@ -35,6 +35,15 @@ const AI_CAMERA_BUSY_WARNING = 'Image analysis is currently busy. Many users are
 const AI_CAMERA_QUEUE_FULL = `Queue is full (${MAX_AI_CAMERA_QUEUE_SIZE}/${MAX_AI_CAMERA_QUEUE_SIZE}). Please wait until a slot becomes available.`;
 const BG_REMOVAL_QUEUE_WARNING = 'AI Camera background removal is busy. Your image is queued.';
 
+// ─── RAG grounding flags ────────────────────────────────────────────────────
+// When enabled, after candidate recipes are retrieved from PostgreSQL, a second
+// text-only Gemini call is used to *select* the best recipe strictly from the
+// retrieved candidate IDs. Gemini is explicitly forbidden from inventing new
+// recipes or IDs. If the call fails or is disabled, we fall back to the existing
+// TF-IDF/word-boundary ranking (still DB-backed, zero hallucination).
+const ENABLE_GEMINI_RAG = String(process.env.ENABLE_GEMINI_RAG || 'true').toLowerCase() !== 'false';
+const GEMINI_RAG_TIMEOUT_MS = Number(process.env.GEMINI_RAG_TIMEOUT_MS || 15000);
+
 const lookupCache = {
   recipes: { expiresAt: 0, rows: null },
   knownIngredients: { expiresAt: 0, rows: null },
@@ -660,6 +669,147 @@ async function getCachedKnownIngredientRows() {
   return result.rows;
 }
 
+// ─── RAG grounding: Gemini selects only from retrieved DB candidates ────────
+// Given the detected/normalized ingredients and a list of candidate recipes
+// already retrieved from PostgreSQL (published only), ask Gemini to choose the
+// best matching recipe ID. Gemini is forbidden from inventing new recipes or
+// IDs — it can only pick from the provided candidate IDs or return no_match.
+// Returns: { selectedId, orderedIds, matchReason, noMatch, raw } or null on failure.
+async function selectRecipeWithGeminiRAG({ apiKey, detectedIngredients, candidates }) {
+  if (!ENABLE_GEMINI_RAG) return null;
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return null;
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
+
+  const allowedIds = candidates
+    .map((c) => Number(c?.recipe?.id ?? c?.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (allowedIds.length === 0) return null;
+
+  const contextRecipes = candidates.slice(0, 10).map((c) => {
+    const recipe = c.recipe || c;
+    const ingredientList = Array.isArray(c.matchedIngredients) && c.matchedIngredients.length > 0
+      ? c.matchedIngredients
+      : (Array.isArray(recipe.ingredients) ? recipe.ingredients : []);
+    return {
+      id: Number(recipe.id),
+      title: recipe.title,
+      category: recipe.category || recipe.region_or_origin || null,
+      tags: Array.isArray(recipe.tags) ? recipe.tags.slice(0, 8) : [],
+      ingredients: (ingredientList || []).slice(0, 20),
+      description: cleanDisplayText(recipe.description || '').slice(0, 240),
+      matchScore: c.score ?? c.matchPercentage ?? null,
+    };
+  });
+
+  const prompt = `You are a recipe-matching assistant for the CookMate app.
+
+You are given:
+1. A list of ingredients that were detected from an image and verified to exist in the CookMate PostgreSQL database.
+2. A closed list of CANDIDATE RECIPES retrieved from the database (published only).
+
+Your job is to choose the single best matching recipe ID from the candidate list, and optionally return up to 4 other candidate IDs as related suggestions, ranked by relevance to the detected ingredients.
+
+STRICT RULES (do not violate):
+- You MUST only return IDs that appear in the candidate list. Do not invent, rename, or modify any recipe.
+- You MUST NOT suggest ingredients or recipes outside the provided context.
+- If none of the candidates reasonably match the detected ingredients, return {"noMatch": true, "selectedId": null, "otherIds": [], "reason": "<short reason>"}.
+- Return JSON ONLY. No markdown, no prose, no code fences.
+
+Input:
+{
+  "detectedIngredients": ${JSON.stringify(detectedIngredients)},
+  "allowedRecipeIds": ${JSON.stringify(allowedIds)},
+  "candidateRecipes": ${JSON.stringify(contextRecipes)}
+}
+
+Return shape:
+{
+  "selectedId": <one of allowedRecipeIds or null>,
+  "otherIds": [<up to 4 other allowedRecipeIds ranked by relevance>],
+  "reason": "<short sentence grounded only in the candidate data>",
+  "noMatch": <true|false>
+}`;
+
+  try {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const modelNames = getGeminiModelNames();
+    let lastError = null;
+
+    for (const modelName of modelNames) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        });
+        const result = await withTimeout(
+          model.generateContent(prompt),
+          GEMINI_RAG_TIMEOUT_MS,
+          'Gemini RAG selection'
+        );
+        const parsed = parseJsonFromModel(result.response.text());
+        const allowed = new Set(allowedIds);
+
+        const selectedId = Number.isInteger(Number(parsed.selectedId)) && allowed.has(Number(parsed.selectedId))
+          ? Number(parsed.selectedId)
+          : null;
+        const otherIds = Array.isArray(parsed.otherIds)
+          ? parsed.otherIds
+              .map((v) => Number(v))
+              .filter((id) => Number.isInteger(id) && allowed.has(id) && id !== selectedId)
+              .slice(0, 4)
+          : [];
+        const orderedIds = selectedId ? [selectedId, ...otherIds] : otherIds;
+
+        return {
+          selectedId,
+          orderedIds,
+          matchReason: cleanDisplayText(parsed.reason || '').slice(0, 300) || null,
+          noMatch: parsed.noMatch === true || (!selectedId && orderedIds.length === 0),
+          modelUsed: modelName,
+        };
+      } catch (err) {
+        lastError = err;
+        if (shouldStopGeminiFallback(err)) break;
+      }
+    }
+
+    if (lastError) {
+      console.warn('[ml/rag] Gemini grounding unavailable, falling back to DB ranking:', lastError.message);
+    }
+    return null;
+  } catch (err) {
+    console.warn('[ml/rag] Gemini grounding error, falling back to DB ranking:', err.message);
+    return null;
+  }
+}
+
+// Reorder an array of { recipe, ... } candidates according to an ID ordering
+// returned by Gemini RAG. Unlisted candidates are appended in their original
+// order so nothing is lost from the response shape.
+function reorderByIds(candidates, orderedIds) {
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) return candidates;
+  const byId = new Map();
+  for (const c of candidates) {
+    const id = Number(c?.recipe?.id ?? c?.id);
+    if (Number.isInteger(id)) byId.set(id, c);
+  }
+  const placed = new Set();
+  const out = [];
+  for (const id of orderedIds) {
+    const item = byId.get(Number(id));
+    if (item && !placed.has(id)) {
+      out.push(item);
+      placed.add(id);
+    }
+  }
+  for (const c of candidates) {
+    const id = Number(c?.recipe?.id ?? c?.id);
+    if (!placed.has(id)) out.push(c);
+  }
+  return out;
+}
+
 // ─── Shared: find matching recipes from DB by ingredient list ────────────────
 async function findRecipesByIngredients(ingredients, limit = 8) {
   const query = buildSearchTerms(ingredients);
@@ -1186,12 +1336,12 @@ Rules:
     const analyzeOutputError = !hasDetectedSubject && !hasDetectedFoodItems;
     const retakeMessage = null;
 
-    // ── Match against recipe database ──
+    // ── Match against recipe database (retrieval step of RAG) ──
     let recipeSuggestions = [];
     if (hasDetectedFoodItems && hasRecognizedDatabaseIngredients) {
       try {
         recipeSuggestions = await filterAvailableRecipeSuggestions(
-          await findRecipesByIngredients(knownIngredientMatches, 6)
+          await findRecipesByIngredients(knownIngredientMatches, 8)
         );
       } catch (dbErr) {
         console.warn('[ml/camera/analyze] Recipe matching failed:', dbErr.message);
@@ -1199,12 +1349,59 @@ Rules:
       }
     }
 
+    // ── RAG grounding step: Gemini picks only from retrieved DB candidates ──
+    const retrievedRecipeIds = recipeSuggestions
+      .map((s) => Number(s.recipe?.id))
+      .filter((id) => Number.isInteger(id));
+    let ragUsed = false;
+    let ragNoMatch = false;
+    let ragMatchReason = null;
+    let ragSelectedId = null;
+
+    if (recipeSuggestions.length > 0) {
+      const ragResult = await selectRecipeWithGeminiRAG({
+        apiKey,
+        detectedIngredients: knownIngredientMatches,
+        candidates: recipeSuggestions,
+      });
+
+      if (ragResult) {
+        ragUsed = true;
+        ragNoMatch = ragResult.noMatch;
+        ragMatchReason = ragResult.matchReason;
+        ragSelectedId = ragResult.selectedId;
+
+        if (ragResult.noMatch) {
+          console.log('[ml/camera/analyze] RAG no_match:', {
+            detectedIngredients: knownIngredientMatches,
+            retrievedRecipeIds,
+            reason: ragMatchReason,
+          });
+          recipeSuggestions = [];
+        } else if (ragResult.orderedIds.length > 0) {
+          recipeSuggestions = reorderByIds(recipeSuggestions, ragResult.orderedIds);
+        }
+      }
+    }
+
     const recommendedRecipe = firstSuggestedRecipe(recipeSuggestions);
+    const finalRecipeIds = recipeSuggestions
+      .map((s) => Number(s.recipe?.id))
+      .filter((id) => Number.isInteger(id));
     const analysisStatus = !hasDetectedFoodItems
       ? 'no_detected_items'
-      : hasRecognizedDatabaseIngredients && recipeSuggestions.length > 0
+      : recipeSuggestions.length > 0
         ? 'ok'
         : 'no_database_match';
+
+    console.log('[ml/camera/analyze] RAG', {
+      detectedIngredients: knownIngredientMatches,
+      retrievedRecipeIds,
+      finalRecipeIds,
+      ragUsed,
+      ragNoMatch,
+      analysisStatus,
+    });
 
     res.json({
       dishName,
@@ -1222,6 +1419,12 @@ Rules:
       recommendedRecipe,
       suggestedRecipe: recommendedRecipe,
       modelUsed: modelName,
+      // Optional RAG metadata (safe to ignore on clients that don't use it)
+      ragUsed,
+      ragNoMatch,
+      ragMatchReason,
+      ragSelectedRecipeId: ragSelectedId,
+      retrievedRecipeIds,
       ...queueInfo,
     });
   } catch (err) {
@@ -1462,6 +1665,48 @@ Rules:
       }
     }
 
+    // ── RAG grounding: Gemini picks only from retrieved DB candidates ──
+    const retrievedRecipeIds = matchedRecipes.map((r) => Number(r.id)).filter(Number.isInteger);
+    let ragUsed = false;
+    let ragNoMatch = false;
+    let ragMatchReason = null;
+    let ragSelectedId = null;
+
+    if (matchedRecipes.length > 0) {
+      const ragResult = await selectRecipeWithGeminiRAG({
+        apiKey,
+        detectedIngredients: verifiedIngredients,
+        candidates: matchedRecipes,
+      });
+
+      if (ragResult) {
+        ragUsed = true;
+        ragNoMatch = ragResult.noMatch;
+        ragMatchReason = ragResult.matchReason;
+        ragSelectedId = ragResult.selectedId;
+
+        if (ragResult.noMatch) {
+          console.log('[ml/analyze-ingredients] RAG no_match:', {
+            detectedIngredients: verifiedIngredients,
+            retrievedRecipeIds,
+            reason: ragMatchReason,
+          });
+          matchedRecipes = [];
+        } else if (ragResult.orderedIds.length > 0) {
+          matchedRecipes = reorderByIds(matchedRecipes, ragResult.orderedIds);
+        }
+      }
+    }
+
+    const finalRecipeIds = matchedRecipes.map((r) => Number(r.id)).filter(Number.isInteger);
+    console.log('[ml/analyze-ingredients] RAG', {
+      detectedIngredients: verifiedIngredients,
+      retrievedRecipeIds,
+      finalRecipeIds,
+      ragUsed,
+      ragNoMatch,
+    });
+
     // Build response — only recipes from the database, never invented ones
     const message = matchedRecipes.length === 0
       ? 'CookMate found ingredients, but no published recipe in the database matches them yet.'
@@ -1472,6 +1717,12 @@ Rules:
       detectedIngredients: detectedIngredients.map(({ normalizedName, ...rest }) => rest),
       matchedRecipes,
       message,
+      // Optional RAG metadata (safe to ignore on clients that don't use it)
+      ragUsed,
+      ragNoMatch,
+      ragMatchReason,
+      ragSelectedRecipeId: ragSelectedId,
+      retrievedRecipeIds,
       ...queueInfo,
     });
   } catch (err) {

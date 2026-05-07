@@ -10,8 +10,39 @@ import { cn, getInitial } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export const LayoutShellContext = createContext(false);
+
+/**
+ * Tiny status dot rendered on the profile avatar:
+ *   - green solid when online
+ *   - red breathing (pulse) when offline
+ */
+function ConnectionDot() {
+  const isOnline = useOnlineStatus();
+  const ringColor = isOnline ? 'bg-emerald-400/30' : 'bg-red-500/30';
+  const dotColor = isOnline ? 'bg-emerald-500' : 'bg-red-500';
+  return (
+    <span
+      className="pointer-events-none absolute -bottom-0.5 -right-0.5 z-10 flex h-3.5 w-3.5 items-center justify-center"
+      role="img"
+      aria-label={isOnline ? 'Online' : 'Offline'}
+      title={isOnline ? 'Online' : 'Offline'}
+    >
+      {!isOnline && (
+        <span className={cn('absolute inset-0 rounded-full animate-ping', ringColor)} />
+      )}
+      <span
+        className={cn(
+          'relative h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-stone-900',
+          dotColor,
+          !isOnline && 'animate-pulse',
+        )}
+      />
+    </span>
+  );
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const isNestedInAppShell = useContext(LayoutShellContext);
@@ -184,13 +215,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 to="/profile"
                 aria-label={`${profileLabel} profile`}
                 aria-haspopup="true"
-                className="block rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300 focus-visible:ring-orange-400"
+                className="relative block rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300 focus-visible:ring-orange-400"
               >
                 <div className="flex h-9 w-9 select-none items-center justify-center rounded-full orange-gradient shadow-lg shadow-orange-500/20">
                   <span className="text-white text-sm font-extrabold tracking-tight">
                     {profileInitial}
                   </span>
                 </div>
+                <ConnectionDot />
               </Link>
 
               {/* Hover dropdown */}

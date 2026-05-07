@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
+import { offlineCache } from '../offline/cacheService';
 import { useAppTheme } from '../context/ThemeContext';
 import { AllRecipesContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
@@ -39,6 +40,45 @@ async function fetchAllRecipesAz() {
 
   return { recipes: allRecipes, total: expectedTotal };
 }
+
+const AllRecipeGridCard = memo(function AllRecipeGridCard({ item, colors, isDark, onPress }) {
+  const computedTime =
+    item.total_time_minutes ??
+    ((item.prep_time_minutes || 0) + (item.cook_time_minutes || 0));
+  const time = computedTime > 0 ? `${computedTime} MIN` : null;
+  const meta = item.category || item.region_or_origin || 'Philippine Cuisine';
+  const imageUri = item.image_url || item.image;
+
+  const handlePress = useCallback(() => {
+    onPress(item.id);
+  }, [item.id, onPress]);
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      style={st.recipeCard}
+      activeOpacity={0.85}
+    >
+      <View style={[st.imageWrap, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft, borderColor: colors.border }]}>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={st.recipeImage} resizeMode="cover" />
+        ) : (
+          <View style={st.imageFallback}>
+            <Ionicons name="restaurant-outline" size={30} color={colors.primary} />
+          </View>
+        )}
+        {time ? (
+          <View style={[st.timePill, { backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : '#fff' }]}>
+            <Ionicons name="time-outline" size={10} color={colors.primary} />
+            <Text style={[st.timeText, { color: colors.primary }]}>{time}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[st.recipeTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+      <Text style={[st.recipeMeta, { color: colors.textMuted }]} numberOfLines={1}>{meta} - {item.difficulty || 'Any level'}</Text>
+    </TouchableOpacity>
+  );
+});
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -80,11 +120,32 @@ export default function AllRecipesScreen({ navigation }) {
       const payload = await fetchAllRecipesAz();
       setRecipes(payload.recipes);
       setTotal(payload.total);
+      // Mirror to the offline cache so users can browse recipes without network.
+      const cacheable = (payload.recipes || []).filter((r) => r && r.id != null);
+      offlineCache.recipes.upsertMany(cacheable).catch(() => {});
     } catch (err) {
       console.error('Failed to load all recipes', err);
-      setRecipes([]);
-      setTotal(0);
-      setError('Could not load all recipes. Pull to refresh.');
+      // Offline fallback — serve cached recipes if we have any.
+      try {
+        const cachedRows = await offlineCache.recipes.getAll({ limit: 500 });
+        const cached = cachedRows.map((r) => r.data).filter(Boolean);
+        if (cached.length > 0) {
+          const sorted = [...cached].sort((a, b) =>
+            String(a.title || '').localeCompare(String(b.title || ''))
+          );
+          setRecipes(sorted);
+          setTotal(sorted.length);
+          setError(null);
+        } else {
+          setRecipes([]);
+          setTotal(0);
+          setError('Could not load all recipes. Pull to refresh.');
+        }
+      } catch {
+        setRecipes([]);
+        setTotal(0);
+        setError('Could not load all recipes. Pull to refresh.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -266,40 +327,21 @@ export default function AllRecipesScreen({ navigation }) {
     </View>
   );
 
-  const renderRecipe = ({ item }) => {
-    const computedTime =
-      item.total_time_minutes ??
-      ((item.prep_time_minutes || 0) + (item.cook_time_minutes || 0));
-    const time = computedTime > 0 ? `${computedTime} MIN` : null;
-    const meta = item.category || item.region_or_origin || 'Philippine Cuisine';
-    const imageUri = item.image_url || item.image;
 
-    return (
-      <TouchableOpacity
-        onPress={() => navigation.navigate('RecipeDetail', { id: item.id })}
-        style={st.recipeCard}
-        activeOpacity={0.85}
-      >
-        <View style={[st.imageWrap, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft, borderColor: colors.border }]}> 
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={st.recipeImage} resizeMode="cover" />
-          ) : (
-            <View style={st.imageFallback}>
-              <Ionicons name="restaurant-outline" size={30} color={colors.primary} />
-            </View>
-          )}
-          {time ? (
-            <View style={[st.timePill, { backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : '#fff' }]}> 
-              <Ionicons name="time-outline" size={10} color={colors.primary} />
-              <Text style={[st.timeText, { color: colors.primary }]}>{time}</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={[st.recipeTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-        <Text style={[st.recipeMeta, { color: colors.textMuted }]} numberOfLines={1}>{meta} · {item.difficulty || 'Any level'}</Text>
-      </TouchableOpacity>
-    );
-  };
+  const handleRecipePress = useCallback((id) => {
+    navigation.navigate('RecipeDetail', { id });
+  }, [navigation]);
+
+  const keyExtractor = useCallback((item) => String(item.id), []);
+
+  const renderRecipe = useCallback(({ item }) => (
+    <AllRecipeGridCard
+      item={item}
+      colors={colors}
+      isDark={isDark}
+      onPress={handleRecipePress}
+    />
+  ), [colors, handleRecipePress, isDark]);
 
   const renderEmpty = () => {
     if (loading) {
@@ -332,12 +374,18 @@ export default function AllRecipesScreen({ navigation }) {
     <SafeAreaView style={[st.flex1, { backgroundColor: colors.background }]}> 
       <FlatList
         data={loading ? [] : filteredRecipes}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={keyExtractor}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
         numColumns={2}
         columnWrapperStyle={filteredRecipes.length > 0 ? st.columnWrapper : null}
         renderItem={renderRecipe}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
+        removeClippedSubviews
+        extraData={colors}
         refreshing={refreshing}
         onRefresh={handleRefresh}
         contentContainerStyle={st.content}

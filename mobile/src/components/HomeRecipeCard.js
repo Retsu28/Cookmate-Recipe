@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
@@ -8,7 +8,7 @@ import { useAppTheme } from '../context/ThemeContext';
  * web HomeRecipeCard look (image + time pill + title + meta) so both
  * platforms feel like a single product.
  */
-export default function HomeRecipeCard({ recipe, onPress }) {
+function HomeRecipeCard({ recipe, onPress }) {
   const { colors, isDark } = useAppTheme();
 
   const computedTime =
@@ -59,6 +59,8 @@ export default function HomeRecipeCard({ recipe, onPress }) {
     </TouchableOpacity>
   );
 }
+
+export default memo(HomeRecipeCard);
 
 const st = StyleSheet.create({
   card: {

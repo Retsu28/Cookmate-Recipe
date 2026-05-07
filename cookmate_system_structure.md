@@ -90,8 +90,11 @@ src/
 ├── context/                     # React providers, including auth
 ├── hooks/                       # Web hooks
 ├── lib/                         # Web utility helpers
+├── offline/                     # IndexedDB cache, sync queue, network helpers
 ├── pages/                       # Route-level user pages
-└── services/                    # Web API/auth service helpers
+├── pwa/                         # Service worker registration
+├── services/                    # Web API/auth service helpers
+└── dataconnect-generated/       # Generated Firebase Data Connect client artifacts
 ```
 
 ### Web route structure
@@ -185,6 +188,9 @@ api/
 - `csv-parse`
 - `natural`
 - `@google/generative-ai`
+- `@imgly/background-removal-node`
+- `express-rate-limit`
+- `jimp-compact`
 
 ### API startup flow
 
@@ -214,6 +220,7 @@ The central router in `api/src/routes/index.js` mounts:
 - `/api/profile`
 - `/api/inventory`
 - `/api/ml`
+- `/api/admin`
 
 ### API responsibility map
 
@@ -228,7 +235,16 @@ The central router in `api/src/routes/index.js` mounts:
 | Profile | `/api/profile` |
 | Inventory | `/api/inventory` |
 | ML/recommendations | `/api/ml` |
+| Admin monitoring/data | `/api/admin` |
 | Health check | `/api/health` |
+
+### Notable API features
+
+- Auth uses JWT-backed login, signup, logout, and current-user refresh through `/api/auth/me`.
+- Recipes support published/featured/recent/category/home-section endpoints, recently viewed tracking, pagination, filtering, and A-Z sorting with `sort=title_asc` or `sort=az`.
+- AI camera and ML features live under `/api/ml`, including ingredient recommendation, Gemini image analysis, image-analysis queue status, AI camera saves, and background-removal support.
+- AI camera endpoints use rate limiting for image-analysis request protection.
+- Admin routes provide role-protected operational data such as AI camera save monitoring and user management.
 
 ---
 
@@ -240,7 +256,11 @@ database/
 ├── migrations/
 │   ├── 20260425_unique_user_auth_fields.sql
 │   ├── 20260426_recipes_csv_fields.sql
-│   └── 20260426_recipes_full_fields.sql
+│   ├── 20260426_recipes_full_fields.sql
+│   ├── 20260502_recipe_views.sql
+│   ├── 20260503_recipe_viewed.sql
+│   ├── 20260503_ai_camera_saves.sql
+│   └── 20260503_allow_duplicate_user_full_names.sql
 └── seeds/
     └── philippine_food_recipes_100.csv
 ```
@@ -251,6 +271,8 @@ database/
 - `ingredients`
 - `recipes`
 - `recipe_ingredients`
+- `recipe_viewed`
+- `ai_camera_saves`
 - `meal_plans`
 - `shopping_lists`
 - `kitchen_inventory`
@@ -259,10 +281,12 @@ database/
 
 ### Important data model notes
 
-- `users.email` and `users.full_name` have normalized uniqueness rules.
+- `users.email` has normalized uniqueness; `users.full_name` allows duplicates as of `20260503_allow_duplicate_user_full_names.sql`.
 - `users.role` supports role-based access with `user` and `admin`.
 - `recipes` includes source IDs, metadata, instructions, tags, normalized ingredients, image URLs, featured flags, and published flags.
 - `recipe_ingredients` connects recipes to ingredients.
+- `recipe_viewed` stores recently viewed recipe history per user.
+- `ai_camera_saves` stores completed AI camera analysis snapshots, original/processed image data, detected ingredients, matched recipe IDs, and full analysis output.
 - Meal plans, shopping lists, inventory, reviews, and notifications are linked to users.
 - Recipe seed data is stored in `database/seeds/philippine_food_recipes_100.csv`.
 
@@ -287,9 +311,11 @@ mobile/
     ├── hooks/                   # Mobile hooks
     ├── lib/                     # Mobile utility/storage helpers
     ├── navigation/              # App and tab navigators
+    ├── offline/                 # SQLite/AsyncStorage cache, sync queue, network watcher, OfflineIndicator
     ├── screens/                 # Mobile screens
     ├── services/                # Mobile auth/app services
-    └── theme/                   # Mobile colors, spacing, typography
+    ├── theme/                   # Mobile colors, spacing, typography
+    └── dataconnect-generated/   # Generated Firebase Data Connect client artifacts
 ```
 
 ### Mobile scripts
@@ -329,6 +355,14 @@ mobile/
 
 The Axios client attaches the saved JWT token to outgoing requests when a token is available.
 
+### Mobile route/screen structure
+
+- Auth stack: `Login`, `Signup`
+- Main tabs: `Home`, `Search`, `Recipes`, `Planner`, `Camera`, `Profile`
+- Protected stack screens: `Onboarding`, `AllRecipes`, `RecipeDetail`, `Notifications`, `NotificationSettings`, `CookingMode`
+- Mobile page-switch skeleton loading is centralized in `mobile/App.js`.
+- Offline support: `mobile/src/offline/` provides `db.js`, `cacheService.js`, `syncQueue.js`, `network.js`, and `OfflineIndicator.js`.
+
 ### Mobile auth structure
 
 - `AuthContext` owns mobile session state.
@@ -348,13 +382,16 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 | Recipe browsing | Yes | `/api/recipes` | Yes |
 | A-Z all-recipes listing | Yes | `sort=title_asc` / `sort=az` | Yes |
 | Recipe detail | Yes | `/api/recipes/:id` | Yes |
+| Recently viewed recipes | Yes | `/api/recipes/recently-viewed` and `/api/recipes/:id/view` | Yes |
 | Meal planner | Yes | `/api/meal-planner` | Yes |
 | Shopping list | Client support | `/api/shopping-list` | Client support |
 | Notifications | Yes | `/api/notifications` | Yes |
 | Profile | Yes | `/api/profile` | Yes |
 | Inventory | Client support | `/api/inventory` | Client support |
-| Admin | Web only | Role-backed support | Not applicable |
-| AI/ML | Client features | `/api/ml` | Client features |
+| Admin | Web only | `/api/admin` and role-backed support | Not applicable |
+| AI camera image analysis | Yes | `/api/ml/camera/analyze` | Yes |
+| AI camera saved results | Yes | `/api/ml/ai-camera-saves` | Yes |
+| AI/ML recipe recommendations | Client features | `/api/ml/recommend`, `/api/ml/recommend/by-ingredients`, `/api/ml/analyze-ingredients` | Client features |
 
 ---
 
@@ -366,6 +403,8 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 | `api/.env` | API port, database credentials, JWT/config secrets, CORS configuration |
 | `mobile/app.json` | Expo configuration, including `expo.extra.apiBaseUrl` |
 | `vite.config.ts` | Web aliases, plugins, PWA setup, and local `/api` proxy |
+| `src/pwa/registerServiceWorker.ts` | Web service worker registration for offline/PWA |
+| `src/offline/` and `mobile/src/offline/` | Offline cache, sync queue, and network status helpers |
 
 ---
 
@@ -402,7 +441,7 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 | Auth | Backend-backed JWT/session flow for web and mobile |
 | Admin | Web-only admin area protected by admin authorization |
 | Recipes | Database-backed with filtering, pagination, featured/recent/category endpoints, and A-Z listing support |
-| AI/ML | Backend route group and AI/recommendation dependencies are present |
+| AI/ML | Gemini-backed camera analysis, TF-IDF recipe matching, background-removal/sticker output, saved camera results, and recommendation endpoints |
 | PWA | Root web app includes PWA support through Vite plugin configuration |
 
 This document should stay synchronized with the real repository structure, route tree, package scripts, and database files.

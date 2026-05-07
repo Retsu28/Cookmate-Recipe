@@ -9,12 +9,11 @@ import { Animated, Easing } from 'react-native';
  * Returns:
  *  - cardStyle        : transform/opacity for the card mount animation
  *  - fieldStyle(i)    : per-index staggered field animation
- *  - shakeStyle       : applied to the card, shakes when triggerShake is called
- *  - buttonScale      : Animated.Value bound to the submit button tap feedback
+ *  - buttonStyle      : transform style for submit button tap feedback
  *  - onPressIn / Out  : handlers for the submit button
  *  - triggerShake()   : call on validation error
  */
-export function useAuthAnimations(fieldCount = 4) {
+export function useAuthAnimations(fieldCount = 4, direction = 1) {
   // Mount animation
   const mount = useRef(new Animated.Value(0)).current;
   const fields = useRef(
@@ -26,36 +25,60 @@ export function useAuthAnimations(fieldCount = 4) {
 
   // Error shake
   const shakeX = useRef(new Animated.Value(0)).current;
+  const entryDirection = direction >= 0 ? 1 : -1;
 
   useEffect(() => {
-    Animated.timing(mount, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
+    mount.stopAnimation();
+    shakeX.stopAnimation();
+    fields.forEach((value) => value.stopAnimation());
 
-    Animated.stagger(
-      60,
-      fields.map((v) =>
-        Animated.timing(v, {
-          toValue: 1,
-          duration: 360,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        })
-      )
-    ).start();
-  }, [mount, fields]);
+    mount.setValue(0);
+    shakeX.setValue(0);
+    fields.forEach((value) => value.setValue(0));
+
+    Animated.parallel([
+      Animated.timing(mount, {
+        toValue: 1,
+        duration: 380,
+        easing: Easing.out(Easing.poly(4)),
+        useNativeDriver: true,
+      }),
+      Animated.stagger(
+        42,
+        fields.map((value) =>
+          Animated.timing(value, {
+            toValue: 1,
+            duration: 300,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          })
+        )
+      ),
+    ]).start();
+
+    return () => {
+      mount.stopAnimation();
+      shakeX.stopAnimation();
+      fields.forEach((value) => value.stopAnimation());
+    };
+  }, [fields, mount, shakeX]);
+
+  const entranceTranslateX = mount.interpolate({
+    inputRange: [0, 1],
+    outputRange: [entryDirection * 18, 0],
+  });
 
   const cardStyle = {
     opacity: mount,
     transform: [
       {
-        translateY: mount.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }),
+        translateX: Animated.add(entranceTranslateX, shakeX),
       },
       {
-        scale: mount.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
+        translateY: mount.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
+      },
+      {
+        scale: mount.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }),
       },
     ],
   };
@@ -66,7 +89,7 @@ export function useAuthAnimations(fieldCount = 4) {
       {
         translateY: (fields[i] ?? mount).interpolate({
           inputRange: [0, 1],
-          outputRange: [10, 0],
+          outputRange: [8, 0],
         }),
       },
     ],
@@ -82,8 +105,6 @@ export function useAuthAnimations(fieldCount = 4) {
       Animated.timing(shakeX, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
   };
-
-  const shakeStyle = { transform: [{ translateX: shakeX }] };
 
   const onPressIn = () => {
     Animated.spring(buttonScale, {
@@ -108,7 +129,6 @@ export function useAuthAnimations(fieldCount = 4) {
   return {
     cardStyle,
     fieldStyle,
-    shakeStyle,
     buttonStyle,
     onPressIn,
     onPressOut,

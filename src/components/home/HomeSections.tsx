@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '@/services/api';
+import { offlineCache } from '@/offline/cacheService';
+import { isOnlineNow } from '@/offline/network';
 import { useAuth } from '@/context/AuthContext';
 import { HomeSection } from './HomeSection';
 import { HomeRecipeCard } from './HomeRecipeCard';
@@ -26,21 +28,58 @@ export function HomeSections() {
 
     setLoading(true);
     setError(null);
+
+    const readOfflineFallback = async () => {
+      try {
+        const rows = await offlineCache.recipes.getAll({ limit: 200 });
+        const cached = rows
+          .map((r) => r.data)
+          .filter(Boolean) as unknown as HomeSectionsResponse['recentlyAddedRecipes'];
+        if (!cancelled && cached.length > 0) {
+          setData((prev) => ({
+            ...prev,
+            recentlyAddedRecipes: cached.slice(0, 12),
+            popularFilipinoRecipes: prev.popularFilipinoRecipes.length
+              ? prev.popularFilipinoRecipes
+              : cached.slice(0, 12),
+          }));
+          return true;
+        }
+      } catch {
+        /* ignore */
+      }
+      return false;
+    };
+
     api
       .get<HomeSectionsResponse>('/api/recipes/home-sections')
       .then((res) => {
         if (cancelled) return;
-        setData({
+        const next = {
           categories: res.categories || [],
           popularFilipinoRecipes: res.popularFilipinoRecipes || [],
           recentlyAddedRecipes: res.recentlyAddedRecipes || [],
           recentlyViewedRecipes: res.recentlyViewedRecipes || [],
-        });
+        };
+        setData(next);
+        // Mirror recipes locally so Home can still render something when
+        // the browser goes offline.
+        const cacheable = [
+          ...next.popularFilipinoRecipes,
+          ...next.recentlyAddedRecipes,
+          ...next.recentlyViewedRecipes,
+        ].filter((r) => r && (r as { id?: unknown }).id != null) as Array<{ id: string | number }>;
+        if (cacheable.length > 0) {
+          offlineCache.recipes.upsertMany(cacheable).catch(() => {});
+        }
       })
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
         if (cancelled) return;
-        setData((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
-        setError(err instanceof Error ? err.message : 'Failed to load homepage sections.');
+        const servedCache = await readOfflineFallback();
+        if (!servedCache) {
+          setData((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
+          setError(err instanceof Error ? err.message : 'Failed to load homepage sections.');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

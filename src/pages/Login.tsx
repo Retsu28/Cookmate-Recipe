@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -19,6 +20,8 @@ const fieldVariants = {
 
 // Public signup is Gmail-only, but login also supports seeded system accounts.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const authCardClass =
+  'bg-white/[0.88] dark:bg-stone-900/[0.84] backdrop-blur-xl shadow-2xl shadow-stone-950/20 rounded-2xl overflow-hidden border border-white/45 dark:border-white/10';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -97,7 +100,7 @@ export default function Login() {
               animate={error ? { x: [-10, 10, -6, 6, -2, 2, 0] } : { x: 0 }}
               transition={{ duration: 0.45 }}
             >
-              <Card className="bg-white/95 backdrop-blur-md shadow-xl rounded-2xl overflow-hidden border border-white/60">
+              <Card className={authCardClass}>
                 <CardContent className="p-8">
                   {/* Brand */}
                   <motion.div
@@ -181,10 +184,12 @@ export default function Login() {
                         />
                         Remember me
                       </label>
-                      {/* TODO: wire forgot-password flow when backend supports it */}
-                      <span className="text-sm font-medium text-stone-400 cursor-not-allowed" aria-disabled>
+                      <Link
+                        to="/forgot-password"
+                        className="text-sm font-medium text-orange-600 hover:text-orange-700 hover:underline underline-offset-2"
+                      >
                         Forgot password?
-                      </span>
+                      </Link>
                     </motion.div>
 
                     <AnimatePresence>
@@ -219,6 +224,16 @@ export default function Login() {
                       )}
                     </motion.button>
                   </form>
+
+                  <div className="mt-6 flex items-center gap-3" aria-hidden>
+                    <div className="h-px flex-1 bg-stone-200" />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-stone-400">or</span>
+                    <div className="h-px flex-1 bg-stone-200" />
+                  </div>
+
+                  <div className="mt-4">
+                    <GoogleSignInButton text="signin_with" onError={setError} />
+                  </div>
 
                   <motion.p
                     initial={{ opacity: 0 }}

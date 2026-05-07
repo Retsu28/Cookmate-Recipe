@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,11 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
+import { offlineCache } from '../offline/cacheService';
+import OfflineIndicator from '../offline/OfflineIndicator';
 import RecipeCard from '../components/RecipeCard';
 import HomeRecipeCard from '../components/HomeRecipeCard';
 import HomeSection from '../components/HomeSection';
@@ -97,6 +100,7 @@ export default function HomeScreen({ navigation }) {
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
   const aiChatRef = useRef(null);
+  const didFocusOnceRef = useRef(false);
   const hasRecentlyViewed = homeSections.recentlyViewedRecipes.length > 0;
   const recentlyViewedLoading = homeSectionsLoading && Boolean(user?.id);
 
@@ -123,21 +127,51 @@ export default function HomeScreen({ navigation }) {
         recipeApi.getRecent(),
         recipeApi.getHomeSections(),
       ]);
-      setFeaturedRecipes(withFallback(featuredRes?.data?.recipes, fallbackFeatured));
-      setRecentRecipes(withFallback(recentRes?.data?.recipes, fallbackRecent));
+      const featured = withFallback(featuredRes?.data?.recipes, fallbackFeatured);
+      const recent = withFallback(recentRes?.data?.recipes, fallbackRecent);
+      setFeaturedRecipes(featured);
+      setRecentRecipes(recent);
       const payload = sectionsRes?.data || {};
-      setHomeSections({
+      const sections = {
         categories: Array.isArray(payload.categories) ? payload.categories : [],
         popularFilipinoRecipes: Array.isArray(payload.popularFilipinoRecipes) ? payload.popularFilipinoRecipes : [],
         recentlyAddedRecipes: Array.isArray(payload.recentlyAddedRecipes) ? payload.recentlyAddedRecipes : [],
         recentlyViewedRecipes: Array.isArray(payload.recentlyViewedRecipes) ? payload.recentlyViewedRecipes : [],
-      });
+      };
+      setHomeSections(sections);
+      // Mirror fetched recipes to the offline cache so the Home screen can
+      // still show content when the network goes away.
+      const cacheable = [
+        ...featured,
+        ...recent,
+        ...sections.popularFilipinoRecipes,
+        ...sections.recentlyAddedRecipes,
+        ...sections.recentlyViewedRecipes,
+      ].filter((r) => r && r.id != null);
+      offlineCache.recipes.upsertMany(cacheable).catch(() => {});
     } catch (error) {
       console.error('Failed to fetch home data', error);
-      setFeaturedRecipes(fallbackFeatured);
-      setRecentRecipes(fallbackRecent);
-      setHomeSections((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
-      setHomeSectionsError('Could not load homepage sections. Pull to refresh.');
+      // Offline fallback — read whatever we have cached locally.
+      try {
+        const cachedRows = await offlineCache.recipes.getAll({ limit: 200 });
+        const cached = cachedRows.map((r) => r.data).filter(Boolean);
+        if (cached.length > 0) {
+          setFeaturedRecipes(cached.slice(0, 6));
+          setRecentRecipes(cached.slice(0, 10));
+          setHomeSections((prev) => ({ ...prev, recentlyAddedRecipes: cached.slice(0, 10) }));
+          setHomeSectionsError(null);
+        } else {
+          setFeaturedRecipes(fallbackFeatured);
+          setRecentRecipes(fallbackRecent);
+          setHomeSections((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
+          setHomeSectionsError('Could not load homepage sections. Pull to refresh.');
+        }
+      } catch {
+        setFeaturedRecipes(fallbackFeatured);
+        setRecentRecipes(fallbackRecent);
+        setHomeSections((prev) => ({ ...prev, recentlyViewedRecipes: [] }));
+        setHomeSectionsError('Could not load homepage sections. Pull to refresh.');
+      }
     } finally {
       setRefreshing(false);
       setHomeSectionsLoading(false);
@@ -152,6 +186,51 @@ export default function HomeScreen({ navigation }) {
       useNativeDriver: true,
     }).start();
   }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) {
+        setHomeSections((prev) =>
+          prev.recentlyViewedRecipes.length > 0
+            ? { ...prev, recentlyViewedRecipes: [] }
+            : prev
+        );
+        return undefined;
+      }
+
+      if (!didFocusOnceRef.current) {
+        didFocusOnceRef.current = true;
+        return undefined;
+      }
+
+      let active = true;
+      const timer = setTimeout(async () => {
+        try {
+          const response = await recipeApi.getRecentlyViewed();
+          if (!active) return;
+
+          const recentlyViewed = Array.isArray(response?.data?.recipes)
+            ? response.data.recipes
+            : [];
+          setHomeSections((prev) => ({
+            ...prev,
+            recentlyViewedRecipes: recentlyViewed,
+          }));
+
+          if (recentlyViewed.length > 0) {
+            offlineCache.recipes.upsertMany(recentlyViewed).catch(() => {});
+          }
+        } catch {
+          /* recently viewed is best-effort; keep the current section */
+        }
+      }, 450);
+
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }, [user?.id])
+  );
 
   const introStyle = {
     opacity: introAnim,
@@ -199,6 +278,8 @@ export default function HomeScreen({ navigation }) {
             <View style={[s.avatar, { backgroundColor: colors.primary }]}>
               <Text style={s.avatarText}>{profileInitial}</Text>
             </View>
+            {/* Connection status — green (online) / red breathing (offline). */}
+            <OfflineIndicator bottom={-2} right={-2} size={12} />
           </TouchableOpacity>
         </View>
       </View>
@@ -487,7 +568,7 @@ const s = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   notifDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, borderWidth: 1.5 },
-  avatarWrap: { padding: 2, borderRadius: 20, borderWidth: 2, borderColor: 'transparent' },
+  avatarWrap: { position: 'relative', padding: 2, borderRadius: 20, borderWidth: 2, borderColor: 'transparent' },
   avatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontFamily: 'Geist_800ExtraBold', fontSize: 13, letterSpacing: -0.3 },
   content: { paddingHorizontal: 16, paddingTop: 16, gap: 20 },

@@ -13,6 +13,7 @@ interface AuthContextValue {
   refreshUser: () => Promise<AuthUser | null>;
   login: (email: string, password: string) => Promise<AuthUser>;
   signup: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
 }
 
@@ -61,6 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.user);
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const res = await authService.googleLogin(credential);
+    setUser(res.user);
+    setShowPostLoginSplash(true);
+    return res.user;
+  }, []);
+
   const logout = useCallback(async () => {
     setIsLoggingOut(true);
     setShowLogoutSplash(true);
@@ -100,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser,
       login,
       signup,
+      loginWithGoogle,
       logout,
     }),
     [
@@ -113,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser,
       login,
       signup,
+      loginWithGoogle,
       logout,
     ]
   );

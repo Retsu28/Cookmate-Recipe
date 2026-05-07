@@ -10,6 +10,7 @@
     "seed:recipes": "node src/scripts/importRecipesFromCsv.js"
   },
   "dependencies": {
+    "@dataconnect/generated": "file:src/dataconnect-generated",
     "@google/generative-ai": "^0.24.1",
     "@imgly/background-removal-node": "^1.4.3",
     "bcryptjs": "^3.0.3",
@@ -19,9 +20,12 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-rate-limit": "^8.4.1",
+    "firebase-admin": "^13.2.0",
+    "google-auth-library": "^9.15.1",
     "jimp-compact": "^0.16.1",
     "jsonwebtoken": "^9.0.3",
     "natural": "^6.10.5",
+    "nodemailer": "^8.0.7",
     "pg": "^8.20.0"
   },
   "private": true,

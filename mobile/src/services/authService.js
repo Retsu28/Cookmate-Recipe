@@ -1,10 +1,25 @@
 /**
  * CookMate authentication service (Mobile).
  *
- * Calls the Express API backend via the shared axios instance.
- * Token storage is handled via expo-secure-store (see lib/tokenStorage.js).
+ * Identity is owned by Firebase Auth. Each call signs in/up via the
+ * Firebase JS SDK first, then exchanges the resulting ID token with the
+ * Express backend at POST /api/auth/firebase to obtain the existing
+ * CookMate JWT + PostgreSQL user row.
+ *
+ * Email verification and password reset are delegated to Firebase.
  */
 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithCredential,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  signOut,
+  updateProfile,
+  GoogleAuthProvider,
+} from 'firebase/auth';
+import { firebaseAuth } from '../lib/firebase';
 import api from '../api/api';
 import { tokenStorage } from '../lib/tokenStorage';
 
@@ -25,18 +40,71 @@ async function clearStoredSession() {
   await tokenStorage.deleteItem(AUTH_USER_KEY);
 }
 
+/**
+ * Exchange the current Firebase user for a CookMate backend session.
+ * Forces a fresh ID token so the latest email_verified claim is sent.
+ */
+async function exchangeFirebaseUser(fbUser, name) {
+  const idToken = await fbUser.getIdToken(true);
+  const { data } = await api.post('/api/auth/firebase', {
+    idToken,
+    name: name || fbUser.displayName || undefined,
+  });
+  const result = { token: data.token, user: data.user };
+  await persist(result);
+  return result;
+}
+
+function toFirebaseMessage(err, fallback) {
+  if (!err) return fallback;
+  switch (err.code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Incorrect email or password.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'auth/weak-password':
+      return 'Password must be at least 8 characters.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection and try again.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.';
+    default:
+      return err.message || fallback;
+  }
+}
+
 export const authService = {
   async login(email, password) {
     if (!email || !password) {
       throw new Error('Email and password are required.');
     }
     try {
-      const { data } = await api.post('/api/auth/login', { email, password });
-      const result = { token: data.token, user: data.user };
-      await persist(result);
-      return result;
+      const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      return exchangeFirebaseUser(cred.user);
     } catch (error) {
-      throw new Error(toMessage(error, 'Unable to sign in. Please try again.'));
+      throw new Error(toFirebaseMessage(error, toMessage(error, 'Unable to sign in. Please try again.')));
+    }
+  },
+
+  /**
+   * Exchange a Google ID token (from expo-auth-session / native Google SDK)
+   * for a CookMate session: signs into Firebase with the Google credential,
+   * then exchanges the resulting Firebase ID token at /api/auth/firebase.
+   */
+  async googleLogin(idToken) {
+    if (!idToken) {
+      throw new Error('Missing Google credential.');
+    }
+    try {
+      const credential = GoogleAuthProvider.credential(idToken);
+      const cred = await signInWithCredential(firebaseAuth, credential);
+      return exchangeFirebaseUser(cred.user);
+    } catch (error) {
+      throw new Error(toFirebaseMessage(error, toMessage(error, 'Google sign-in failed. Please try again.')));
     }
   },
 
@@ -45,16 +113,53 @@ export const authService = {
       throw new Error('Please fill in all fields.');
     }
     try {
-      const { data } = await api.post('/api/auth/signup', { name, email, password });
-      const result = { token: data.token, user: data.user };
-      await persist(result);
-      return result;
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      if (name && name.trim()) {
+        try {
+          await updateProfile(cred.user, { displayName: name.trim() });
+        } catch {
+          /* non-fatal */
+        }
+      }
+      // Send verification email but don't block signup on it.
+      sendEmailVerification(cred.user).catch(() => {});
+      return exchangeFirebaseUser(cred.user, name);
     } catch (error) {
-      throw new Error(toMessage(error, 'Unable to create account. Please try again.'));
+      throw new Error(toFirebaseMessage(error, toMessage(error, 'Unable to create account. Please try again.')));
     }
   },
 
+  /**
+   * Send a password-reset email via Firebase. Resolves silently for
+   * unknown emails so we don't leak which addresses are registered.
+   */
+  async sendPasswordReset(email) {
+    if (!email) throw new Error('Please enter your email address.');
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email.trim());
+    } catch (error) {
+      if (error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-email') return;
+      throw new Error(toFirebaseMessage(error, 'Could not send reset email. Please try again.'));
+    }
+  },
+
+  /** Re-send the Firebase verification email for the current user. */
+  async resendVerificationEmail() {
+    const fbUser = firebaseAuth.currentUser;
+    if (!fbUser) throw new Error('You must be signed in to resend the verification email.');
+    await sendEmailVerification(fbUser);
+  },
+
+  isEmailVerified() {
+    return firebaseAuth.currentUser?.emailVerified === true;
+  },
+
   async logout() {
+    try {
+      await signOut(firebaseAuth);
+    } catch {
+      /* ignore */
+    }
     try {
       await api.post('/api/auth/logout');
     } catch {
