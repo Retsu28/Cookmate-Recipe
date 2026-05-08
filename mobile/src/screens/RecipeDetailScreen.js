@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   View,
   Text,
   ScrollView,
@@ -11,12 +13,14 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { DateTime } from 'luxon';
 import { plannerApi, recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
 import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
-import { getRecipeByIdCached } from '../offline/cacheService';
+import { getRecipeByIdCached, offlineCache } from '../offline/cacheService';
+import { getDeviceTimezone } from '../lib/timezone';
 
 const fallbackRecipes = {
   1: {
@@ -55,8 +59,54 @@ const mealTypes = [
   { id: 'dinner', label: 'Dinner' },
 ];
 
+const defaultMealTimes = {
+  breakfast: { start: '07:00', end: '08:00' },
+  lunch: { start: '11:00', end: '14:00' },
+  dinner: { start: '18:00', end: '20:00' },
+};
+
+function sanitizeTimeDigits(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 4);
+}
+
+function toTime12Input(value) {
+  const [rawHour, rawMinute] = String(value || '').split(':');
+  const hour24 = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!Number.isFinite(hour24) || !Number.isFinite(minute)) {
+    return { digits: '', period: 'AM' };
+  }
+
+  const hour12 = hour24 % 12 || 12;
+  return {
+    digits: `${String(hour12).padStart(2, '0')}${String(minute).padStart(2, '0')}`,
+    period: hour24 >= 12 ? 'PM' : 'AM',
+  };
+}
+
+function parseTime12Input(value, period) {
+  const digits = sanitizeTimeDigits(value);
+  if (digits.length < 3) return null;
+
+  const padded = digits.length === 3 ? `0${digits}` : digits;
+  const hour12 = Number(padded.slice(0, 2));
+  const minute = Number(padded.slice(2, 4));
+  if (!Number.isInteger(hour12) || !Number.isInteger(minute)) return null;
+  if (hour12 < 1 || hour12 > 12 || minute < 0 || minute > 59) return null;
+
+  const normalizedPeriod = period === 'PM' ? 'PM' : 'AM';
+  const hour24 = normalizedPeriod === 'PM' ? (hour12 % 12) + 12 : hour12 % 12;
+  return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function timeToMinutes(value) {
+  const [hour, minute] = String(value || '').split(':').map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
+}
+
 function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+  return DateTime.now().setZone(getDeviceTimezone()).toISODate();
 }
 
 export default function RecipeDetailScreen({ route, navigation }) {
@@ -72,6 +122,12 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [planDate, setPlanDate] = useState(todayInputValue());
   const [planMealType, setPlanMealType] = useState('dinner');
+  const [planReminderEnabled, setPlanReminderEnabled] = useState(true);
+  const [planCustomTimeEnabled, setPlanCustomTimeEnabled] = useState(false);
+  const [planStartTimeInput, setPlanStartTimeInput] = useState(toTime12Input(defaultMealTimes.dinner.start).digits);
+  const [planStartPeriod, setPlanStartPeriod] = useState(toTime12Input(defaultMealTimes.dinner.start).period);
+  const [planEndTimeInput, setPlanEndTimeInput] = useState(toTime12Input(defaultMealTimes.dinner.end).digits);
+  const [planEndPeriod, setPlanEndPeriod] = useState(toTime12Input(defaultMealTimes.dinner.end).period);
   const [planning, setPlanning] = useState(false);
 
   useEffect(() => {
@@ -126,10 +182,40 @@ export default function RecipeDetailScreen({ route, navigation }) {
     setCheckedIngredients(prev => ({ ...prev, [i]: !prev[i] }));
   };
 
+  const applyPlanTimes = (start, end) => {
+    const nextStart = toTime12Input(start);
+    const nextEnd = toTime12Input(end);
+    setPlanStartTimeInput(nextStart.digits);
+    setPlanStartPeriod(nextStart.period);
+    setPlanEndTimeInput(nextEnd.digits);
+    setPlanEndPeriod(nextEnd.period);
+  };
+
   const openPlanner = () => {
     setPlanDate(todayInputValue());
     setPlanMealType('dinner');
+    setPlanReminderEnabled(true);
+    setPlanCustomTimeEnabled(false);
+    applyPlanTimes(defaultMealTimes.dinner.start, defaultMealTimes.dinner.end);
     setPlannerOpen(true);
+  };
+
+  const updateStartTimeInput = (value) => {
+    const digits = sanitizeTimeDigits(value);
+    setPlanStartTimeInput(digits);
+  };
+
+  const updateEndTimeInput = (value) => {
+    const digits = sanitizeTimeDigits(value);
+    setPlanEndTimeInput(digits);
+  };
+
+  const updateStartPeriod = (period) => {
+    setPlanStartPeriod(period);
+  };
+
+  const updateEndPeriod = (period) => {
+    setPlanEndPeriod(period);
   };
 
   const savePlan = async () => {
@@ -142,15 +228,48 @@ export default function RecipeDetailScreen({ route, navigation }) {
       return;
     }
 
+    const startTimeForPlan = planCustomTimeEnabled
+      ? parseTime12Input(planStartTimeInput, planStartPeriod)
+      : defaultMealTimes[planMealType].start;
+    const endTimeForPlan = planCustomTimeEnabled
+      ? parseTime12Input(planEndTimeInput, planEndPeriod)
+      : defaultMealTimes[planMealType].end;
+    const startMinutes = timeToMinutes(startTimeForPlan);
+    const endMinutes = timeToMinutes(endTimeForPlan);
+
+    if (!startTimeForPlan || !endTimeForPlan || startMinutes == null || endMinutes == null || startMinutes >= endMinutes) {
+      Alert.alert('Invalid custom time', 'Use a valid 12-hour start and end time.');
+      return;
+    }
+
     setPlanning(true);
     try {
-      await plannerApi.assignMeal({
+      const response = await plannerApi.assignMeal({
         recipe_id: recipe.id,
         planned_date: planDate,
         meal_type: planMealType,
+        reminder_enabled: planReminderEnabled,
+        custom_time_enabled: planCustomTimeEnabled,
+        start_time: startTimeForPlan,
+        end_time: endTimeForPlan,
+        timezone: getDeviceTimezone(),
       });
+      const newPlan = response?.data?.plan;
+      if (newPlan?.id) {
+        offlineCache.mealPlans.upsert(newPlan.id, newPlan).catch(() => {});
+      }
       setPlannerOpen(false);
-      Alert.alert('Added to Meal Planner', `${recipe.title} was added to your planner.`);
+      Alert.alert(
+        'Added to Meal Planner',
+        `${recipe.title} was added to your planner.`,
+        [
+          { text: 'Stay', style: 'cancel' },
+          {
+            text: 'Open Planner',
+            onPress: () => navigation.navigate('Main', { screen: 'Planner', params: { plannedDate: planDate } }),
+          },
+        ],
+      );
     } catch (err) {
       Alert.alert('Planner save failed', err?.message || 'Please try again.');
     } finally {
@@ -345,8 +464,19 @@ export default function RecipeDetailScreen({ route, navigation }) {
       </View>
 
       <Modal visible={plannerOpen} transparent animationType="slide" onRequestClose={() => setPlannerOpen(false)}>
-        <View style={st.modalOverlay}>
-          <View style={[st.modalCard, { backgroundColor: colors.surface }]}>
+        <KeyboardAvoidingView
+          style={st.modalKeyboardAvoider}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'android' ? 24 : 0}
+        >
+          <View style={st.modalOverlay}>
+            <ScrollView
+              style={st.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={st.modalScrollContent}
+            >
+              <View style={[st.modalCard, { backgroundColor: colors.surface }]}>
             <View style={st.modalHeader}>
               <Text style={[st.modalEyebrow, { color: colors.primary }]}>ADD TO MEAL PLANNER</Text>
               <TouchableOpacity onPress={() => setPlannerOpen(false)} style={st.modalClose}>
@@ -371,7 +501,12 @@ export default function RecipeDetailScreen({ route, navigation }) {
                 return (
                   <TouchableOpacity
                     key={type.id}
-                    onPress={() => setPlanMealType(type.id)}
+                    onPress={() => {
+                      setPlanMealType(type.id);
+                      if (!planCustomTimeEnabled) {
+                        applyPlanTimes(defaultMealTimes[type.id].start, defaultMealTimes[type.id].end);
+                      }
+                    }}
                     style={[st.mealTypeBtn, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.background }]}
                     activeOpacity={0.8}
                   >
@@ -383,6 +518,87 @@ export default function RecipeDetailScreen({ route, navigation }) {
               })}
             </View>
 
+            <View style={[st.reminderBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <TouchableOpacity
+                onPress={() => setPlanReminderEnabled((value) => !value)}
+                style={st.reminderToggleRow}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.reminderToggleText, { color: colors.text }]}>Meal reminder</Text>
+                <View style={[st.switchTrack, { backgroundColor: planReminderEnabled ? colors.primary : colors.border }]}>
+                  <View style={[st.switchThumb, planReminderEnabled && st.switchThumbOn]} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setPlanCustomTimeEnabled((value) => !value)}
+                style={st.reminderToggleRow}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.reminderToggleText, { color: colors.text }]}>Custom time</Text>
+                <View style={[st.switchTrack, { backgroundColor: planCustomTimeEnabled ? colors.primary : colors.border }]}>
+                  <View style={[st.switchThumb, planCustomTimeEnabled && st.switchThumbOn]} />
+                </View>
+              </TouchableOpacity>
+              <View style={st.timeInputRow}>
+                <View style={st.timeField}>
+                  <TextInput
+                    value={planStartTimeInput}
+                    onChangeText={updateStartTimeInput}
+                    editable={planCustomTimeEnabled}
+                    placeholder="HHMM"
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    maxLength={4}
+                    style={[st.timeInput, { color: colors.text, borderColor: colors.border, opacity: planCustomTimeEnabled ? 1 : 0.55 }]}
+                  />
+                  <View style={[st.periodRow, { opacity: planCustomTimeEnabled ? 1 : 0.55 }]}>
+                    {['AM', 'PM'].map((period) => {
+                      const active = planStartPeriod === period;
+                      return (
+                        <TouchableOpacity
+                          key={period}
+                          onPress={() => updateStartPeriod(period)}
+                          disabled={!planCustomTimeEnabled}
+                          style={[st.periodBtn, { backgroundColor: active ? colors.primary : colors.surfaceAlt, borderColor: active ? colors.primary : colors.border }]}
+                        >
+                          <Text style={[st.periodText, { color: active ? '#fff' : colors.textSubtle }]}>{period}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={st.timeField}>
+                  <TextInput
+                    value={planEndTimeInput}
+                    onChangeText={updateEndTimeInput}
+                    editable={planCustomTimeEnabled}
+                    placeholder="HHMM"
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    maxLength={4}
+                    style={[st.timeInput, { color: colors.text, borderColor: colors.border, opacity: planCustomTimeEnabled ? 1 : 0.55 }]}
+                  />
+                  <View style={[st.periodRow, { opacity: planCustomTimeEnabled ? 1 : 0.55 }]}>
+                    {['AM', 'PM'].map((period) => {
+                      const active = planEndPeriod === period;
+                      return (
+                        <TouchableOpacity
+                          key={period}
+                          onPress={() => updateEndPeriod(period)}
+                          disabled={!planCustomTimeEnabled}
+                          style={[st.periodBtn, { backgroundColor: active ? colors.primary : colors.surfaceAlt, borderColor: active ? colors.primary : colors.border }]}
+                        >
+                          <Text style={[st.periodText, { color: active ? '#fff' : colors.textSubtle }]}>{period}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            </View>
+
             <TouchableOpacity
               onPress={savePlan}
               disabled={planning}
@@ -390,8 +606,10 @@ export default function RecipeDetailScreen({ route, navigation }) {
             >
               <Text style={st.modalSaveText}>{planning ? 'SAVING...' : 'SAVE PLAN'}</Text>
             </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -458,7 +676,10 @@ const st = StyleSheet.create({
   cookBtn: { flex: 1.5, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26 },
   cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1, color: '#fff' },
   // Planner modal
+  modalKeyboardAvoider: { flex: 1 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalScroll: { flex: 1 },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 14 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalEyebrow: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8 },
@@ -469,6 +690,18 @@ const st = StyleSheet.create({
   mealTypeRow: { flexDirection: 'row', gap: 8 },
   mealTypeBtn: { flex: 1, height: 46, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   mealTypeText: { fontFamily: 'Geist_700Bold', fontSize: 11 },
+  reminderBox: { borderWidth: 1, padding: 12, gap: 12 },
+  reminderToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reminderToggleText: { fontFamily: 'Geist_700Bold', fontSize: 13 },
+  switchTrack: { width: 44, height: 24, borderRadius: 12, padding: 3 },
+  switchThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+  switchThumbOn: { transform: [{ translateX: 20 }] },
+  timeInputRow: { flexDirection: 'row', gap: 8 },
+  timeField: { flex: 1, gap: 6 },
+  timeInput: { height: 42, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Geist_700Bold', fontSize: 13, textAlign: 'center' },
+  periodRow: { flexDirection: 'row', gap: 6 },
+  periodBtn: { flex: 1, height: 30, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  periodText: { fontFamily: 'Geist_700Bold', fontSize: 10 },
   modalSaveBtn: { height: 52, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   modalSaveText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
 });

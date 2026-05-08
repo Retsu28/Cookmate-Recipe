@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Alert,
   View,
@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { useAppTheme } from '../context/ThemeContext';
@@ -21,6 +22,12 @@ import AIAssistantWidget from '../components/AIAssistantWidget';
 import { plannerApi } from '../api/api';
 import { getGroceryListCached, getMealPlansCached, offlineCache } from '../offline/cacheService';
 import { OFFLINE_MESSAGE, useNetwork } from '../offline/network';
+import {
+  formatPlanWindow,
+  getCountdownText,
+  getPlanWindowStatus,
+  syncPlannerLocalNotifications,
+} from '../notifications/plannerNotifications';
 
 // Mirrors src/pages/MealPlanner.tsx mealSlots — orange-300 / orange-400 / orange-500
 const mealSlots = [
@@ -33,9 +40,30 @@ function dateKey(date) {
   return format(date, 'yyyy-MM-dd');
 }
 
-export default function MealPlannerScreen({ navigation }) {
+function dateFromKey(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function fallbackSlotWindow(slotId) {
+  if (slotId === 'breakfast') return '7:00 AM - 8:00 AM';
+  if (slotId === 'lunch') return '11:00 AM - 2:00 PM';
+  return '6:00 PM - 8:00 PM';
+}
+
+function slotWindowLabel(slotId, slotMeals) {
+  const custom = slotMeals.find((plan) => plan.custom_time_enabled);
+  const plan = custom || slotMeals[0];
+  return plan ? formatPlanWindow(plan) : fallbackSlotWindow(slotId);
+}
+
+export default function MealPlannerScreen({ navigation, route }) {
   const { colors, isDark } = useAppTheme();
   const { isOnline } = useNetwork();
+  const [now, setNow] = useState(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState('week'); // 'day' | 'week' — matches web pill toggle state
   const [plannedMeals, setPlannedMeals] = useState([]);
@@ -50,8 +78,14 @@ export default function MealPlannerScreen({ navigation }) {
   const [currentSavedListId, setCurrentSavedListId] = useState(null);
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
+  const didInitialPlanFocus = useRef(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
   const [slotModal, setSlotModal] = useState(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const startDate = view === 'week' ? startOfWeek(currentDate) : currentDate;
   const endDate = view === 'week' ? endOfWeek(currentDate) : currentDate;
@@ -66,6 +100,12 @@ export default function MealPlannerScreen({ navigation }) {
     });
     return grouped;
   }, [plannedMeals]);
+
+  const upcomingMeal = useMemo(() => {
+    return plannedMeals
+      .filter((plan) => plan.reminder_enabled && getPlanWindowStatus(plan, now) !== 'ended')
+      .sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime())[0] || null;
+  }, [plannedMeals, now]);
 
   const displayedGroceryList = useMemo(() => {
     if (!groceryList) return null;
@@ -101,18 +141,20 @@ export default function MealPlannerScreen({ navigation }) {
     };
   }, [groceryList, selectedSlots, plansByDateAndType]);
 
-  const loadPlans = async () => {
-    setPlansLoading(true);
+  const loadPlans = useCallback(async ({ showLoader = true } = {}) => {
+    if (showLoader) setPlansLoading(true);
     try {
       const response = await getMealPlansCached(() => plannerApi.getPlan());
-      setPlannedMeals(response?.data?.plans || []);
+      const nextPlans = response?.data?.plans || [];
+      setPlannedMeals(nextPlans);
+      syncPlannerLocalNotifications(nextPlans).catch(() => {});
     } catch (err) {
       console.error('Failed to load meal plans', err);
       setPlannedMeals([]);
     } finally {
       setPlansLoading(false);
     }
-  };
+  }, []);
 
   const hydrateCachedGroceryList = async () => {
     const cached = await offlineCache.groceryList.get('latest');
@@ -137,7 +179,25 @@ export default function MealPlannerScreen({ navigation }) {
     loadPlans();
     hydrateCachedGroceryList();
     loadSavedLists();
-  }, []);
+  }, [loadPlans]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const focusedDate = dateFromKey(route?.params?.plannedDate);
+      if (focusedDate) {
+        setCurrentDate(focusedDate);
+        navigation.setParams?.({ plannedDate: undefined });
+      }
+
+      if (didInitialPlanFocus.current) {
+        loadPlans({ showLoader: false });
+      } else {
+        didInitialPlanFocus.current = true;
+      }
+
+      return undefined;
+    }, [loadPlans, navigation, route?.params?.plannedDate]),
+  );
 
   const saveCurrentGroceryList = async () => {
     if (!groceryList || !groceryList.items?.length) {
@@ -429,6 +489,36 @@ export default function MealPlannerScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          <View
+            style={[
+              st.upcomingCard,
+              { backgroundColor: colors.surface, borderColor: softBorder },
+              cardShadow,
+            ]}
+          >
+            <View style={[st.upcomingIcon, { backgroundColor: isDark ? 'rgba(249,115,22,0.14)' : '#ffedd5' }]}>
+              <Ionicons name="notifications" size={20} color={colors.primary} />
+            </View>
+            <View style={st.upcomingBody}>
+              <Text style={[st.upcomingKicker, { color: colors.textSubtle }]}>UPCOMING MEAL</Text>
+              {upcomingMeal ? (
+                <>
+                  <Text style={[st.upcomingTitle, { color: colors.text }]} numberOfLines={1}>
+                    {upcomingMeal.meal_type_label} · {formatPlanWindow(upcomingMeal)}
+                    {upcomingMeal.custom_time_enabled ? ' · CUSTOM' : ''}
+                  </Text>
+                  <Text style={[st.upcomingMeta, { color: colors.textMuted }]} numberOfLines={2}>
+                    {getCountdownText(upcomingMeal, now)} · {upcomingMeal.recipe?.title || 'Planned recipe'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={[st.upcomingMeta, { color: colors.textMuted }]}>
+                  No upcoming reminders in the current planner window.
+                </Text>
+              )}
+            </View>
+          </View>
+
           {/* Week grid — horizontal scroll with 7 day columns, each with day-header + 3 meal slots */}
           <ScrollView
             horizontal
@@ -487,6 +577,9 @@ export default function MealPlannerScreen({ navigation }) {
                         const slotMeals = plannedMeals.filter(
                           (m) => m.planned_date === dateKey(day) && m.meal_type === slot.id,
                         );
+                        const windowLabel = slotWindowLabel(slot.id, slotMeals);
+                        const hasCustomTime = slotMeals.some((plan) => plan.custom_time_enabled);
+                        const isActiveSlot = slotMeals.some((plan) => getPlanWindowStatus(plan, now) === 'active');
                         const meal = slotMeals[0];
                         const extraCount = slotMeals.length - 1;
                         if (meal) {
@@ -534,10 +627,28 @@ export default function MealPlannerScreen({ navigation }) {
                                   {slot.label.toUpperCase()}
                                 </Text>
                                 <Text
+                                  style={[
+                                    st.slotTimeLabel,
+                                    { color: isActiveSlot ? colors.primary : colors.textSubtle },
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {windowLabel.toUpperCase()}{hasCustomTime ? ' · CUSTOM' : ''}
+                                </Text>
+                                <Text
                                   style={[st.recipeName, { color: colors.text }]}
                                   numberOfLines={1}
                                 >
                                   {meal.recipe?.title || 'Planned recipe'}
+                                </Text>
+                                <Text
+                                  style={[
+                                    st.slotCountdown,
+                                    { color: isActiveSlot ? colors.primary : colors.textMuted },
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {getCountdownText(meal, now)}
                                 </Text>
                                 {extraCount > 0 && (
                                   <TouchableOpacity
@@ -572,6 +683,12 @@ export default function MealPlannerScreen({ navigation }) {
                               onPress={() => navigation.navigate('Recipes')}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
+                              <Text style={[st.emptySlotLabel, { color: colors.textSubtle }]}>
+                                {slot.label.toUpperCase()}
+                              </Text>
+                              <Text style={[st.emptySlotTime, { color: colors.textSubtle }]}>
+                                {windowLabel.toUpperCase()}
+                              </Text>
                               <Text style={[st.emptySlotText, { color: colors.textSubtle }]}>
                                 {plansLoading ? 'Loading' : 'Add'}
                               </Text>
@@ -981,6 +1098,41 @@ const st = StyleSheet.create({
     fontFamily: 'Geist_700Bold',
     fontSize: 13,
   },
+  upcomingCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 16,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  upcomingIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upcomingBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  upcomingKicker: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 9,
+    letterSpacing: 1.8,
+  },
+  upcomingTitle: {
+    fontFamily: 'Geist_800ExtraBold',
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
+  upcomingMeta: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 12,
+    lineHeight: 17,
+  },
 
   // Week grid (horizontal scroll)
   weekScroll: { paddingRight: 16 },
@@ -1048,11 +1200,22 @@ const st = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 1.5,
   },
+  slotTimeLabel: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 9,
+    letterSpacing: 0.8,
+    lineHeight: 13,
+  },
   recipeName: {
     fontFamily: 'Geist_700Bold',
     fontSize: 14,
     letterSpacing: -0.2,
     lineHeight: 18,
+  },
+  slotCountdown: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 10,
+    lineHeight: 14,
   },
   extraCountText: {
     fontFamily: 'Geist_700Bold',
@@ -1067,6 +1230,20 @@ const st = StyleSheet.create({
     minHeight: 110,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptySlotLabel: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textAlign: 'center',
+  },
+  emptySlotTime: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 8,
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    marginTop: 3,
+    marginBottom: 6,
   },
   emptySlotText: {
     fontFamily: 'Geist_700Bold',

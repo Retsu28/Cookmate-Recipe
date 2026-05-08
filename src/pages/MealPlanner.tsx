@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  BellRing,
   Bookmark,
   BookmarkPlus,
   Calendar as CalendarIcon,
@@ -31,6 +32,13 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { OFFLINE_MESSAGE } from '@/offline/network';
 import { getGroceryListCached, getMealPlansCached, offlineCache } from '@/offline/cacheService';
 import {
+  formatPlanWindow,
+  getCountdownText,
+  getPlanWindowStatus,
+  requestBrowserPlannerNotificationPermission,
+} from '@/notifications/plannerNotifications';
+import {
+  getDeviceTimezone,
   mealPlannerService,
   type GroceryList,
   type MealPlan,
@@ -55,10 +63,31 @@ function planTime(plan: MealPlan) {
   return time > 0 ? `${time} min` : 'Recipe';
 }
 
+function fallbackSlotWindow(slotId: MealType) {
+  if (slotId === 'breakfast') return '7:00 AM - 8:00 AM';
+  if (slotId === 'lunch') return '11:00 AM - 2:00 PM';
+  return '6:00 PM - 8:00 PM';
+}
+
+function slotWindowLabel(slotId: MealType, slotPlans: MealPlan[]) {
+  const customPlan = slotPlans.find((plan) => plan.custom_time_enabled);
+  const plan = customPlan || slotPlans[0];
+  if (!plan) return fallbackSlotWindow(slotId);
+  return formatPlanWindow(plan);
+}
+
+function slotReminderStatus(slotPlans: MealPlan[], now: Date) {
+  if (slotPlans.some((plan) => getPlanWindowStatus(plan, now) === 'active')) return 'Active now';
+  if (slotPlans.some((plan) => plan.notification_sent)) return 'Sent';
+  if (slotPlans.some((plan) => plan.reminder_enabled)) return 'Reminder on';
+  return 'Reminder off';
+}
+
 export default function MealPlanner() {
   const navigate = useNavigate();
   const isInitialLoading = useInitialContentLoading();
   const isOnline = useOnlineStatus();
+  const [now, setNow] = useState(() => new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week'>('week');
   const [plans, setPlans] = useState<MealPlan[]>([]);
@@ -76,6 +105,19 @@ export default function MealPlanner() {
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [slotModal, setSlotModal] = useState<{ plans: MealPlan[]; slotLabel: string; date: Date } | null>(null);
 
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const interval = window.setInterval(tick, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
   const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
   const visibleDays = view === 'week'
@@ -91,6 +133,15 @@ export default function MealPlanner() {
     return grouped;
   }, [plans]);
 
+  const upcomingMeal = useMemo(() => {
+    return plans
+      .filter((plan) => plan.reminder_enabled && getPlanWindowStatus(plan, now) !== 'ended')
+      .sort(
+        (a, b) =>
+          new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime(),
+      )[0] || null;
+  }, [plans, now]);
+
   const loadPlans = async () => {
     setPlansLoading(true);
     setPlansError(null);
@@ -105,6 +156,21 @@ export default function MealPlanner() {
       setPlansError(err instanceof Error ? err.message : 'Failed to load meal plans.');
     } finally {
       setPlansLoading(false);
+    }
+  };
+
+  const enableBrowserReminders = async () => {
+    const permission = await requestBrowserPlannerNotificationPermission();
+    if (permission === 'granted') {
+      toast.success('Browser reminders enabled', {
+        description: 'CookMate can notify you while the web app is open or installed as a PWA.',
+      });
+    } else if (permission === 'unsupported') {
+      toast.error('Browser reminders are not supported here.');
+    } else {
+      toast.error('Browser reminders are blocked', {
+        description: 'Enable notifications in your browser settings to receive web reminders.',
+      });
     }
   };
 
@@ -133,6 +199,14 @@ export default function MealPlanner() {
     loadPlans();
     hydrateCachedGroceryList();
     loadSavedLists();
+  }, []);
+
+  useEffect(() => {
+    const handlePlannerSync = () => {
+      loadPlans();
+    };
+    window.addEventListener('cookmate:planner-sync', handlePlannerSync);
+    return () => window.removeEventListener('cookmate:planner-sync', handlePlannerSync);
   }, []);
 
   const saveCurrentGroceryList = async () => {
@@ -420,6 +494,46 @@ export default function MealPlanner() {
             </div>
           </div>
 
+          <div className="grid gap-3 rounded-[1.5rem] border border-orange-100 bg-white p-4 shadow-sm dark:border-stone-700 dark:bg-stone-900 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300">
+                <BellRing size={20} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+                  Upcoming Meal
+                </p>
+                {upcomingMeal ? (
+                  <>
+                    <p className="mt-1 truncate text-base font-extrabold text-stone-900 dark:text-stone-100">
+                      {upcomingMeal.meal_type_label} · {formatPlanWindow(upcomingMeal)}
+                      {upcomingMeal.custom_time_enabled ? (
+                        <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+                          Custom
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                      {getCountdownText(upcomingMeal, now)} · {upcomingMeal.recipe.title}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                    No upcoming reminders in the current planner window.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={enableBrowserReminders}
+              className="h-10 rounded-full px-4 text-xs font-bold"
+            >
+              Enable web reminders
+            </Button>
+          </div>
+
           {plansError ? (
             <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
               {plansError}
@@ -469,6 +583,10 @@ export default function MealPlanner() {
                       <div className="flex flex-1 flex-col gap-3">
                         {mealSlots.map((slot) => {
                           const slotPlans = plansByDateAndType.get(`${dateKey}|${slot.id}`) || [];
+                          const windowLabel = slotWindowLabel(slot.id, slotPlans);
+                          const hasCustomTime = slotPlans.some((plan) => plan.custom_time_enabled);
+                          const statusLabel = slotReminderStatus(slotPlans, now);
+                          const isActiveSlot = slotPlans.some((plan) => getPlanWindowStatus(plan, now) === 'active');
 
                           return (
                             <div
@@ -481,12 +599,22 @@ export default function MealPlanner() {
                                   : "border border-orange-100 bg-white dark:border-[#2e2b28] dark:bg-[#161514] hover:border-orange-200 dark:hover:border-[#3d3835]"
                               )}
                             >
-                              <div className="mb-3 flex items-center justify-between gap-2">
+                              <div className="mb-3 flex items-start justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <span className={cn('h-2.5 w-2.5 rounded-full', slot.color)} />
-                                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-400 dark:text-stone-500">
-                                    {slot.label}
-                                  </p>
+                                  <div>
+                                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                                      {slot.label} · {windowLabel}
+                                    </p>
+                                    <p className={cn(
+                                      'mt-1 text-[9px] font-extrabold uppercase tracking-widest',
+                                      isActiveSlot
+                                        ? 'text-orange-600 dark:text-orange-300'
+                                        : 'text-stone-300 dark:text-stone-600',
+                                    )}>
+                                      {hasCustomTime ? 'Custom time · ' : ''}{statusLabel}
+                                    </p>
+                                  </div>
                                 </div>
                                 <Link
                                   to="/recipes"
@@ -526,6 +654,13 @@ export default function MealPlanner() {
                                       </p>
                                       <div className="mt-2 flex flex-col gap-1 text-[10px] font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">
                                         <span>{planTime(plan)}</span>
+                                        <span className={cn(
+                                          getPlanWindowStatus(plan, now) === 'active'
+                                            ? 'text-orange-600 dark:text-orange-300'
+                                            : 'text-stone-400 dark:text-stone-500',
+                                        )}>
+                                          {getCountdownText(plan, now)}
+                                        </span>
                                         {plan.recipe.category ? <span>{plan.recipe.category}</span> : null}
                                       </div>
                                       <div className="mt-auto flex items-center gap-2 pt-3">
@@ -976,6 +1111,10 @@ function EditPlanModal({
 }) {
   const [plannedDate, setPlannedDate] = useState(plan.planned_date);
   const [mealType, setMealType] = useState<MealType>(plan.meal_type);
+  const [reminderEnabled, setReminderEnabled] = useState(plan.reminder_enabled);
+  const [customTimeEnabled, setCustomTimeEnabled] = useState(plan.custom_time_enabled);
+  const [startTime, setStartTime] = useState(plan.start_time || '18:00');
+  const [endTime, setEndTime] = useState(plan.end_time || '20:00');
   const [saving, setSaving] = useState(false);
 
   const save = async (event: React.FormEvent) => {
@@ -991,6 +1130,11 @@ function EditPlanModal({
       const data = await mealPlannerService.updatePlan(plan.id, {
         planned_date: plannedDate,
         meal_type: mealType,
+        reminder_enabled: reminderEnabled,
+        custom_time_enabled: customTimeEnabled,
+        start_time: startTime,
+        end_time: endTime,
+        timezone: plan.timezone || getDeviceTimezone(),
       });
       await onSaved(data.plan);
       toast.success('Meal plan updated', { description: data.plan.recipe.title });
@@ -1040,6 +1184,84 @@ function EditPlanModal({
                 {slot.label}
               </button>
             ))}
+          </div>
+          <div className="grid gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-3 dark:border-stone-700 dark:bg-stone-800/50">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={reminderEnabled}
+              onClick={() => setReminderEnabled((value) => !value)}
+              className="flex items-center justify-between gap-3 text-left"
+            >
+              <span>
+                <span className="block text-xs font-extrabold text-stone-900 dark:text-stone-100">
+                  Meal reminder
+                </span>
+                <span className="block text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                  Notify when the cooking window starts.
+                </span>
+              </span>
+              <span className={cn(
+                'flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors',
+                reminderEnabled ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-700',
+              )}>
+                <span className={cn(
+                  'h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                  reminderEnabled ? 'translate-x-5' : 'translate-x-0',
+                )} />
+              </span>
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={customTimeEnabled}
+              onClick={() => setCustomTimeEnabled((value) => !value)}
+              className="flex items-center justify-between gap-3 text-left"
+            >
+              <span>
+                <span className="block text-xs font-extrabold text-stone-900 dark:text-stone-100">
+                  Custom time
+                </span>
+                <span className="block text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                  Override the default {mealType} window.
+                </span>
+              </span>
+              <span className={cn(
+                'flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors',
+                customTimeEnabled ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-700',
+              )}>
+                <span className={cn(
+                  'h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                  customTimeEnabled ? 'translate-x-5' : 'translate-x-0',
+                )} />
+              </span>
+            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+                  Start
+                </span>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  disabled={!customTimeEnabled}
+                  className="h-11 w-full rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+                  End
+                </span>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(event) => setEndTime(event.target.value)}
+                  disabled={!customTimeEnabled}
+                  className="h-11 w-full rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                />
+              </label>
+            </div>
           </div>
         </div>
         <div className="flex flex-col-reverse gap-2 border-t border-orange-100 bg-orange-50/50 p-5 sm:flex-row sm:justify-end dark:border-stone-700 dark:bg-stone-900/60">

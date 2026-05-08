@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
@@ -9,6 +10,8 @@ const { testDbConnection } = require('./config/db');
 const { ensureAdminAccount } = require('./models/adminBootstrap');
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
+const { startMealReminderWorker } = require('./workers/mealReminderWorker');
+const { attachPlannerSocketServer } = require('./realtime/plannerSocket');
 
 async function startServer() {
   await testDbConnection();
@@ -39,10 +42,14 @@ async function startServer() {
   app.use(errorHandler);
 
   // ─── Start ───
-  app.listen(config.port, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  attachPlannerSocketServer(server, { corsOrigins: config.corsOrigins });
+
+  server.listen(config.port, '0.0.0.0', () => {
     console.log(`🚀 CookMate API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
     console.log(`   CORS origins: ${config.corsOrigins.join(', ')}`);
+    startMealReminderWorker();
   });
 }
 

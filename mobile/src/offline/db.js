@@ -6,6 +6,7 @@
 //   saved_recipes  (id, data JSON, updated_at)
 //   meal_plans     (id, data JSON, updated_at)
 //   grocery_lists  (id, data JSON, updated_at)
+//   reminder_events (id, data JSON, updated_at)
 //   sync_queue     (id, type, payload JSON, created_at)
 //
 // Usage:
@@ -40,6 +41,11 @@ async function openDb() {
       updated_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS grocery_lists (
+      id TEXT PRIMARY KEY NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS reminder_events (
       id TEXT PRIMARY KEY NOT NULL,
       data TEXT NOT NULL,
       updated_at INTEGER NOT NULL
@@ -143,6 +149,7 @@ export const recipeCache = makeCache('recipes');
 export const savedRecipeCache = makeCache('saved_recipes');
 export const mealPlanCache = makeCache('meal_plans');
 export const groceryListCache = makeCache('grocery_lists');
+export const reminderEventCache = makeCache('reminder_events');
 
 export const queue = {
   async enqueue(type, payload) {
@@ -185,6 +192,7 @@ export async function clearOfflineCache() {
     await savedRecipeCache.clear();
     await mealPlanCache.clear();
     await groceryListCache.clear();
+    await reminderEventCache.clear();
   } catch {
     // best-effort
   }

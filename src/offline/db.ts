@@ -10,11 +10,12 @@
 // Purely additive: no existing service depends on this file.
 
 const DB_NAME = 'cookmate-offline';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_RECIPES = 'recipes';
 const STORE_SAVED = 'saved_recipes';
 const STORE_MEAL_PLANS = 'meal_plans';
 const STORE_GROCERY_LISTS = 'grocery_lists';
+const STORE_REMINDER_EVENTS = 'reminder_events';
 const STORE_QUEUE = 'sync_queue';
 
 type CacheRow<T = unknown> = {
@@ -56,6 +57,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_GROCERY_LISTS)) {
         db.createObjectStore(STORE_GROCERY_LISTS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_REMINDER_EVENTS)) {
+        db.createObjectStore(STORE_REMINDER_EVENTS, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(STORE_QUEUE)) {
         db.createObjectStore(STORE_QUEUE, { keyPath: 'id', autoIncrement: true });
@@ -175,6 +179,7 @@ export const recipeCache = makeCache<Record<string, unknown>>(STORE_RECIPES);
 export const savedRecipeCache = makeCache<Record<string, unknown>>(STORE_SAVED);
 export const mealPlanCache = makeCache<Record<string, unknown>>(STORE_MEAL_PLANS);
 export const groceryListCache = makeCache<Record<string, unknown>>(STORE_GROCERY_LISTS);
+export const reminderEventCache = makeCache<Record<string, unknown>>(STORE_REMINDER_EVENTS);
 
 export const queue = {
   async enqueue(type: string, payload: unknown): Promise<number | null> {
@@ -222,6 +227,7 @@ export async function clearOfflineCache(): Promise<void> {
     await savedRecipeCache.clear();
     await mealPlanCache.clear();
     await groceryListCache.clear();
+    await reminderEventCache.clear();
   } catch {
     /* best-effort */
   }

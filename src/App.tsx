@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import AppShell from './app/AppShell';
 import SplashScreen from '@/components/SplashScreen';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import PlannerReminderBridge from '@/notifications/PlannerReminderBridge';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AIChatProvider } from '@/context/AIChatContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
@@ -78,6 +79,7 @@ export default function App() {
         <SignOutSplash />
         <Router>
           <AIChatProvider>
+          <PlannerReminderBridge />
           <Routes>
             <Route element={<AdminGate />}>
               <Route path="admin" element={<AdminLayout />}>

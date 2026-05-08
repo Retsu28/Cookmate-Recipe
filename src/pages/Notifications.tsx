@@ -1,28 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
-  Bell, Clock, AlertTriangle, ShoppingBag,
-  Target, Sparkles, Check, Trash2, MoreVertical
+  Bell, Clock, ShoppingBag, Check, Trash2, MoreVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { NotificationsPageSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
+import { mealPlannerService, type MealPlan, type GroceryList } from '@/services/mealPlannerService';
+import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '@/notifications/plannerNotifications';
 
-const initialNotifications = [
-  { id: 1, type: 'Reminder', title: 'Lunch in 30 minutes', message: 'Time to prep your Quinoa Salad for lunch.', time: '10 mins ago', read: false, icon: Clock, color: 'text-orange-500 bg-orange-100/60 dark:text-orange-400 dark:bg-orange-500/20', actionPath: '/planner' },
-  { id: 2, type: 'Expiring', title: 'Ingredient Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 hours ago', read: false, icon: AlertTriangle, color: 'text-orange-600 bg-orange-100/70 dark:text-orange-400 dark:bg-orange-500/20', actionPath: '/search' },
-  { id: 3, type: 'Shopping', title: 'Shopping List Update', message: '3 new items added to your list based on next week\'s plan.', time: '5 hours ago', read: true, icon: ShoppingBag, color: 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20', actionPath: '/planner' },
-  { id: 4, type: 'Goal', title: 'Goal Progress', message: 'You\'ve cooked 5 healthy meals this week! Keep it up.', time: 'Yesterday', read: true, icon: Target, color: 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20', actionPath: '/profile' },
-  { id: 5, type: 'Recommendation', title: 'New Recipe Match', message: 'A new "Creamy Tuscan Chicken" recipe matches your taste.', time: 'Yesterday', read: true, icon: Sparkles, color: 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20', actionPath: '/recipe/1' },
-];
+type PlannerNotification = {
+  id: number;
+  type: 'Reminder' | 'Shopping';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  icon: typeof Clock | typeof ShoppingBag;
+  color: string;
+  actionPath: string;
+};
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState<PlannerNotification[]>([]);
   const [filter, setFilter] = useState('all');
   const isInitialLoading = useInitialContentLoading();
 
@@ -32,6 +37,57 @@ export default function NotificationsPage() {
   const filtered = filter === 'all'
     ? notifications
     : notifications.filter(n => normalizeType(n.type) === normalizeType(filter));
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [upcomingRes, groceryRes] = await Promise.all([
+          mealPlannerService.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
+          mealPlannerService.getGroceryList().catch(() => null),
+        ]);
+        if (cancelled) return;
+        const plans = (upcomingRes as { plans?: MealPlan[] } | null)?.plans || [];
+        const groceryList = (groceryRes as { groceryList?: GroceryList } | null)?.groceryList;
+        const nextNotifications: PlannerNotification[] = [];
+
+        plans.forEach((plan: MealPlan) => {
+          const status = getPlanWindowStatus(plan);
+          nextNotifications.push({
+            id: plan.id,
+            type: 'Reminder',
+            title: `${plan.meal_type_label} · ${formatPlanWindow(plan)}`,
+            message: `${getCountdownText(plan)} · ${plan.recipe?.title || 'Planned meal'}`,
+            time: status === 'active' ? 'Active now' : 'Upcoming',
+            read: false,
+            icon: Clock,
+            color: 'text-orange-500 bg-orange-100/60 dark:text-orange-400 dark:bg-orange-500/20',
+            actionPath: plan.recipe?.id ? `/recipe/${plan.recipe.id}` : '/planner',
+          });
+        });
+
+        if (groceryList && groceryList.totalItems > 0) {
+          nextNotifications.push({
+            id: -1,
+            type: 'Shopping',
+            title: 'Grocery list ready',
+            message: `${groceryList.totalItems} items from your meal planner.`,
+            time: 'Now',
+            read: false,
+            icon: ShoppingBag,
+            color: 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20',
+            actionPath: '/planner',
+          });
+        }
+
+        setNotifications(nextNotifications);
+      } catch {
+        setNotifications([]);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   const markAllRead = () => {
     setNotifications(current => current.map(n => ({ ...n, read: true })));
@@ -92,7 +148,7 @@ export default function NotificationsPage() {
 
         <Tabs defaultValue="all" onValueChange={setFilter} className="space-y-8">
           <TabsList className="bg-white p-1.5 rounded-full border border-stone-100 shadow-sm w-full overflow-x-auto justify-start sm:justify-center scrollbar-hide flex dark:bg-stone-800/50 dark:border-stone-700 dark:shadow-none">
-            {['All', 'Reminders', 'Expiring', 'Shopping', 'Goals', 'Recommendations'].map((t) => (
+            {['All', 'Reminders', 'Shopping'].map((t) => (
               <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-full px-6 py-2.5 transition-all whitespace-nowrap data-active:bg-orange-500 data-active:text-white dark:text-stone-300 data-active:dark:bg-orange-600">
                 {t}
               </TabsTrigger>

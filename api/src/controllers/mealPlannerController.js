@@ -1,11 +1,28 @@
 const { pool } = require('../config/db');
-
-const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'];
-const MEAL_TYPE_LABELS = {
-  breakfast: 'Breakfast',
-  lunch: 'Lunch',
-  dinner: 'Dinner',
-};
+const {
+  PH_TIMEZONE,
+  MEAL_TYPES,
+  MEAL_TYPE_LABELS,
+  getDefaultMealWindow,
+  normalizeMealType,
+  normalizePlannedDate,
+  normalizeTime,
+  normalizeTimezone,
+  isValidTimeWindow,
+  buildSchedule,
+  formatWindowLabel,
+  getWindowStatus,
+} = require('../services/plannerTime');
+const {
+  syncPlannerNotificationForPlan,
+  syncPlannerNotificationsForPlans,
+  cancelPendingPlannerNotifications,
+  registerReminderToken,
+  acknowledgeLocalSchedule,
+  processDuePlannerReminders,
+  logReminderEvent,
+} = require('../services/plannerReminderService');
+const { emitPlannerPlansChanged } = require('../realtime/plannerSocket');
 
 const CATEGORY_ORDER = ['Produce', 'Protein', 'Dairy', 'Pantry', 'Spices', 'Other'];
 const UNIT_WORDS = new Set([
@@ -17,20 +34,6 @@ const UNIT_WORDS = new Set([
 ]);
 
 let mealTypeColumnPromise = null;
-
-function normalizeMealType(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  return MEAL_TYPES.includes(normalized) ? normalized : null;
-}
-
-function normalizePlannedDate(value) {
-  const candidate = String(value || '').trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return null;
-
-  const parsed = new Date(`${candidate}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10) === candidate ? candidate : null;
-}
 
 function parsePositiveInteger(value) {
   const parsed = Number.parseInt(value, 10);
@@ -82,6 +85,17 @@ function planSelectSql(column) {
       mp.recipe_id,
       TO_CHAR(mp.planned_date, 'YYYY-MM-DD') AS planned_date,
       LOWER(mp.${column}) AS meal_type,
+      TO_CHAR(mp.start_time, 'HH24:MI') AS start_time,
+      TO_CHAR(mp.end_time, 'HH24:MI') AS end_time,
+      mp.timezone,
+      mp.scheduled_start_at,
+      mp.scheduled_end_at,
+      mp.reminder_enabled,
+      mp.custom_time_enabled,
+      mp.notification_sent,
+      mp.notification_sent_at,
+      mp.reminder_version,
+      mp.updated_at,
       mp.created_at,
       r.title AS recipe_title,
       r.description AS recipe_description,
@@ -106,6 +120,18 @@ function toPlan(row) {
     planned_date: row.planned_date,
     meal_type: row.meal_type,
     meal_type_label: MEAL_TYPE_LABELS[row.meal_type] || row.meal_type,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    time_window_label: formatWindowLabel(row.start_time, row.end_time),
+    timezone: row.timezone || PH_TIMEZONE,
+    scheduled_start_at: row.scheduled_start_at,
+    scheduled_end_at: row.scheduled_end_at,
+    reminder_enabled: row.reminder_enabled !== false,
+    custom_time_enabled: row.custom_time_enabled === true,
+    notification_sent: row.notification_sent === true,
+    notification_sent_at: row.notification_sent_at,
+    reminder_version: Number(row.reminder_version || 1),
+    updated_at: row.updated_at,
     created_at: row.created_at,
     recipe: {
       id: Number(row.recipe_id),
@@ -140,6 +166,96 @@ async function ensureRecipeExists(recipeId) {
     [recipeId]
   );
   return result.rowCount > 0;
+}
+
+function normalizeBoolean(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+async function getUserMealWindow(userId, mealType) {
+  const normalizedMealType = normalizeMealType(mealType);
+  const fallback = getDefaultMealWindow(normalizedMealType);
+
+  if (!userId || !normalizedMealType) return fallback;
+
+  const result = await pool.query(
+    `SELECT
+       TO_CHAR(start_time, 'HH24:MI') AS start_time,
+       TO_CHAR(end_time, 'HH24:MI') AS end_time,
+       timezone,
+       reminder_enabled
+     FROM user_meal_preferences
+     WHERE user_id = $1 AND meal_type = $2
+     LIMIT 1`,
+    [userId, normalizedMealType]
+  );
+
+  if (result.rowCount === 0) return fallback;
+  return {
+    start_time: result.rows[0].start_time,
+    end_time: result.rows[0].end_time,
+    timezone: result.rows[0].timezone || PH_TIMEZONE,
+    reminder_enabled: result.rows[0].reminder_enabled !== false,
+  };
+}
+
+async function resolvePlanScheduleInput({ userId, mealType, plannedDate, body, existingPlan = null }) {
+  const customTimeEnabled = normalizeBoolean(
+    body?.custom_time_enabled ?? body?.customTimeEnabled,
+    existingPlan?.custom_time_enabled === true ? true : false
+  );
+  const timezone = normalizeTimezone(body?.timezone || existingPlan?.timezone || PH_TIMEZONE);
+  if (!timezone) {
+    return { error: 'timezone must be a valid IANA timezone like Asia/Manila.' };
+  }
+
+  let startTime;
+  let endTime;
+  let reminderEnabled;
+
+  if (customTimeEnabled) {
+    startTime = normalizeTime(body?.start_time ?? body?.startTime ?? existingPlan?.start_time);
+    endTime = normalizeTime(body?.end_time ?? body?.endTime ?? existingPlan?.end_time);
+    reminderEnabled = normalizeBoolean(
+      body?.reminder_enabled ?? body?.reminderEnabled,
+      existingPlan?.reminder_enabled !== false
+    );
+  } else {
+    const preference = await getUserMealWindow(userId, mealType);
+    startTime = preference.start_time;
+    endTime = preference.end_time;
+    reminderEnabled = normalizeBoolean(
+      body?.reminder_enabled ?? body?.reminderEnabled,
+      existingPlan ? existingPlan.reminder_enabled !== false : preference.reminder_enabled !== false
+    );
+  }
+
+  if (!startTime || !endTime || !isValidTimeWindow(startTime, endTime)) {
+    return { error: 'start_time must be before end_time and both must use HH:mm format.' };
+  }
+
+  const schedule = buildSchedule({
+    plannedDate,
+    startTime,
+    endTime,
+    timezone,
+  });
+
+  if (!schedule) {
+    return { error: 'Invalid planned date or meal time window.' };
+  }
+
+  return {
+    schedule,
+    reminderEnabled,
+    customTimeEnabled,
+  };
 }
 
 function parseQuantity(raw) {
@@ -409,15 +525,55 @@ exports.createPlan = async (req, res) => {
       return res.status(404).json({ error: 'Recipe not found.' });
     }
 
+    const resolved = await resolvePlanScheduleInput({
+      userId,
+      mealType,
+      plannedDate,
+      body: req.body,
+    });
+    if (resolved.error) {
+      return res.status(400).json({ error: resolved.error });
+    }
+
     const mealTypeColumn = await getMealTypeColumn();
     const insert = await pool.query(
-      `INSERT INTO meal_plans (user_id, recipe_id, planned_date, ${mealTypeColumn})
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO meal_plans (
+         user_id,
+         recipe_id,
+         planned_date,
+         ${mealTypeColumn},
+         start_time,
+         end_time,
+         timezone,
+         scheduled_start_at,
+         scheduled_end_at,
+         reminder_enabled,
+         custom_time_enabled
+       )
+       VALUES ($1, $2, $3, $4, $5::time, $6::time, $7, $8, $9, $10, $11)
        RETURNING id`,
-      [userId, recipeId, plannedDate, mealType]
+      [
+        userId,
+        recipeId,
+        plannedDate,
+        mealType,
+        resolved.schedule.start_time,
+        resolved.schedule.end_time,
+        resolved.schedule.timezone,
+        resolved.schedule.scheduled_start_at,
+        resolved.schedule.scheduled_end_at,
+        resolved.reminderEnabled,
+        resolved.customTimeEnabled,
+      ]
     );
 
+    await syncPlannerNotificationForPlan(insert.rows[0].id);
     const plan = await fetchPlanById(insert.rows[0].id, userId);
+    emitPlannerPlansChanged(userId, {
+      reason: 'plan_created',
+      plan_id: Number(plan.id),
+      plan,
+    });
     res.status(201).json({ plan });
   } catch (err) {
     console.error('[mealPlanner/createPlan]', err);
@@ -429,29 +585,80 @@ exports.updatePlan = async (req, res) => {
   try {
     const userId = req.userId;
     const planId = parsePositiveInteger(req.params.id);
-    const plannedDate = normalizePlannedDate(req.body.planned_date);
-    const mealType = normalizeMealType(req.body.meal_type || req.body.meal_slot);
 
-    if (!planId || !plannedDate || !mealType) {
+    if (!planId) {
+      return res.status(400).json({ error: 'Valid meal plan id is required.' });
+    }
+
+    const existingPlan = await fetchPlanById(planId, userId);
+    if (!existingPlan) {
+      return res.status(404).json({ error: 'Meal plan not found.' });
+    }
+
+    const plannedDate = normalizePlannedDate(req.body.planned_date || existingPlan.planned_date);
+    const mealType = normalizeMealType(req.body.meal_type || req.body.meal_slot || existingPlan.meal_type);
+
+    if (!plannedDate || !mealType) {
       return res.status(400).json({
-        error: 'planned_date and meal_type are required.',
+        error: 'planned_date and meal_type must be valid.',
       });
+    }
+
+    const resolved = await resolvePlanScheduleInput({
+      userId,
+      mealType,
+      plannedDate,
+      body: req.body,
+      existingPlan,
+    });
+    if (resolved.error) {
+      return res.status(400).json({ error: resolved.error });
     }
 
     const mealTypeColumn = await getMealTypeColumn();
     const update = await pool.query(
       `UPDATE meal_plans
-       SET planned_date = $1, ${mealTypeColumn} = $2
-       WHERE id = $3 AND user_id = $4
+       SET planned_date = $1,
+           ${mealTypeColumn} = $2,
+           start_time = $3::time,
+           end_time = $4::time,
+           timezone = $5,
+           scheduled_start_at = $6,
+           scheduled_end_at = $7,
+           reminder_enabled = $8,
+           custom_time_enabled = $9,
+           notification_sent = FALSE,
+           notification_sent_at = NULL,
+           reminder_version = reminder_version + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 AND user_id = $11
        RETURNING id`,
-      [plannedDate, mealType, planId, userId]
+      [
+        plannedDate,
+        mealType,
+        resolved.schedule.start_time,
+        resolved.schedule.end_time,
+        resolved.schedule.timezone,
+        resolved.schedule.scheduled_start_at,
+        resolved.schedule.scheduled_end_at,
+        resolved.reminderEnabled,
+        resolved.customTimeEnabled,
+        planId,
+        userId,
+      ]
     );
 
     if (update.rowCount === 0) {
       return res.status(404).json({ error: 'Meal plan not found.' });
     }
 
+    await syncPlannerNotificationForPlan(planId);
     const plan = await fetchPlanById(planId, userId);
+    emitPlannerPlansChanged(userId, {
+      reason: 'plan_updated',
+      plan_id: Number(plan.id),
+      plan,
+    });
     res.json({ plan });
   } catch (err) {
     console.error('[mealPlanner/updatePlan]', err);
@@ -479,10 +686,298 @@ exports.deletePlan = async (req, res) => {
       return res.status(404).json({ error: 'Meal plan not found.' });
     }
 
+    await cancelPendingPlannerNotifications(planId, 'plan_deleted');
+    emitPlannerPlansChanged(userId, {
+      reason: 'plan_deleted',
+      plan_id: planId,
+    });
     res.json({ success: true, id: planId });
   } catch (err) {
     console.error('[mealPlanner/deletePlan]', err);
     res.status(500).json({ error: 'Failed to remove meal plan.' });
+  }
+};
+
+function toPreference(row, mealType) {
+  const fallback = getDefaultMealWindow(mealType || row?.meal_type);
+  const type = normalizeMealType(row?.meal_type || mealType);
+  return {
+    meal_type: type,
+    meal_type_label: MEAL_TYPE_LABELS[type] || type,
+    start_time: row?.start_time || fallback.start_time,
+    end_time: row?.end_time || fallback.end_time,
+    time_window_label: formatWindowLabel(row?.start_time || fallback.start_time, row?.end_time || fallback.end_time),
+    timezone: row?.timezone || PH_TIMEZONE,
+    reminder_enabled: row?.reminder_enabled !== false,
+    is_default: !row,
+  };
+}
+
+exports.getPreferences = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const result = await pool.query(
+      `SELECT
+         meal_type,
+         TO_CHAR(start_time, 'HH24:MI') AS start_time,
+         TO_CHAR(end_time, 'HH24:MI') AS end_time,
+         timezone,
+         reminder_enabled
+       FROM user_meal_preferences
+       WHERE user_id = $1`,
+      [userId]
+    );
+    const byType = new Map(result.rows.map((row) => [row.meal_type, row]));
+    res.json({
+      timezone: PH_TIMEZONE,
+      preferences: MEAL_TYPES.map((mealType) => toPreference(byType.get(mealType), mealType)),
+    });
+  } catch (err) {
+    console.error('[mealPlanner/getPreferences]', err);
+    res.status(500).json({ error: 'Failed to fetch meal preferences.' });
+  }
+};
+
+async function applyPreferenceToFuturePlans(userId, preference) {
+  const scheduleSql = `
+    scheduled_start_at = (planned_date::timestamp + $3::time) AT TIME ZONE $5,
+    scheduled_end_at = (planned_date::timestamp + $4::time) AT TIME ZONE $5
+  `;
+  const result = await pool.query(
+    `UPDATE meal_plans
+     SET start_time = $3::time,
+         end_time = $4::time,
+         timezone = $5,
+         ${scheduleSql},
+         reminder_enabled = $6,
+         notification_sent = FALSE,
+         notification_sent_at = NULL,
+         reminder_version = reminder_version + 1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE user_id = $1
+       AND LOWER(meal_type) = $2
+       AND custom_time_enabled = FALSE
+       AND planned_date >= ((clock_timestamp() AT TIME ZONE $5)::date)
+     RETURNING id`,
+    [
+      userId,
+      preference.meal_type,
+      preference.start_time,
+      preference.end_time,
+      preference.timezone,
+      preference.reminder_enabled,
+    ]
+  );
+  return result.rows.map((row) => Number(row.id));
+}
+
+exports.updatePreferences = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const input = Array.isArray(req.body?.preferences)
+      ? req.body.preferences
+      : [req.body];
+
+    const normalizedPreferences = [];
+    for (const item of input) {
+      const mealType = normalizeMealType(item?.meal_type || item?.mealType);
+      const startTime = normalizeTime(item?.start_time || item?.startTime);
+      const endTime = normalizeTime(item?.end_time || item?.endTime);
+      const timezone = normalizeTimezone(item?.timezone || PH_TIMEZONE);
+      const reminderEnabled = normalizeBoolean(item?.reminder_enabled ?? item?.reminderEnabled, true);
+
+      if (!mealType || !startTime || !endTime || !timezone || !isValidTimeWindow(startTime, endTime)) {
+        return res.status(400).json({
+          error: 'Each preference needs meal_type, start_time, end_time, and a valid IANA timezone.',
+        });
+      }
+
+      normalizedPreferences.push({
+        meal_type: mealType,
+        start_time: startTime,
+        end_time: endTime,
+        timezone,
+        reminder_enabled: reminderEnabled,
+      });
+    }
+
+    const updatedPlanIds = [];
+    for (const preference of normalizedPreferences) {
+      await pool.query(
+        `INSERT INTO user_meal_preferences
+           (user_id, meal_type, start_time, end_time, timezone, reminder_enabled)
+         VALUES ($1, $2, $3::time, $4::time, $5, $6)
+         ON CONFLICT (user_id, meal_type) DO UPDATE
+           SET start_time = EXCLUDED.start_time,
+               end_time = EXCLUDED.end_time,
+               timezone = EXCLUDED.timezone,
+               reminder_enabled = EXCLUDED.reminder_enabled,
+               updated_at = CURRENT_TIMESTAMP`,
+        [
+          userId,
+          preference.meal_type,
+          preference.start_time,
+          preference.end_time,
+          preference.timezone,
+          preference.reminder_enabled,
+        ]
+      );
+
+      updatedPlanIds.push(...(await applyPreferenceToFuturePlans(userId, preference)));
+    }
+
+    await syncPlannerNotificationsForPlans(updatedPlanIds);
+    emitPlannerPlansChanged(userId, {
+      reason: 'preferences_updated',
+      plan_ids: updatedPlanIds,
+    });
+
+    const result = await pool.query(
+      `SELECT
+         meal_type,
+         TO_CHAR(start_time, 'HH24:MI') AS start_time,
+         TO_CHAR(end_time, 'HH24:MI') AS end_time,
+         timezone,
+         reminder_enabled
+       FROM user_meal_preferences
+       WHERE user_id = $1`,
+      [userId]
+    );
+    const byType = new Map(result.rows.map((row) => [row.meal_type, row]));
+
+    res.json({
+      timezone: normalizedPreferences[0]?.timezone || PH_TIMEZONE,
+      updated_plan_ids: updatedPlanIds,
+      preferences: MEAL_TYPES.map((mealType) => toPreference(byType.get(mealType), mealType)),
+    });
+  } catch (err) {
+    console.error('[mealPlanner/updatePreferences]', err);
+    res.status(500).json({ error: 'Failed to update meal preferences.' });
+  }
+};
+
+exports.getUpcoming = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const lookaheadHours = Math.max(1, Math.min(Number(req.query.lookaheadHours || 24), 168));
+    const lookbackHours = Math.max(0, Math.min(Number(req.query.lookbackHours || 3), 24));
+    const mealTypeColumn = await getMealTypeColumn();
+    const nowResult = await pool.query(`SELECT clock_timestamp() AS server_now`);
+    const serverNow = nowResult.rows[0].server_now;
+
+    const result = await pool.query(
+      `${planSelectSql(mealTypeColumn)}
+       WHERE mp.user_id = $1
+         AND mp.reminder_enabled = TRUE
+         AND mp.scheduled_end_at >= clock_timestamp() - ($2::text || ' hours')::interval
+         AND mp.scheduled_start_at <= clock_timestamp() + ($3::text || ' hours')::interval
+       ORDER BY mp.scheduled_start_at ASC, ${mealSortSql('mp', mealTypeColumn)}, mp.created_at DESC`,
+      [userId, String(lookbackHours), String(lookaheadHours)]
+    );
+
+    const plans = result.rows.map((row) => {
+      const plan = toPlan(row);
+      const window = getWindowStatus(plan, serverNow);
+      return {
+        ...plan,
+        window_status: window.status,
+        seconds_until_start: window.seconds_until_start,
+        seconds_until_end: window.seconds_until_end,
+      };
+    });
+
+    res.json({
+      server_now: serverNow,
+      timezone: PH_TIMEZONE,
+      plans,
+    });
+  } catch (err) {
+    console.error('[mealPlanner/getUpcoming]', err);
+    res.status(500).json({ error: 'Failed to fetch upcoming reminders.' });
+  }
+};
+
+exports.registerReminderToken = async (req, res) => {
+  try {
+    const token = await registerReminderToken(req.userId, req.body || {});
+    res.status(201).json({ token });
+  } catch (err) {
+    console.error('[mealPlanner/registerReminderToken]', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to register reminder token.' });
+  }
+};
+
+exports.acknowledgeLocalSchedule = async (req, res) => {
+  try {
+    const schedule = await acknowledgeLocalSchedule(req.userId, req.body || {});
+    res.status(201).json({ schedule });
+  } catch (err) {
+    console.error('[mealPlanner/acknowledgeLocalSchedule]', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to acknowledge local schedule.' });
+  }
+};
+
+exports.recordReminderLog = async (req, res) => {
+  try {
+    const mealPlanId = parsePositiveInteger(req.body?.meal_plan_id || req.body?.mealPlanId);
+    const dedupeKey = String(req.body?.dedupe_key || req.body?.dedupeKey || '').trim();
+    const eventType = String(req.body?.event_type || req.body?.eventType || 'client_event').trim().slice(0, 80);
+    const channel = String(req.body?.channel || 'web_local').trim().slice(0, 80);
+    const deviceId = req.body?.device_id || req.body?.deviceId || null;
+
+    if (!mealPlanId || !dedupeKey) {
+      return res.status(400).json({ error: 'meal_plan_id and dedupe_key are required.' });
+    }
+
+    const ownership = await pool.query(
+      `SELECT id FROM meal_plans WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [mealPlanId, req.userId]
+    );
+    if (ownership.rowCount === 0) {
+      return res.status(404).json({ error: 'Meal plan not found.' });
+    }
+
+    await logReminderEvent({
+      mealPlanId,
+      userId: req.userId,
+      deviceId,
+      channel,
+      eventType,
+      dedupeKey,
+      metadata: req.body?.metadata || {},
+    });
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('[mealPlanner/recordReminderLog]', err);
+    res.status(500).json({ error: 'Failed to record reminder log.' });
+  }
+};
+
+exports.sendReminder = async (req, res) => {
+  try {
+    const mealPlanId = parsePositiveInteger(req.body?.meal_plan_id || req.body?.mealPlanId);
+    if (mealPlanId) {
+      const notification = await syncPlannerNotificationForPlan(mealPlanId);
+      if (!notification) {
+        return res.status(404).json({ error: 'No active reminder exists for this meal plan.' });
+      }
+      await pool.query(
+        `UPDATE planner_notifications
+         SET status = 'pending',
+             scheduled_for = clock_timestamp(),
+             next_retry_at = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [notification.id]
+      );
+    }
+
+    const result = await processDuePlannerReminders({ limit: Number(req.body?.limit || 20) });
+    res.json(result);
+  } catch (err) {
+    console.error('[mealPlanner/sendReminder]', err);
+    res.status(500).json({ error: 'Failed to process reminders.' });
   }
 };
 

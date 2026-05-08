@@ -29,6 +29,7 @@ import {
 } from './src/components/SkeletonPlaceholder';
 import { NetworkProvider } from './src/offline/network';
 import { startAutoFlush } from './src/offline/syncQueue';
+import { initializePlannerNotifications } from './src/notifications/plannerNotifications';
 
 const navigationRef = createNavigationContainerRef();
 const TRANSITION_SKELETON_MS = 450;
@@ -103,6 +104,7 @@ function AppContent({ fontsLoaded }) {
   useEffect(() => {
     // Drain any pending offline actions as soon as connectivity is available.
     startAutoFlush();
+    initializePlannerNotifications(navigationRef);
     return () => {
       if (transitionTimer.current) {
         clearTimeout(transitionTimer.current);

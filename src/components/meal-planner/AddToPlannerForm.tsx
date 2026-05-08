@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { OFFLINE_MESSAGE } from '@/offline/network';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import {
+  getDeviceTimezone,
   mealPlannerService,
   mealTypeLabels,
   type MealPlan,
@@ -16,6 +17,12 @@ import {
 import { type PlannerRecipeSummary } from './AddToPlannerModal';
 
 const mealTypes = Object.entries(mealTypeLabels) as Array<[MealType, string]>;
+
+const defaultTimes: Record<MealType, { start: string; end: string }> = {
+  breakfast: { start: '07:00', end: '08:00' },
+  lunch: { start: '11:00', end: '14:00' },
+  dinner: { start: '18:00', end: '20:00' },
+};
 
 function todayInputValue() {
   return format(new Date(), 'yyyy-MM-dd');
@@ -34,6 +41,10 @@ export function AddToPlannerForm({
   const isOnline = useOnlineStatus();
   const [plannedDate, setPlannedDate] = useState(todayInputValue);
   const [mealType, setMealType] = useState<MealType>('dinner');
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [customTimeEnabled, setCustomTimeEnabled] = useState(false);
+  const [startTime, setStartTime] = useState(defaultTimes.dinner.start);
+  const [endTime, setEndTime] = useState(defaultTimes.dinner.end);
   const [saving, setSaving] = useState(false);
 
   const canSave = useMemo(
@@ -60,6 +71,11 @@ export function AddToPlannerForm({
         recipe_id: recipe.id,
         planned_date: plannedDate,
         meal_type: mealType,
+        reminder_enabled: reminderEnabled,
+        custom_time_enabled: customTimeEnabled,
+        start_time: startTime,
+        end_time: endTime,
+        timezone: getDeviceTimezone(),
       });
       toast.success('Added to Meal Planner', {
         description: `${recipe.title} is planned for ${mealTypeLabels[mealType]}.`,
@@ -115,7 +131,13 @@ export function AddToPlannerForm({
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setMealType(value)}
+                  onClick={() => {
+                    setMealType(value);
+                    if (!customTimeEnabled) {
+                      setStartTime(defaultTimes[value].start);
+                      setEndTime(defaultTimes[value].end);
+                    }
+                  }}
                   className={cn(
                     'h-10 rounded-xl border text-[10px] font-extrabold uppercase tracking-widest transition-all',
                     active
@@ -128,6 +150,49 @@ export function AddToPlannerForm({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div className="grid gap-3 rounded-xl border border-orange-100 bg-orange-50/50 p-3 dark:border-stone-700 dark:bg-stone-800/50">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={reminderEnabled}
+            onClick={() => setReminderEnabled((value) => !value)}
+            className="flex items-center justify-between gap-3 text-left"
+          >
+            <span className="text-xs font-extrabold text-stone-700 dark:text-stone-200">Meal reminder</span>
+            <span className={cn('flex h-6 w-11 items-center rounded-full p-1 transition-colors', reminderEnabled ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-700')}>
+              <span className={cn('h-4 w-4 rounded-full bg-white transition-transform', reminderEnabled ? 'translate-x-5' : 'translate-x-0')} />
+            </span>
+          </button>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={customTimeEnabled}
+            onClick={() => setCustomTimeEnabled((value) => !value)}
+            className="flex items-center justify-between gap-3 text-left"
+          >
+            <span className="text-xs font-extrabold text-stone-700 dark:text-stone-200">Custom time</span>
+            <span className={cn('flex h-6 w-11 items-center rounded-full p-1 transition-colors', customTimeEnabled ? 'bg-orange-500' : 'bg-stone-300 dark:bg-stone-700')}>
+              <span className={cn('h-4 w-4 rounded-full bg-white transition-transform', customTimeEnabled ? 'translate-x-5' : 'translate-x-0')} />
+            </span>
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              disabled={!customTimeEnabled}
+              className="h-10 rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+            />
+            <input
+              type="time"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              disabled={!customTimeEnabled}
+              className="h-10 rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+            />
           </div>
         </div>
       </div>

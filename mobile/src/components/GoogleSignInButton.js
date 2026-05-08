@@ -1,14 +1,15 @@
 /**
  * Google Sign-In button for the mobile Expo app.
  *
- * Uses the native Google Sign-In SDK on Android/iOS and falls back to
- * `expo-auth-session/providers/google` elsewhere. The ID token is then
- * exchanged for a CookMate JWT via POST /api/auth/google.
+ * Uses the native Google Sign-In SDK on Android/iOS outside Expo Go and
+ * the Expo AuthSession proxy inside Expo Go. The Google ID token is exchanged
+ * for a Firebase session, then for the CookMate backend session.
  *
  * Client IDs are read from app.json -> expo.extra:
  *   googleWebClientId     - Web OAuth client ID, used by the backend verifier
  *   googleAndroidClientId - Android OAuth client ID, configured in Google Cloud
  *   googleIosClientId     - iOS OAuth client ID, configured in Google Cloud
+ *   googleAuthRedirectUri - Firebase Auth handler URI authorized on the Web OAuth client
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -21,18 +22,37 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import {
-  GoogleSignin,
-  statusCodes,
-} from '@react-native-google-signin/google-signin';
 
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { useAppTheme } from '../context/ThemeContext';
 
 WebBrowser.maybeCompleteAuthSession();
+
+let nativeGoogleSignInModule = null;
+const EXPO_AUTH_PROXY_BASE_URL = 'https://auth.expo.io';
+const GOOGLE_AUTHORIZATION_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const DEFAULT_GOOGLE_AUTH_REDIRECT_URI =
+  'https://cookmate-9272d.firebaseapp.com/__/auth/handler';
+
+async function loadNativeGoogleSignIn() {
+  if (!nativeGoogleSignInModule) {
+    nativeGoogleSignInModule = await import('@react-native-google-signin/google-signin');
+  }
+  return nativeGoogleSignInModule;
+}
+
+function isRunningInExpoGo() {
+  return Constants.appOwnership === 'expo' || Boolean(Constants.expoGoConfig);
+}
+
+function canUseNativeGoogleSignIn() {
+  const isExpoGo = isRunningInExpoGo();
+  return (Platform.OS === 'android' || Platform.OS === 'ios') && !isExpoGo;
+}
 
 function getConfig() {
   const extra =
@@ -41,17 +61,63 @@ function getConfig() {
     webClientId: extra.googleWebClientId || '',
     androidClientId: extra.googleAndroidClientId || '',
     iosClientId: extra.googleIosClientId || '',
+    googleAuthRedirectUri:
+      extra.googleAuthRedirectUri || DEFAULT_GOOGLE_AUTH_REDIRECT_URI,
   };
 }
 
-function getGoogleErrorMessage(err) {
-  if (err?.code === statusCodes.SIGN_IN_CANCELLED) {
+function getExpoProxyProjectName() {
+  const originalFullName = Constants.expoConfig?.originalFullName;
+  if (originalFullName) return originalFullName;
+
+  const owner = Constants.expoConfig?.owner;
+  const slug = Constants.expoConfig?.slug;
+  if (owner && slug) return `@${owner}/${slug}`;
+
+  return '';
+}
+
+function getQueryParams(input) {
+  const url = new URL(input, 'https://cookmate.local');
+  const params = Object.fromEntries(url.searchParams);
+
+  if (url.hash) {
+    new URLSearchParams(url.hash.replace(/^#/, '')).forEach((value, key) => {
+      params[key] = value;
+    });
+  }
+
+  return params;
+}
+
+async function createStateToken(byteCount = 16) {
+  try {
+    const bytes = await Crypto.getRandomBytesAsync(byteCount);
+    return Array.from(bytes)
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function buildExpoProxyStartUrl({ authUrl, projectName, returnUrl }) {
+  const proxyUrl = `${EXPO_AUTH_PROXY_BASE_URL}/${projectName}`;
+  const params = new URLSearchParams({ authUrl, returnUrl });
+  return `${proxyUrl}/start?${params.toString()}`;
+}
+
+function getGoogleErrorMessage(err, statusCodes = {}) {
+  if (err?.code === statusCodes.SIGN_IN_CANCELLED || err?.code === 'SIGN_IN_CANCELLED') {
     return '';
   }
-  if (err?.code === statusCodes.IN_PROGRESS) {
+  if (err?.code === statusCodes.IN_PROGRESS || err?.code === 'IN_PROGRESS') {
     return 'Google sign-in is already in progress.';
   }
-  if (err?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+  if (
+    err?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE ||
+    err?.code === 'PLAY_SERVICES_NOT_AVAILABLE'
+  ) {
     return 'Google Play Services is not available or needs to be updated.';
   }
   return err?.message || 'Google sign-in failed. Please try again.';
@@ -62,13 +128,8 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  const { webClientId, androidClientId, iosClientId } = getConfig();
-  const [, , promptAsync] = Google.useIdTokenAuthRequest({
-    webClientId,
-    androidClientId: androidClientId || undefined,
-    iosClientId: iosClientId || undefined,
-    scopes: ['openid', 'profile', 'email'],
-  });
+  const { webClientId, androidClientId, iosClientId, googleAuthRedirectUri } = getConfig();
+  const isExpoGo = isRunningInExpoGo();
 
   const hasAnyClientId = Boolean(
     webClientId ||
@@ -79,6 +140,8 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
   const [loading, setLoading] = useState(false);
 
   const handleNativeSignIn = async () => {
+    const { GoogleSignin } = await loadNativeGoogleSignIn();
+
     GoogleSignin.configure({
       webClientId,
       iosClientId: iosClientId || undefined,
@@ -101,8 +164,34 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
     await login(result.user);
   };
 
-  const handleBrowserSignIn = async () => {
-    const response = await promptAsync();
+  const handleExpoGoProxySignIn = async () => {
+    const projectName = getExpoProxyProjectName();
+    if (!projectName) {
+      throw new Error('Google Sign-In needs expo.owner and expo.slug in app.json for Expo Go.');
+    }
+
+    const proxyRedirectUri = `${EXPO_AUTH_PROXY_BASE_URL}/${projectName}`;
+    const returnUrl = AuthSession.getDefaultReturnUrl();
+    const firebaseRedirectUri = googleAuthRedirectUri || DEFAULT_GOOGLE_AUTH_REDIRECT_URI;
+    const state = await createStateToken();
+    const nonce = await createStateToken();
+
+    // Firebase's handler must be authorized on the Google Web OAuth client.
+    // Expo Go still needs the proxy redirect at runtime so Android/iOS can
+    // return the ID token to this app after Google finishes.
+    const authParams = new URLSearchParams({
+      client_id: webClientId,
+      redirect_uri: proxyRedirectUri,
+      response_type: 'id_token',
+      scope: 'openid profile email',
+      state,
+      nonce,
+      prompt: 'select_account',
+    });
+    const authUrl = `${GOOGLE_AUTHORIZATION_ENDPOINT}?${authParams.toString()}`;
+    const startUrl = buildExpoProxyStartUrl({ authUrl, projectName, returnUrl });
+
+    const response = await WebBrowser.openAuthSessionAsync(startUrl, returnUrl);
     if (response?.type === 'cancel' || response?.type === 'dismiss') {
       return;
     }
@@ -110,8 +199,21 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
       throw new Error('Google sign-in was not completed.');
     }
 
-    const idToken = response?.authentication?.idToken || response?.params?.id_token;
+    const params = getQueryParams(response.url);
+    if (params.error) {
+      const description = params.error_description || params.error;
+      if (params.error === 'redirect_uri_mismatch') {
+        throw new Error(
+          `Google redirect mismatch. Add both authorized redirect URIs to the Web OAuth client: ${proxyRedirectUri} and ${firebaseRedirectUri}.`
+        );
+      }
+      throw new Error(description);
+    }
+    if (params.state !== state) {
+      throw new Error('Google sign-in state check failed. Please try again.');
+    }
 
+    const idToken = params.id_token;
     if (!idToken) {
       throw new Error('Google sign-in did not return an ID token.');
     }
@@ -128,13 +230,16 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
 
     setLoading(true);
     try {
-      if (Platform.OS === 'android' || Platform.OS === 'ios') {
+      if (isExpoGo) {
+        await handleExpoGoProxySignIn();
+      } else if (canUseNativeGoogleSignIn()) {
         await handleNativeSignIn();
       } else {
-        await handleBrowserSignIn();
+        await handleExpoGoProxySignIn();
       }
     } catch (err) {
-      const message = getGoogleErrorMessage(err);
+      const moduleStatusCodes = nativeGoogleSignInModule?.statusCodes;
+      const message = getGoogleErrorMessage(err, moduleStatusCodes);
       if (message) onError?.(message);
     } finally {
       setLoading(false);

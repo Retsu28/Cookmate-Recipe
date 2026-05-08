@@ -23,8 +23,37 @@ export interface MealPlan {
   planned_date: string;
   meal_type: MealType;
   meal_type_label: string;
+  start_time: string;
+  end_time: string;
+  time_window_label: string;
+  timezone: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  reminder_enabled: boolean;
+  custom_time_enabled: boolean;
+  notification_sent: boolean;
+  notification_sent_at: string | null;
+  reminder_version: number;
+  updated_at: string;
   created_at: string;
   recipe: PlannedRecipe;
+}
+
+export interface MealPreference {
+  meal_type: MealType;
+  meal_type_label: string;
+  start_time: string;
+  end_time: string;
+  time_window_label: string;
+  timezone: string;
+  reminder_enabled: boolean;
+  is_default?: boolean;
+}
+
+export interface UpcomingMealPlan extends MealPlan {
+  window_status: 'upcoming' | 'active' | 'ended';
+  seconds_until_start: number;
+  seconds_until_end: number;
 }
 
 export interface GroceryRecipeSource {
@@ -106,17 +135,95 @@ export const mealTypeLabels: Record<MealType, string> = {
   dinner: 'Dinner',
 };
 
+export function getDeviceTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Manila';
+  } catch {
+    return 'Asia/Manila';
+  }
+}
+
 export const mealPlannerService = {
   getPlans: () => api.get<{ plans: MealPlan[] }>('/api/meal-planner'),
 
-  createPlan: (data: { recipe_id: number; planned_date: string; meal_type: MealType }) =>
+  createPlan: (data: {
+    recipe_id: number;
+    planned_date: string;
+    meal_type: MealType;
+    start_time?: string;
+    end_time?: string;
+    timezone?: string;
+    reminder_enabled?: boolean;
+    custom_time_enabled?: boolean;
+  }) =>
     api.post<{ plan: MealPlan }>('/api/meal-planner', data),
 
-  updatePlan: (id: number, data: { planned_date: string; meal_type: MealType }) =>
+  updatePlan: (id: number, data: {
+    planned_date?: string;
+    meal_type?: MealType;
+    start_time?: string;
+    end_time?: string;
+    timezone?: string;
+    reminder_enabled?: boolean;
+    custom_time_enabled?: boolean;
+  }) =>
     api.patch<{ plan: MealPlan }>(`/api/meal-planner/${id}`, data),
 
   deletePlan: (id: number) =>
     api.delete<{ success: boolean; id: number }>(`/api/meal-planner/${id}`),
+
+  getUpcoming: (params: { lookaheadHours?: number; lookbackHours?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.lookaheadHours != null) qs.set('lookaheadHours', String(params.lookaheadHours));
+    if (params.lookbackHours != null) qs.set('lookbackHours', String(params.lookbackHours));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<{ server_now: string; timezone: string; plans: UpcomingMealPlan[] }>(`/api/meal-planner/upcoming${suffix}`);
+  },
+
+  getPreferences: () =>
+    api.get<{ timezone: string; preferences: MealPreference[] }>('/api/meal-planner/preferences'),
+
+  updatePreferences: (data: { preferences: Array<{
+    meal_type: MealType;
+    start_time: string;
+    end_time: string;
+    timezone?: string;
+    reminder_enabled?: boolean;
+  }> } | {
+    meal_type: MealType;
+    start_time: string;
+    end_time: string;
+    timezone?: string;
+    reminder_enabled?: boolean;
+  }) =>
+    api.patch<{ timezone: string; preferences: MealPreference[]; updated_plan_ids: number[] }>(
+      '/api/meal-planner/preferences',
+      data,
+    ),
+
+  registerReminderToken: (data: {
+    device_id: string;
+    platform: string;
+    expo_push_token: string;
+    permission_status: string;
+  }) => api.post<{ token: unknown }>('/api/meal-planner/reminder-token', data),
+
+  acknowledgeLocalSchedule: (data: {
+    meal_plan_id: number;
+    device_id: string;
+    reminder_version: number;
+    local_notification_id: string;
+    scheduled_for: string;
+  }) => api.post<{ schedule: unknown }>('/api/meal-planner/local-schedule-ack', data),
+
+  recordReminderLog: (data: {
+    meal_plan_id: number;
+    dedupe_key: string;
+    event_type: string;
+    channel: string;
+    device_id?: string;
+    metadata?: Record<string, unknown>;
+  }) => api.post<{ success: boolean }>('/api/meal-planner/reminder-log', data),
 
   getGroceryList: () =>
     api.get<{ groceryList: GroceryList; generated_at: string }>('/api/meal-planner/grocery-list'),

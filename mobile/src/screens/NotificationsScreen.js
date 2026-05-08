@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,27 +13,74 @@ import NotificationCard from '../components/NotificationCard';
 import { useAppTheme } from '../context/ThemeContext';
 import { NotificationsContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
-
-const initialNotifications = [
-  { id: 1, type: 'Reminder', title: 'Lunch Prep in 30 Minutes', message: 'Time to start your Quinoa Salad for lunch today.', time: '10 MINS AGO', read: false, icon: 'time', iconColor: '#f97316' },
-  { id: 2, type: 'Expiring', title: 'Chicken Breast Expiring', message: 'Your Chicken Breast expires tomorrow. Better cook it today!', time: '2 HRS AGO', read: false, icon: 'alert-circle', iconColor: '#ea580c' },
-  { id: 3, type: 'Shopping', title: 'Shopping List Updated', message: '3 new items added to your list based on next week\'s meal plan.', time: '5 HRS AGO', read: true, icon: 'cart', iconColor: '#f97316' },
-  { id: 4, type: 'Tip', title: 'Cooking Tip of the Day', message: 'Add a splash of vinegar when poaching eggs for a perfect shape.', time: '1 DAY AGO', read: true, icon: 'bulb', iconColor: '#fb923c' },
-];
+import { plannerApi } from '../api/api';
+import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '../notifications/plannerNotifications';
 
 export default function NotificationsScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState([]);
   const [filter, setFilter] = useState('All');
   const isInitialLoading = useInitialContentLoading();
 
-  const filters = ['All', 'Reminders', 'Expiring', 'Shopping', 'Tips'];
+  const filters = ['All', 'Reminders', 'Shopping'];
   const selectedType = filter.replace(/s$/, '');
   const filteredNotifications = filter === 'All'
     ? notifications
     : notifications.filter((n) => n.type === selectedType);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [upcomingRes, groceryRes] = await Promise.all([
+          plannerApi.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
+          plannerApi.getGroceryList().catch(() => null),
+        ]);
+        if (cancelled) return;
+        const plans = upcomingRes?.data?.plans || [];
+        const groceryList = groceryRes?.data?.groceryList;
+        const nextNotifications = [];
+
+        plans.forEach((plan) => {
+          const status = getPlanWindowStatus(plan);
+          nextNotifications.push({
+            id: plan.id,
+            type: 'Reminder',
+            title: `${plan.meal_type_label} · ${formatPlanWindow(plan)}`,
+            message: `${getCountdownText(plan)} · ${plan.recipe?.title || 'Planned meal'}`,
+            time: status === 'active' ? 'Active now' : 'Upcoming',
+            read: false,
+            icon: 'time',
+            iconColor: colors.primary || '#f97316',
+            actionPath: plan.recipe?.id ? 'RecipeDetail' : 'Planner',
+            recipeId: plan.recipe?.id || plan.recipe_id,
+          });
+        });
+
+        if (groceryList && groceryList.totalItems > 0) {
+          nextNotifications.push({
+            id: -1,
+            type: 'Shopping',
+            title: 'Grocery list ready',
+            message: `${groceryList.totalItems} items from your meal planner.`,
+            time: 'Now',
+            read: false,
+            icon: 'cart',
+            iconColor: colors.primary || '#f97316',
+            actionPath: 'Planner',
+          });
+        }
+
+        setNotifications(nextNotifications);
+      } catch {
+        setNotifications([]);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [colors.primary]);
 
   const markAllRead = () => {
     setNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
@@ -47,12 +94,12 @@ export default function NotificationsScreen({ navigation }) {
 
   const openNotification = (notification) => {
     markRead(notification.id);
-    if (notification.type === 'Reminder' || notification.type === 'Shopping') {
-      navigation.navigate('Main', { screen: 'Planner' });
+    if (notification.recipeId) {
+      navigation.navigate('RecipeDetail', { id: notification.recipeId });
       return;
     }
-    if (notification.type === 'Expiring') {
-      navigation.navigate('Main', { screen: 'Search' });
+    if (notification.actionPath === 'Planner') {
+      navigation.navigate('Main', { screen: 'Planner' });
       return;
     }
     navigation.navigate('Main', { screen: 'Home' });
@@ -121,8 +168,8 @@ export default function NotificationsScreen({ navigation }) {
         )}
         ListEmptyComponent={
           <View style={st.empty}>
-            <Ionicons name="notifications-off-outline" size={44} color={colors.textSubtle} />
-            <Text style={[st.emptyText, { color: colors.textSubtle }]}>No notifications yet</Text>
+            <Ionicons name="calendar-outline" size={44} color={colors.textSubtle} />
+            <Text style={[st.emptyText, { color: colors.textSubtle }]}>No planner updates yet</Text>
           </View>
         }
       />

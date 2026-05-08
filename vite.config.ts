@@ -56,6 +56,7 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           cleanupOutdatedCaches: true,
+          importScripts: ['/planner-notification-sw.js'],
           // -------------------------------------------------------
           // App shell (HTML, JS, CSS) — precached on SW install
           // -------------------------------------------------------
@@ -125,8 +126,13 @@ export default defineConfig(({ mode }) => {
       // Proxy API requests to the Express API server during development
       proxy: {
         '/api': {
-          target: 'http://localhost:5000',
+          target: 'http://127.0.0.1:5000',
           changeOrigin: true,
+        },
+        '/socket.io': {
+          target: 'http://127.0.0.1:5000',
+          changeOrigin: true,
+          ws: true,
         },
       },
     },

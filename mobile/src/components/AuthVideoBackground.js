@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 
 const backgroundVideo = require('../../assets/authformbackground.mp4');

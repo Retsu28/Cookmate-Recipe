@@ -8,7 +8,7 @@
 // is opt-in. Switch a screen to use the helpers below when you want offline
 // fallback for that specific endpoint.
 
-import { groceryListCache, mealPlanCache, recipeCache, savedRecipeCache } from './db';
+import { groceryListCache, mealPlanCache, recipeCache, reminderEventCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
 
 type WithId = { id: string | number };
@@ -216,4 +216,5 @@ export const offlineCache = {
   savedRecipes: savedRecipeCache,
   mealPlans: mealPlanCache,
   groceryList: groceryListCache,
+  reminderEvents: reminderEventCache,
 };

@@ -8,7 +8,7 @@
 // module is opt-in and additive. Only screens that want offline behavior need
 // to switch to the helpers below.
 
-import { groceryListCache, mealPlanCache, recipeCache, savedRecipeCache } from './db';
+import { groceryListCache, mealPlanCache, recipeCache, reminderEventCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
 
 function toArray(value) {
@@ -178,4 +178,5 @@ export const offlineCache = {
   savedRecipes: savedRecipeCache,
   mealPlans: mealPlanCache,
   groceryList: groceryListCache,
+  reminderEvents: reminderEventCache,
 };
