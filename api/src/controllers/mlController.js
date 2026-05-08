@@ -43,6 +43,28 @@ const BG_REMOVAL_QUEUE_WARNING = 'AI Camera background removal is busy. Your ima
 // TF-IDF/word-boundary ranking (still DB-backed, zero hallucination).
 const ENABLE_GEMINI_RAG = String(process.env.ENABLE_GEMINI_RAG || 'true').toLowerCase() !== 'false';
 const GEMINI_RAG_TIMEOUT_MS = Number(process.env.GEMINI_RAG_TIMEOUT_MS || 15000);
+const MAX_AI_CAMERA_RECIPE_RESULTS = 8;
+const MAX_GEMINI_RAG_CANDIDATES = 16;
+const MAX_GEMINI_RAG_OTHER_IDS = MAX_AI_CAMERA_RECIPE_RESULTS - 1;
+const LOW_SIGNAL_RECIPE_INGREDIENTS = new Set([
+  'water',
+  'salt',
+  'pepper',
+  'black pepper',
+  'white pepper',
+  'oil',
+  'cooking oil',
+  'vegetable oil',
+]);
+const INGREDIENT_FORM_TOKENS = new Set([
+  'broth',
+  'oil',
+  'paste',
+  'powder',
+  'sauce',
+  'seasoning',
+  'stock',
+]);
 
 const lookupCache = {
   recipes: { expiresAt: 0, rows: null },
@@ -175,12 +197,54 @@ function tokenizeText(value) {
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
 }
 
+function normalizedPhraseKey(value) {
+  return tokenizeText(value).join(' ');
+}
+
+function isLowSignalRecipeIngredient(value) {
+  const phrase = normalizedPhraseKey(value) || normalizeText(value);
+  if (!phrase) return true;
+  if (LOW_SIGNAL_RECIPE_INGREDIENTS.has(phrase)) return true;
+
+  const tokens = tokenizeText(phrase);
+  return tokens.length > 0 && tokens.every((token) => LOW_SIGNAL_RECIPE_INGREDIENTS.has(token));
+}
+
+function hasIngredientFormMismatch(detectedTerm, candidateTerm) {
+  const detectedTokens = new Set(tokenizeText(detectedTerm));
+  const candidateTokens = new Set(tokenizeText(candidateTerm));
+
+  if (candidateTokens.size <= detectedTokens.size) return false;
+
+  for (const token of INGREDIENT_FORM_TOKENS) {
+    if (candidateTokens.has(token) && !detectedTokens.has(token)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function ingredientTermMatches(detectedTerm, candidateTerm) {
+  const detectedKey = normalizedPhraseKey(detectedTerm);
+  const candidateKey = normalizedPhraseKey(candidateTerm);
+
+  if (!detectedKey || !candidateKey) return false;
+  if (detectedKey === candidateKey) return true;
+  if (hasIngredientFormMismatch(detectedKey, candidateKey)) return false;
+
+  return (
+    hasWordBoundaryMatch(detectedKey, candidateKey) ||
+    hasWordBoundaryMatch(candidateKey, detectedKey)
+  );
+}
+
 function buildSearchTerms(values) {
   const phrases = new Set();
   const tokens = new Set();
 
   for (const value of values || []) {
-    const phrase = normalizeText(value);
+    const phrase = normalizedPhraseKey(value) || normalizeText(value);
     if (phrase && !STOP_WORDS.has(phrase)) phrases.add(phrase);
     tokenizeText(value).forEach((token) => tokens.add(token));
   }
@@ -440,7 +504,9 @@ function getRecipeIngredients(recipe) {
 
 function buildRecipeIndex(recipe) {
   const ingredientNames = getRecipeIngredients(recipe);
-  const ingredientPhrases = ingredientNames.map(normalizeText).filter(Boolean);
+  const ingredientPhrases = ingredientNames
+    .map((ingredient) => normalizedPhraseKey(ingredient) || normalizeText(ingredient))
+    .filter(Boolean);
   const ingredientPhraseSet = new Set(ingredientPhrases);
   const ingredientTokens = new Set(ingredientNames.flatMap(tokenizeText));
   const titleText = normalizeText(recipe.title);
@@ -473,25 +539,26 @@ function scoreRecipe(query, indexedRecipe) {
   for (const phrase of query.phrases) {
     // Exact set match first (highest priority)
     if (indexedRecipe.ingredientPhraseSet.has(phrase)) {
-      score += 14;
+      score += 18;
     } else if (
       indexedRecipe.ingredientPhrases.some((ingredient) =>
-        hasWordBoundaryMatch(phrase, ingredient) || hasWordBoundaryMatch(ingredient, phrase)
+        ingredientTermMatches(phrase, ingredient)
       )
     ) {
-      score += 9;
+      score += 12;
     }
 
     // Word-boundary matching for text fields (no substring)
-    if (hasWordBoundaryMatch(phrase, indexedRecipe.titleText)) score += 5;
-    if (hasWordBoundaryMatch(phrase, indexedRecipe.descriptionText)) score += 3;
-    if (hasWordBoundaryMatch(phrase, indexedRecipe.categoryText)) score += 2;
-    if (hasWordBoundaryMatch(phrase, indexedRecipe.tagText)) score += 2;
+    if (!isLowSignalRecipeIngredient(phrase)) {
+      if (hasWordBoundaryMatch(phrase, indexedRecipe.titleText)) score += 5;
+      if (hasWordBoundaryMatch(phrase, indexedRecipe.descriptionText)) score += 3;
+      if (hasWordBoundaryMatch(phrase, indexedRecipe.categoryText)) score += 2;
+      if (hasWordBoundaryMatch(phrase, indexedRecipe.tagText)) score += 2;
+    }
   }
 
   for (const token of query.tokens) {
-    // Token-level: exact set membership only
-    if (indexedRecipe.ingredientTokens.has(token)) score += 6;
+    if (isLowSignalRecipeIngredient(token)) continue;
     if (indexedRecipe.titleTokens.has(token)) score += 3;
     if (indexedRecipe.descriptionTokens.has(token)) score += 2;
     if (indexedRecipe.categoryTokens.has(token)) score += 1;
@@ -499,6 +566,27 @@ function scoreRecipe(query, indexedRecipe) {
   }
 
   return score;
+}
+
+function findMatchedIngredientsForRecipe(ingredients, indexedRecipe) {
+  const matches = [];
+  const seen = new Set();
+
+  for (const ingredient of Array.isArray(ingredients) ? ingredients : []) {
+    const normalized = normalizedPhraseKey(ingredient) || normalizeText(ingredient);
+    if (!normalized || seen.has(normalized)) continue;
+
+    const hasMatch = indexedRecipe.ingredientPhrases.some((recipeIngredient) =>
+      ingredientTermMatches(normalized, recipeIngredient)
+    );
+
+    if (hasMatch) {
+      seen.add(normalized);
+      matches.push(normalized);
+    }
+  }
+
+  return matches;
 }
 
 function toRecipePayload(recipe) {
@@ -517,6 +605,7 @@ function toRecipePayload(recipe) {
     image: recipe.image_url,
     image_url: recipe.image_url,
     tags: recipe.tags,
+    ingredients: getRecipeIngredients(recipe),
   };
 }
 
@@ -675,31 +764,51 @@ async function getCachedKnownIngredientRows() {
 // best matching recipe ID. Gemini is forbidden from inventing new recipes or
 // IDs — it can only pick from the provided candidate IDs or return no_match.
 // Returns: { selectedId, orderedIds, matchReason, noMatch, raw } or null on failure.
-async function selectRecipeWithGeminiRAG({ apiKey, detectedIngredients, candidates }) {
+async function selectRecipeWithGeminiRAG({
+  apiKey,
+  detectedIngredients,
+  candidates,
+  maxOtherIds = MAX_GEMINI_RAG_OTHER_IDS,
+}) {
   if (!ENABLE_GEMINI_RAG) return null;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return null;
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
-  const allowedIds = candidates
-    .map((c) => Number(c?.recipe?.id ?? c?.id))
-    .filter((id) => Number.isInteger(id) && id > 0);
-  if (allowedIds.length === 0) return null;
+  const contextRecipes = [];
+  const allowedIds = [];
+  const seenIds = new Set();
 
-  const contextRecipes = candidates.slice(0, 10).map((c) => {
-    const recipe = c.recipe || c;
-    const ingredientList = Array.isArray(c.matchedIngredients) && c.matchedIngredients.length > 0
-      ? c.matchedIngredients
-      : (Array.isArray(recipe.ingredients) ? recipe.ingredients : []);
-    return {
-      id: Number(recipe.id),
+  for (const candidate of candidates.slice(0, MAX_GEMINI_RAG_CANDIDATES)) {
+    const recipe = candidate.recipe || candidate;
+    const id = Number(recipe?.id);
+    if (!Number.isInteger(id) || id <= 0 || seenIds.has(id)) continue;
+
+    seenIds.add(id);
+    allowedIds.push(id);
+
+    const matchedIngredients = Array.isArray(candidate.matchedIngredients)
+      ? candidate.matchedIngredients
+      : [];
+    const allIngredients = Array.isArray(candidate.ingredients)
+      ? candidate.ingredients
+      : Array.isArray(recipe.ingredients)
+        ? recipe.ingredients
+        : [];
+
+    contextRecipes.push({
+      id,
       title: recipe.title,
       category: recipe.category || recipe.region_or_origin || null,
       tags: Array.isArray(recipe.tags) ? recipe.tags.slice(0, 8) : [],
-      ingredients: (ingredientList || []).slice(0, 20),
+      matchedIngredients: matchedIngredients.slice(0, 12),
+      allIngredients: allIngredients.slice(0, 24),
       description: cleanDisplayText(recipe.description || '').slice(0, 240),
-      matchScore: c.score ?? c.matchPercentage ?? null,
-    };
-  });
+      matchScore: candidate.score ?? candidate.matchScore ?? null,
+      matchPercentage: candidate.matchPercentage ?? null,
+    });
+  }
+
+  if (allowedIds.length === 0) return null;
 
   const prompt = `You are a recipe-matching assistant for the CookMate app.
 
@@ -707,11 +816,15 @@ You are given:
 1. A list of ingredients that were detected from an image and verified to exist in the CookMate PostgreSQL database.
 2. A closed list of CANDIDATE RECIPES retrieved from the database (published only).
 
-Your job is to choose the single best matching recipe ID from the candidate list, and optionally return up to 4 other candidate IDs as related suggestions, ranked by relevance to the detected ingredients.
+Your job is to choose the single best matching recipe ID from the candidate list, and optionally return up to ${maxOtherIds} other candidate IDs as related suggestions, ranked by relevance to the detected ingredients.
 
 STRICT RULES (do not violate):
 - You MUST only return IDs that appear in the candidate list. Do not invent, rename, or modify any recipe.
 - You MUST NOT suggest ingredients or recipes outside the provided context.
+- Use matchedIngredients as the strongest evidence because those are the scanned ingredients found in that recipe.
+- Use allIngredients only as database context; do not reward a recipe for ingredients that were not detected.
+- Prefer recipes with the highest overlap with detectedIngredients and matchedIngredients.
+- Do not include candidates that only match weak pantry staples such as water, salt, pepper, or cooking oil.
 - If none of the candidates reasonably match the detected ingredients, return {"noMatch": true, "selectedId": null, "otherIds": [], "reason": "<short reason>"}.
 - Return JSON ONLY. No markdown, no prose, no code fences.
 
@@ -725,7 +838,7 @@ Input:
 Return shape:
 {
   "selectedId": <one of allowedRecipeIds or null>,
-  "otherIds": [<up to 4 other allowedRecipeIds ranked by relevance>],
+  "otherIds": [<up to ${maxOtherIds} other allowedRecipeIds ranked by relevance>],
   "reason": "<short sentence grounded only in the candidate data>",
   "noMatch": <true|false>
 }`;
@@ -757,12 +870,12 @@ Return shape:
           ? parsed.otherIds
               .map((v) => Number(v))
               .filter((id) => Number.isInteger(id) && allowed.has(id) && id !== selectedId)
-              .slice(0, 4)
+              .slice(0, maxOtherIds)
           : [];
-        const orderedIds = selectedId ? [selectedId, ...otherIds] : otherIds;
+        const orderedIds = selectedId ? [selectedId, ...otherIds] : otherIds.slice(0, maxOtherIds + 1);
 
         return {
-          selectedId,
+          selectedId: selectedId || orderedIds[0] || null,
           orderedIds,
           matchReason: cleanDisplayText(parsed.reason || '').slice(0, 300) || null,
           noMatch: parsed.noMatch === true || (!selectedId && orderedIds.length === 0),
@@ -811,6 +924,29 @@ function reorderByIds(candidates, orderedIds) {
 }
 
 // ─── Shared: find matching recipes from DB by ingredient list ────────────────
+function filterAndOrderByIds(candidates, orderedIds, limit = MAX_AI_CAMERA_RECIPE_RESULTS) {
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) return [];
+
+  const byId = new Map();
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const id = Number(candidate?.recipe?.id ?? candidate?.id);
+    if (Number.isInteger(id) && !byId.has(id)) byId.set(id, candidate);
+  }
+
+  const placed = new Set();
+  const out = [];
+  for (const id of orderedIds) {
+    const numericId = Number(id);
+    const candidate = byId.get(numericId);
+    if (!candidate || placed.has(numericId)) continue;
+    placed.add(numericId);
+    out.push(candidate);
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
 async function findRecipesByIngredients(ingredients, limit = 8) {
   const query = buildSearchTerms(ingredients);
   if (query.phrases.size === 0 && query.tokens.size === 0) return [];
@@ -819,13 +955,22 @@ async function findRecipesByIngredients(ingredients, limit = 8) {
   if (recipes.length === 0) return [];
 
   const results = recipes
-    .map((recipe) => ({
-      recipe: toRecipePayload(recipe),
-      score: scoreRecipe(query, buildRecipeIndex(recipe)),
-      isFeatured: recipe.is_featured === true,
-    }))
-    .filter((result) => result.score > 0)
+    .map((recipe) => {
+      const index = buildRecipeIndex(recipe);
+      const matchedIngredients = findMatchedIngredientsForRecipe(ingredients, index);
+
+      return {
+        recipe: toRecipePayload(recipe),
+        score: scoreRecipe(query, index),
+        matchedIngredients,
+        isFeatured: recipe.is_featured === true,
+      };
+    })
+    .filter((result) => result.score > 0 && result.matchedIngredients.length > 0)
     .sort((a, b) => {
+      if (b.matchedIngredients.length !== a.matchedIngredients.length) {
+        return b.matchedIngredients.length - a.matchedIngredients.length;
+      }
       if (b.score !== a.score) return b.score - a.score;
       return Number(b.isFeatured) - Number(a.isFeatured);
     });
@@ -847,7 +992,8 @@ async function filterAvailableRecipeSuggestions(recipeSuggestions) {
   const result = await pool.query(
     `SELECT id, title, description, difficulty,
             prep_time_minutes, cook_time_minutes, total_time_minutes,
-            servings, calories, region_or_origin, category, tags, image_url
+            servings, calories, region_or_origin, category, tags,
+            normalized_ingredients, image_url
      FROM recipes
      WHERE id = ANY($1::int[]) AND is_published = true`,
     [recipeIds]
@@ -867,50 +1013,71 @@ async function filterAvailableRecipeSuggestions(recipeSuggestions) {
     .filter(Boolean);
 }
 
-function scoreKnownIngredient(query, ingredientName) {
-  const phrase = normalizeText(ingredientName);
-  if (!phrase) return 0;
+function scoreKnownIngredient(detectedTerm, ingredientName) {
+  const detectedKey = normalizedPhraseKey(detectedTerm);
+  const ingredientKey = normalizedPhraseKey(ingredientName);
+  if (!detectedKey || !ingredientKey) return 0;
 
-  let score = 0;
-  for (const queryPhrase of query.phrases) {
-    if (phrase === queryPhrase) {
-      score += 20;
-    } else if (hasWordBoundaryMatch(queryPhrase, phrase) || hasWordBoundaryMatch(phrase, queryPhrase)) {
-      score += 9;
-    }
+  if (detectedKey === ingredientKey) return 100;
+  if (hasIngredientFormMismatch(detectedKey, ingredientKey)) return 0;
+
+  if (hasWordBoundaryMatch(ingredientKey, detectedKey)) return 88;
+  if (hasWordBoundaryMatch(detectedKey, ingredientKey)) return 72;
+
+  const detectedTokens = tokenizeText(detectedKey);
+  const ingredientTokens = new Set(tokenizeText(ingredientKey));
+  if (detectedTokens.length > 1 && detectedTokens.every((token) => ingredientTokens.has(token))) {
+    return 60;
   }
 
-  const ingredientTokens = new Set(tokenizeText(ingredientName));
-  for (const token of query.tokens) {
-    if (ingredientTokens.has(token)) score += 4;
-  }
+  return 0;
+}
 
-  return score;
+function canonicalKnownIngredientMatch(detectedTerm, ingredientName) {
+  const detectedKey = normalizedPhraseKey(detectedTerm);
+  const ingredientKey = normalizedPhraseKey(ingredientName);
+
+  if (!detectedKey) return normalizeText(detectedTerm);
+  if (!ingredientKey) return detectedKey;
+  if (detectedKey === ingredientKey) return ingredientKey;
+
+  const ingredientIsContainedInDetected =
+    hasWordBoundaryMatch(ingredientKey, detectedKey) &&
+    tokenizeText(ingredientKey).length <= tokenizeText(detectedKey).length;
+
+  return ingredientIsContainedInDetected ? ingredientKey : detectedKey;
 }
 
 async function findKnownIngredientMatches(terms, limit = 8) {
-  const query = buildSearchTerms(terms);
-  if (query.phrases.size === 0 && query.tokens.size === 0) {
+  const detectedTerms = cleanTextList(terms, 15).filter(isUsefulRecipeTerm);
+  if (detectedTerms.length === 0) {
     return { matches: [], knownIngredientCount: 0 };
   }
 
   const knownIngredientRows = await getCachedKnownIngredientRows();
 
-  const scored = knownIngredientRows
-    .map((row) => ({
-      name: cleanDisplayText(row.name),
-      score: scoreKnownIngredient(query, row.name),
-    }))
-    .filter((item) => item.name && item.score >= 8)
-    .sort((a, b) => b.score - a.score);
-
   const seen = new Set();
   const matches = [];
-  for (const item of scored) {
-    const normalized = normalizeText(item.name);
+
+  for (const detectedTerm of detectedTerms) {
+    const best = knownIngredientRows
+      .map((row) => ({
+        name: cleanDisplayText(row.name),
+        score: scoreKnownIngredient(detectedTerm, row.name),
+      }))
+      .filter((item) => item.name && item.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return normalizedPhraseKey(a.name).length - normalizedPhraseKey(b.name).length;
+      })[0];
+
+    if (!best) continue;
+
+    const canonical = canonicalKnownIngredientMatch(detectedTerm, best.name);
+    const normalized = normalizedPhraseKey(canonical) || normalizeText(canonical);
     if (seen.has(normalized)) continue;
     seen.add(normalized);
-    matches.push(item.name);
+    matches.push(normalized);
     if (matches.length >= limit) break;
   }
 
@@ -1332,7 +1499,10 @@ Rules:
 
     const hasDetectedSubject = !isGenericDetectedName(detectedObjectName);
     const hasDetectedFoodItems = explicitIngredientTerms.length > 0;
-    const hasRecognizedDatabaseIngredients = knownIngredientMatches.length > 0;
+    const matchableKnownIngredients = knownIngredientMatches.filter(
+      (ingredient) => !isLowSignalRecipeIngredient(ingredient)
+    );
+    const hasRecognizedDatabaseIngredients = matchableKnownIngredients.length > 0;
     const analyzeOutputError = !hasDetectedSubject && !hasDetectedFoodItems;
     const retakeMessage = null;
 
@@ -1341,7 +1511,7 @@ Rules:
     if (hasDetectedFoodItems && hasRecognizedDatabaseIngredients) {
       try {
         recipeSuggestions = await filterAvailableRecipeSuggestions(
-          await findRecipesByIngredients(knownIngredientMatches, 8)
+          await findRecipesByIngredients(matchableKnownIngredients, MAX_GEMINI_RAG_CANDIDATES)
         );
       } catch (dbErr) {
         console.warn('[ml/camera/analyze] Recipe matching failed:', dbErr.message);
@@ -1361,7 +1531,7 @@ Rules:
     if (recipeSuggestions.length > 0) {
       const ragResult = await selectRecipeWithGeminiRAG({
         apiKey,
-        detectedIngredients: knownIngredientMatches,
+        detectedIngredients: matchableKnownIngredients,
         candidates: recipeSuggestions,
       });
 
@@ -1379,9 +1549,12 @@ Rules:
           });
           recipeSuggestions = [];
         } else if (ragResult.orderedIds.length > 0) {
-          recipeSuggestions = reorderByIds(recipeSuggestions, ragResult.orderedIds);
+          recipeSuggestions = filterAndOrderByIds(recipeSuggestions, ragResult.orderedIds);
         }
       }
+    }
+    if (!ragUsed) {
+      recipeSuggestions = recipeSuggestions.slice(0, MAX_AI_CAMERA_RECIPE_RESULTS);
     }
 
     const recommendedRecipe = firstSuggestedRecipe(recipeSuggestions);
@@ -1595,71 +1768,39 @@ Rules:
     const ingredientNames = detectedIngredients.map((item) => item.normalizedName);
     let verifiedIngredients = [];
     try {
-      const knownRows = await getCachedKnownIngredientRows();
-      for (const detectedName of ingredientNames) {
-        const detectedSimplified = simplifyToken(detectedName);
-        const match = knownRows.find((row) => {
-          const dbName = normalizeText(row.name);
-          const dbSimplified = simplifyToken(dbName);
-          // Exact match first
-          if (dbName === detectedName || dbSimplified === detectedSimplified) return true;
-          // Whole-word boundary match (no substring)
-          if (hasWordBoundaryMatch(detectedName, dbName)) return true;
-          if (hasWordBoundaryMatch(dbName, detectedName)) return true;
-          return false;
-        });
-        if (match) verifiedIngredients.push(detectedName);
-      }
+      const lookup = await findKnownIngredientMatches(ingredientNames, 15);
+      verifiedIngredients = lookup.matches;
     } catch (lookupErr) {
       console.warn('[ml/analyze-ingredients] Ingredient DB lookup failed:', lookupErr.message);
       verifiedIngredients = [...ingredientNames];
     }
 
     // ── Match against database recipes using ONLY verified ingredients ──
+    const matchableVerifiedIngredients = verifiedIngredients.filter(
+      (ingredient) => !isLowSignalRecipeIngredient(ingredient)
+    );
+
     let matchedRecipes = [];
-    if (verifiedIngredients.length > 0) {
+    if (matchableVerifiedIngredients.length > 0) {
       try {
-        const recipes = await getCachedPublishedRecipes();
-        const query = buildSearchTerms(verifiedIngredients);
+        const suggestions = await findRecipesByIngredients(
+          matchableVerifiedIngredients,
+          MAX_GEMINI_RAG_CANDIDATES
+        );
 
-        if (query.phrases.size > 0 || query.tokens.size > 0) {
-          const scored = recipes
-            .map((recipe) => {
-              const index = buildRecipeIndex(recipe);
-              const score = scoreRecipe(query, index);
-
-              // Only count ingredients that have an exact match in this recipe
-              const matched = [];
-              for (const ingName of verifiedIngredients) {
-                const hasMatch = index.ingredientPhraseSet.has(ingName)
-                  || index.ingredientPhrases.some((rp) =>
-                    hasWordBoundaryMatch(ingName, rp) || hasWordBoundaryMatch(rp, ingName)
-                  );
-                if (hasMatch) matched.push(ingName);
-              }
-
-              return { recipe, score, matchedIngredients: matched };
-            })
-            .filter((item) => item.score > 0 && item.matchedIngredients.length > 0)
-            .sort((a, b) => {
-              if (b.matchedIngredients.length !== a.matchedIngredients.length) {
-                return b.matchedIngredients.length - a.matchedIngredients.length;
-              }
-              return b.score - a.score;
-            })
-            .slice(0, 10);
-
-          matchedRecipes = scored.map((item) => ({
-            id: item.recipe.id,
-            title: item.recipe.title,
-            image_url: item.recipe.image_url,
-            category: item.recipe.category || item.recipe.region_or_origin || null,
-            difficulty: item.recipe.difficulty || null,
-            cook_time: item.recipe.cook_time_minutes ? `${item.recipe.cook_time_minutes} min` : item.recipe.total_time_minutes ? `${item.recipe.total_time_minutes} min` : null,
-            description: item.recipe.description || null,
-            matchedIngredients: item.matchedIngredients,
-          }));
-        }
+        matchedRecipes = suggestions.map((item) => ({
+          id: item.recipe.id,
+          title: item.recipe.title,
+          image_url: item.recipe.image_url || item.recipe.image || null,
+          category: item.recipe.category || null,
+          difficulty: item.recipe.difficulty || null,
+          cook_time: item.recipe.cook_time_minutes ? `${item.recipe.cook_time_minutes} min` : item.recipe.time,
+          description: item.recipe.description || null,
+          matchedIngredients: item.matchedIngredients,
+          ingredients: item.recipe.ingredients || [],
+          matchScore: item.score,
+          matchPercentage: item.matchPercentage,
+        }));
       } catch (dbErr) {
         console.warn('[ml/analyze-ingredients] Recipe matching failed:', dbErr.message);
       }
@@ -1675,7 +1816,7 @@ Rules:
     if (matchedRecipes.length > 0) {
       const ragResult = await selectRecipeWithGeminiRAG({
         apiKey,
-        detectedIngredients: verifiedIngredients,
+        detectedIngredients: matchableVerifiedIngredients,
         candidates: matchedRecipes,
       });
 
@@ -1693,9 +1834,12 @@ Rules:
           });
           matchedRecipes = [];
         } else if (ragResult.orderedIds.length > 0) {
-          matchedRecipes = reorderByIds(matchedRecipes, ragResult.orderedIds);
+          matchedRecipes = filterAndOrderByIds(matchedRecipes, ragResult.orderedIds);
         }
       }
+    }
+    if (!ragUsed) {
+      matchedRecipes = matchedRecipes.slice(0, MAX_AI_CAMERA_RECIPE_RESULTS);
     }
 
     const finalRecipeIds = matchedRecipes.map((r) => Number(r.id)).filter(Number.isInteger);
@@ -1709,7 +1853,9 @@ Rules:
 
     // Build response — only recipes from the database, never invented ones
     const message = matchedRecipes.length === 0
-      ? 'CookMate found ingredients, but no published recipe in the database matches them yet.'
+      ? verifiedIngredients.length > 0 && matchableVerifiedIngredients.length === 0
+        ? 'CookMate recognized only pantry staples. Scan a main ingredient or prepared dish for accurate recipe suggestions.'
+        : 'CookMate found ingredients, but no published recipe in the database matches them yet.'
       : null;
 
     return res.json({
