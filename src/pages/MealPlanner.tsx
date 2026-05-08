@@ -2,8 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  Bookmark,
+  BookmarkPlus,
   Calendar as CalendarIcon,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Edit3,
@@ -13,6 +16,7 @@ import {
   RefreshCw,
   ShoppingCart,
   Trash2,
+  X,
 } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
@@ -31,6 +35,7 @@ import {
   type GroceryList,
   type MealPlan,
   type MealType,
+  type SavedGroceryList,
 } from '@/services/mealPlannerService';
 
 const mealSlots: Array<{ id: MealType; label: string; color: string }> = [
@@ -63,6 +68,13 @@ export default function MealPlanner() {
   const [groceryLoading, setGroceryLoading] = useState(false);
   const [checkedGroceryItems, setCheckedGroceryItems] = useState<Set<string>>(new Set());
   const [editingPlan, setEditingPlan] = useState<MealPlan | null>(null);
+  const [savedLists, setSavedLists] = useState<SavedGroceryList[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [savingGrocery, setSavingGrocery] = useState(false);
+  const [expandedSavedId, setExpandedSavedId] = useState<number | null>(null);
+  const [currentSavedListId, setCurrentSavedListId] = useState<number | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [slotModal, setSlotModal] = useState<{ plans: MealPlan[]; slotLabel: string; date: Date } | null>(null);
 
   const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
   const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
@@ -104,18 +116,93 @@ export default function MealPlanner() {
     }
   };
 
+  const loadSavedLists = async () => {
+    setSavedLoading(true);
+    try {
+      const data = await mealPlannerService.listSavedGroceryLists();
+      setSavedLists(data.saved || []);
+    } catch (err) {
+      // keep silent on initial offline load; user will see empty state
+      console.warn('Failed to load saved grocery lists', err);
+    } finally {
+      setSavedLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadPlans();
     hydrateCachedGroceryList();
+    loadSavedLists();
   }, []);
 
+  const saveCurrentGroceryList = async () => {
+    if (!displayedGroceryList || displayedGroceryList.items.length === 0) {
+      toast.error('Nothing to save', { description: 'Generate a grocery list first.' });
+      return;
+    }
+    if (!isOnline) {
+      toast.error('You are offline', { description: OFFLINE_MESSAGE });
+      return;
+    }
+    setSavingGrocery(true);
+    try {
+      const defaultName = `Grocery list - ${format(new Date(), 'MMM d, yyyy')}`;
+      const data = await mealPlannerService.saveGroceryList({
+        name: defaultName,
+        grocery_list: displayedGroceryList,
+      });
+      setSavedLists((current) => [data.saved, ...current]);
+      setCurrentSavedListId(data.saved.id);
+      toast.success('Saved to My Saves', { description: data.saved.name });
+    } catch (err) {
+      toast.error('Could not save grocery list', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    } finally {
+      setSavingGrocery(false);
+    }
+  };
+
+  const removeSavedList = async (saved: SavedGroceryList) => {
+    if (!isOnline) {
+      toast.error('You are offline', { description: OFFLINE_MESSAGE });
+      return;
+    }
+    try {
+      await mealPlannerService.deleteSavedGroceryList(saved.id);
+      setSavedLists((current) => current.filter((item) => item.id !== saved.id));
+      setExpandedSavedId((current) => (current === saved.id ? null : current));
+      setCurrentSavedListId((current) => (current === saved.id ? null : current));
+      toast.success('Removed from My Saves', { description: saved.name });
+    } catch (err) {
+      toast.error('Could not remove saved list', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
+  };
+
+  const loadSavedIntoView = (saved: SavedGroceryList) => {
+    setGroceryList(saved.grocery_list);
+    setCheckedGroceryItems(new Set());
+    setCurrentSavedListId(saved.id);
+    toast.success('Loaded saved list', { description: saved.name });
+  };
+
   const generateGroceryList = async () => {
+    if (selectedSlots.size === 0) {
+      toast.error('Select meals on the calendar first', {
+        description: 'Tap a Breakfast, Lunch, or Dinner slot to select it before generating.',
+      });
+      return;
+    }
+
     if (!isOnline) {
       try {
         const data = await getGroceryListCached<{ groceryList: GroceryList; generated_at: string }>(() =>
           mealPlannerService.getGroceryList(),
         );
         setGroceryList(data.groceryList);
+        setCurrentSavedListId(null);
         toast.info('Showing cached grocery list', { description: 'Reconnect to regenerate it.' });
       } catch {
         toast.error('You are offline', { description: 'Load a grocery list once online before viewing it offline.' });
@@ -129,6 +216,7 @@ export default function MealPlanner() {
         mealPlannerService.getGroceryList(),
       );
       setGroceryList(data.groceryList);
+      setCurrentSavedListId(null);
       setCheckedGroceryItems(new Set());
       toast.success('Grocery list generated', {
         description: `${data.groceryList.totalItems} ingredient${data.groceryList.totalItems === 1 ? '' : 's'} grouped for shopping.`,
@@ -167,6 +255,75 @@ export default function MealPlanner() {
       else next.add(id);
       return next;
     });
+  };
+
+  const toggleSlot = (slotKey: string) => {
+    setSelectedSlots((current) => {
+      const next = new Set(current);
+      if (next.has(slotKey)) next.delete(slotKey);
+      else next.add(slotKey);
+      return next;
+    });
+  };
+
+  const displayedGroceryList = useMemo(() => {
+    if (!groceryList) return null;
+    if (selectedSlots.size === 0) return groceryList;
+
+    const selectedRecipeIds = new Set<number>();
+    selectedSlots.forEach((slotKey) => {
+      const slotPlans = plansByDateAndType.get(slotKey) || [];
+      slotPlans.forEach((p) => selectedRecipeIds.add(p.recipe.id));
+    });
+
+    if (selectedRecipeIds.size === 0) {
+      return { ...groceryList, items: [], groups: [], totalItems: 0 };
+    }
+
+    const filteredGroups = groceryList.groups.map((group) => {
+      const filteredItems = group.items.filter((item) =>
+        item.recipes?.some((r) => selectedRecipeIds.has(r.id))
+      );
+      return { ...group, items: filteredItems };
+    }).filter((group) => group.items.length > 0);
+
+    const totalItems = filteredGroups.reduce((sum, group) => sum + group.items.length, 0);
+
+    return {
+      ...groceryList,
+      groups: filteredGroups,
+      items: filteredGroups.flatMap((g) => g.items),
+      totalItems,
+    };
+  }, [groceryList, selectedSlots, plansByDateAndType]);
+
+  const clearGroceryList = async () => {
+    if (currentSavedListId) {
+      if (!isOnline) {
+        toast.error('You are offline', { description: OFFLINE_MESSAGE });
+        return;
+      }
+
+      try {
+        await mealPlannerService.deleteSavedGroceryList(currentSavedListId);
+        setSavedLists((current) => current.filter((item) => item.id !== currentSavedListId));
+        setExpandedSavedId((current) => (current === currentSavedListId ? null : current));
+        toast.success('Saved list deleted from database');
+      } catch (err) {
+        toast.error('Could not delete saved list', {
+          description: err instanceof Error ? err.message : 'Please try again.',
+        });
+        return;
+      }
+    }
+
+    setGroceryList(null);
+    setCheckedGroceryItems(new Set());
+    setCurrentSavedListId(null);
+    await offlineCache.groceryList.delete('latest');
+    if (!currentSavedListId) {
+      toast.success('Grocery list cleared');
+    }
   };
 
   const shiftDate = (direction: -1 | 1) => {
@@ -290,12 +447,12 @@ export default function MealPlanner() {
             </div>
           ) : (
             <div className="overflow-x-auto pb-3">
-              <div className={cn('grid gap-4', view === 'week' ? 'grid-cols-[repeat(7,minmax(140px,1fr))]' : 'grid-cols-1')}>
+              <div className={cn('grid gap-4', view === 'week' ? 'grid-cols-[repeat(7,minmax(175px,1fr))]' : 'grid-cols-1')}>
                 {visibleDays.map((day) => {
                   const dateKey = dayKey(day);
                   const isToday = isSameDay(day, new Date());
                   return (
-                    <section key={dateKey} className="space-y-4">
+                    <section key={dateKey} className="flex flex-col gap-4">
                       <div
                         className={cn(
                           'rounded-[1.5rem] border p-4 text-center shadow-sm',
@@ -309,14 +466,20 @@ export default function MealPlanner() {
                         <p className="mt-1 text-[10px] font-bold uppercase tracking-widest opacity-75">{format(day, 'MMM yyyy')}</p>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="flex flex-1 flex-col gap-3">
                         {mealSlots.map((slot) => {
                           const slotPlans = plansByDateAndType.get(`${dateKey}|${slot.id}`) || [];
 
                           return (
                             <div
                               key={slot.id}
-                              className="min-h-[132px] rounded-2xl border border-orange-100 bg-white p-3 shadow-sm dark:border-stone-700 dark:bg-stone-900"
+                              onClick={() => toggleSlot(`${dateKey}|${slot.id}`)}
+                              className={cn(
+                                "flex flex-col h-[270px] w-full rounded-[1.5rem] p-4 shadow-sm transition-all cursor-pointer",
+                                selectedSlots.has(`${dateKey}|${slot.id}`)
+                                  ? "border-2 border-orange-500 bg-orange-50 dark:border-orange-500 dark:bg-orange-500/10 ring-4 ring-orange-500/20"
+                                  : "border border-orange-100 bg-white dark:border-[#2e2b28] dark:bg-[#161514] hover:border-orange-200 dark:hover:border-[#3d3835]"
+                              )}
                             >
                               <div className="mb-3 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -327,6 +490,7 @@ export default function MealPlanner() {
                                 </div>
                                 <Link
                                   to="/recipes"
+                                  onClick={(e) => e.stopPropagation()}
                                   className="rounded-full p-1.5 text-stone-300 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-800"
                                   aria-label={`Add ${slot.label} recipe`}
                                 >
@@ -335,37 +499,43 @@ export default function MealPlanner() {
                               </div>
 
                               {slotPlans.length === 0 ? (
-                                <div className="flex min-h-[74px] items-center justify-center rounded-xl border border-dashed border-stone-200 px-3 text-center text-[11px] font-bold uppercase tracking-widest text-stone-300 dark:border-stone-700 dark:text-stone-600">
+                                <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-stone-50/50 px-3 text-center text-[11px] font-bold uppercase tracking-widest text-stone-300 dark:border-[#2e2b28] dark:bg-[#1c1a19] dark:text-[#5c5651]">
                                   Empty
                                 </div>
                               ) : (
-                                <div className="space-y-2">
-                                  {slotPlans.map((plan) => (
+                                <div className="flex flex-1 flex-col gap-2 pr-1">
+                                  {slotPlans.slice(0, 1).map((plan) => (
                                     <div
                                       key={plan.id}
                                       role="button"
                                       tabIndex={0}
-                                      onClick={() => navigate(`/recipe/${plan.recipe.id}`)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter') navigate(`/recipe/${plan.recipe.id}`);
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        navigate(`/recipe/${plan.recipe.id}`);
                                       }}
-                                      className="group cursor-pointer rounded-xl border border-stone-100 bg-orange-50/40 p-3 transition-all hover:border-orange-300 hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800/70 dark:hover:border-orange-500/50"
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                          event.stopPropagation();
+                                          navigate(`/recipe/${plan.recipe.id}`);
+                                        }
+                                      }}
+                                      className="group flex flex-col flex-1 cursor-pointer rounded-2xl border border-orange-500/30 bg-orange-50/40 p-4 transition-all hover:border-orange-400 hover:bg-orange-50 dark:border-orange-500/30 dark:bg-[#252320] dark:hover:border-orange-400/50"
                                     >
-                                      <p className="line-clamp-2 text-sm font-extrabold leading-tight text-stone-900 group-hover:text-orange-700 dark:text-stone-100 dark:group-hover:text-orange-300">
+                                      <p className="line-clamp-2 text-sm font-extrabold leading-tight text-stone-900 group-hover:text-orange-700 dark:text-white dark:group-hover:text-orange-300">
                                         {plan.recipe.title}
                                       </p>
-                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+                                      <div className="mt-2 flex flex-col gap-1 text-[10px] font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">
                                         <span>{planTime(plan)}</span>
                                         {plan.recipe.category ? <span>{plan.recipe.category}</span> : null}
                                       </div>
-                                      <div className="mt-3 flex items-center gap-1.5">
+                                      <div className="mt-auto flex items-center gap-2 pt-3">
                                         <button
                                           type="button"
                                           onClick={(event) => {
                                             event.stopPropagation();
                                             navigate(`/recipe/${plan.recipe.id}`);
                                           }}
-                                          className="rounded-full bg-white p-1.5 text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-stone-900 dark:text-stone-300"
+                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
                                           aria-label={`View ${plan.recipe.title}`}
                                         >
                                           <Eye size={14} />
@@ -376,7 +546,7 @@ export default function MealPlanner() {
                                             event.stopPropagation();
                                             setEditingPlan(plan);
                                           }}
-                                          className="rounded-full bg-white p-1.5 text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-stone-900 dark:text-stone-300"
+                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
                                           aria-label={`Edit ${plan.recipe.title}`}
                                         >
                                           <Edit3 size={14} />
@@ -387,7 +557,7 @@ export default function MealPlanner() {
                                             event.stopPropagation();
                                             removePlan(plan);
                                           }}
-                                          className="rounded-full bg-white p-1.5 text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-red-950/30"
+                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"
                                           aria-label={`Remove ${plan.recipe.title}`}
                                         >
                                           <Trash2 size={14} />
@@ -395,6 +565,18 @@ export default function MealPlanner() {
                                       </div>
                                     </div>
                                   ))}
+                                  {slotPlans.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setSlotModal({ plans: slotPlans, slotLabel: slot.label, date: day });
+                                      }}
+                                      className="flex flex-1 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 p-3 text-xs font-extrabold text-orange-600 transition-colors hover:bg-orange-100 dark:border-orange-500/30 dark:bg-[#252320] dark:text-orange-300"
+                                    >
+                                      +{slotPlans.length - 1} more
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -421,33 +603,67 @@ export default function MealPlanner() {
                   <p className="mt-2 text-sm text-stone-400">Aggregated from planned recipes</p>
                 </div>
                 <Badge className="bg-white/10 text-white hover:bg-white/10">
-                  {groceryList?.totalItems || 0} items
+                  {displayedGroceryList?.totalItems || 0} items
                 </Badge>
               </div>
-              <Button
-                type="button"
-                onClick={generateGroceryList}
-                disabled={groceryLoading}
-                className="mt-6 h-12 w-full rounded-2xl bg-orange-500 font-bold text-white hover:bg-orange-600"
-              >
-                {groceryLoading ? (
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  onClick={generateGroceryList}
+                  disabled={groceryLoading}
+                  className="h-12 flex-1 min-w-[140px] rounded-2xl bg-orange-500 font-bold text-white hover:bg-orange-600"
+                >
+                  {groceryLoading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={16} />
+                      {displayedGroceryList ? 'Regenerate' : 'Generate'}
+                    </>
+                  )}
+                </Button>
+                {displayedGroceryList && (
                   <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw size={16} />
-                    {groceryList ? 'Regenerate Grocery List' : 'Generate Grocery List'}
+                    <Button
+                      type="button"
+                      onClick={saveCurrentGroceryList}
+                      disabled={savingGrocery}
+                      variant="outline"
+                      className="h-12 shrink-0 rounded-2xl border-white/20 bg-white/10 font-bold text-white hover:bg-white/20"
+                    >
+                      {savingGrocery ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkPlus size={16} />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={clearGroceryList}
+                      variant="outline"
+                      className="h-12 shrink-0 rounded-2xl border-white/20 bg-white/10 font-bold text-white hover:bg-white/20"
+                    >
+                      <Trash2 size={16} />
+                      {currentSavedListId ? 'Delete' : 'Clear'}
+                    </Button>
                   </>
                 )}
-              </Button>
+              </div>
             </CardContent>
           </Card>
 
           <Card className="overflow-hidden rounded-[2.5rem] border-orange-100 bg-white shadow-lg shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-900 dark:shadow-none">
             <CardContent className="p-0">
-              {!groceryList ? (
+              {!displayedGroceryList ? (
                 <div className="p-7 text-center">
                   <ShoppingCart size={30} className="mx-auto mb-3 text-orange-300" />
                   <p className="font-extrabold text-stone-900 dark:text-stone-100">No grocery list yet</p>
@@ -455,14 +671,14 @@ export default function MealPlanner() {
                     Generate one after adding meals to combine duplicate ingredients automatically.
                   </p>
                 </div>
-              ) : groceryList.groups.length === 0 ? (
+              ) : displayedGroceryList.groups.length === 0 ? (
                 <div className="p-7 text-center text-sm text-stone-500 dark:text-stone-400">
-                  Planned recipes do not have ingredients yet.
+                  {selectedSlots.size > 0 ? 'Selected recipes do not have ingredients yet.' : 'Planned recipes do not have ingredients yet.'}
                 </div>
               ) : (
                 <div className="max-h-[620px] overflow-y-auto p-6">
                   <div className="space-y-7">
-                    {groceryList.groups.map((group) => (
+                    {displayedGroceryList.groups.map((group) => (
                       <section key={group.category}>
                         <h4 className="mb-3 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-stone-400 dark:text-stone-500">
                           <span className="h-2 w-2 rounded-full bg-orange-400" />
@@ -522,6 +738,124 @@ export default function MealPlanner() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="overflow-hidden rounded-[2.5rem] border-orange-100 bg-white shadow-lg shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-900 dark:shadow-none">
+            <CardContent className="p-0">
+              <div className="flex items-center justify-between gap-3 border-b border-orange-100 p-5 dark:border-stone-700">
+                <div>
+                  <h3 className="flex items-center gap-2 text-lg font-extrabold text-stone-900 dark:text-stone-100">
+                    <Bookmark className="text-orange-500" size={20} />
+                    My Saves
+                  </h3>
+                  <p className="mt-1 text-xs font-medium text-stone-500 dark:text-stone-400">
+                    Saved grocery lists from your planner
+                  </p>
+                </div>
+                <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 dark:bg-stone-800 dark:text-stone-200">
+                  {savedLists.length}
+                </Badge>
+              </div>
+
+              {savedLoading ? (
+                <div className="flex items-center justify-center p-8 text-orange-500">
+                  <Loader2 size={22} className="animate-spin" />
+                </div>
+              ) : savedLists.length === 0 ? (
+                <div className="p-7 text-center">
+                  <BookmarkPlus size={28} className="mx-auto mb-3 text-orange-300" />
+                  <p className="font-extrabold text-stone-900 dark:text-stone-100">No saved lists yet</p>
+                  <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+                    Generate a grocery list and tap Save to keep it here.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-[420px] divide-y divide-orange-50 overflow-y-auto dark:divide-stone-800">
+                  {savedLists.map((saved) => {
+                    const isOpen = expandedSavedId === saved.id;
+                    return (
+                      <div key={saved.id} className="px-5 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSavedId(isOpen ? null : saved.id)}
+                            className="flex flex-1 items-start gap-3 text-left"
+                          >
+                            <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-stone-800 dark:text-orange-300">
+                              <Bookmark size={16} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-extrabold text-stone-900 dark:text-stone-100">
+                                {saved.name}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                                {saved.total_items} items · {format(new Date(saved.created_at), 'MMM d, yyyy h:mm a')}
+                              </span>
+                            </span>
+                            <ChevronDown
+                              size={16}
+                              className={cn(
+                                'mt-2 shrink-0 text-stone-400 transition-transform',
+                                isOpen && 'rotate-180',
+                              )}
+                            />
+                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => loadSavedIntoView(saved)}
+                              aria-label={`Load ${saved.name}`}
+                              className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-800"
+                            >
+                              <Eye size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeSavedList(saved)}
+                              aria-label={`Remove ${saved.name}`}
+                              className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isOpen ? (
+                          <div className="mt-3 space-y-3 rounded-2xl border border-orange-100 bg-orange-50/40 p-3 dark:border-stone-700 dark:bg-stone-800/40">
+                            {saved.grocery_list?.groups?.length ? (
+                              saved.grocery_list.groups.map((group) => (
+                                <div key={group.category}>
+                                  <p className="mb-1 text-[10px] font-extrabold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+                                    {group.category}
+                                  </p>
+                                  <ul className="space-y-1">
+                                    {group.items.map((item) => (
+                                      <li
+                                        key={item.id}
+                                        className="flex items-center justify-between gap-2 text-xs font-bold text-stone-700 dark:text-stone-200"
+                                      >
+                                        <span className="truncate">{item.name}</span>
+                                        <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[10px] font-extrabold text-stone-500 dark:bg-stone-900 dark:text-stone-300">
+                                          {item.quantity_label}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-xs font-medium text-stone-500 dark:text-stone-400">
+                                No items in this saved list.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </aside>
 
         {editingPlan ? (
@@ -535,6 +869,94 @@ export default function MealPlanner() {
             }}
             isOnline={isOnline}
           />
+        ) : null}
+
+        {slotModal ? (
+          <div
+            className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm sm:items-center"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSlotModal(null);
+            }}
+          >
+            <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 dark:border-stone-700 dark:bg-stone-900">
+              <div className="flex items-start justify-between gap-4 border-b border-orange-100 p-5 dark:border-stone-700">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">
+                    {format(slotModal.date, 'EEEE, MMM d')}
+                  </p>
+                  <h2 className="mt-1 text-xl font-extrabold text-stone-900 dark:text-stone-100">
+                    {slotModal.slotLabel}
+                  </h2>
+                  <p className="mt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
+                    {slotModal.plans.length} recipe{slotModal.plans.length === 1 ? '' : 's'} planned
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSlotModal(null)}
+                  className="rounded-full p-2 text-stone-400 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-300"
+                  aria-label="Close dialog"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+                {slotModal.plans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/40 p-4 dark:border-stone-700 dark:bg-[#252320]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-extrabold text-stone-900 dark:text-white">
+                        {plan.recipe.title}
+                      </p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                        {planTime(plan)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/recipe/${plan.recipe.id}`)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                        aria-label={`View ${plan.recipe.title}`}
+                      >
+                        <Eye size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPlan(plan);
+                          setSlotModal(null);
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                        aria-label={`Edit ${plan.recipe.title}`}
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removePlan(plan);
+                          setSlotModal((current) =>
+                            current
+                              ? { ...current, plans: current.plans.filter((p) => p.id !== plan.id) }
+                              : null,
+                          );
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"
+                        aria-label={`Remove ${plan.recipe.title}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </Layout>
@@ -582,7 +1004,7 @@ function EditPlanModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm sm:items-center">
       <form
         onSubmit={save}
         className="w-full max-w-md overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 dark:border-stone-700 dark:bg-stone-900"

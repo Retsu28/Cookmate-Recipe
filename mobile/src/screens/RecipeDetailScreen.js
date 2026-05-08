@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   Alert,
+  Modal,
   View,
   Text,
   ScrollView,
   Image,
   TouchableOpacity,
+  TextInput,
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { recipeApi } from '../api/api';
+import { plannerApi, recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
@@ -47,6 +49,16 @@ const fallbackRecipes = {
   3: { id: 3, title: 'Honey Garlic Salmon', image: 'https://picsum.photos/seed/salmon/600/400', time: '20 min', prepTime: '10 min', difficulty: 'Easy', servings: 2, rating: 4.7, category: 'Seafood', ingredients: ['Salmon fillets', 'Honey', 'Garlic', 'Soy sauce'], nutrition: { calories: 380, protein: '36g', carbs: '18g', fat: '14g' } },
 };
 
+const mealTypes = [
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+];
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function RecipeDetailScreen({ route, navigation }) {
   const { colors, isDark } = useAppTheme();
   const { user } = useAuth();
@@ -57,6 +69,10 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [loadedFromApi, setLoadedFromApi] = useState(false);
   const [servings, setServings] = useState(4);
   const [checkedIngredients, setCheckedIngredients] = useState({});
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [planDate, setPlanDate] = useState(todayInputValue());
+  const [planMealType, setPlanMealType] = useState('dinner');
+  const [planning, setPlanning] = useState(false);
 
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -108,6 +124,38 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
   const toggleIngredient = (i) => {
     setCheckedIngredients(prev => ({ ...prev, [i]: !prev[i] }));
+  };
+
+  const openPlanner = () => {
+    setPlanDate(todayInputValue());
+    setPlanMealType('dinner');
+    setPlannerOpen(true);
+  };
+
+  const savePlan = async () => {
+    if (!isOnline) {
+      Alert.alert('You are offline', OFFLINE_MESSAGE);
+      return;
+    }
+    if (!recipe?.id || !planDate || !planMealType) {
+      Alert.alert('Choose a date and meal type first.');
+      return;
+    }
+
+    setPlanning(true);
+    try {
+      await plannerApi.assignMeal({
+        recipe_id: recipe.id,
+        planned_date: planDate,
+        meal_type: planMealType,
+      });
+      setPlannerOpen(false);
+      Alert.alert('Added to Meal Planner', `${recipe.title} was added to your planner.`);
+    } catch (err) {
+      Alert.alert('Planner save failed', err?.message || 'Please try again.');
+    } finally {
+      setPlanning(false);
+    }
   };
 
   if (loading) {
@@ -269,9 +317,6 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
       {/* Bottom bar — matches web */}
       <View style={[st.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <TouchableOpacity style={[st.saveBtn, { backgroundColor: colors.surfaceAlt }]}>
-          <Ionicons name="bookmark-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
             if (!isOnline) {
@@ -283,9 +328,71 @@ export default function RecipeDetailScreen({ route, navigation }) {
           activeOpacity={isOnline ? 0.7 : 0.9}
           style={[st.cookBtn, { backgroundColor: colors.primary, opacity: isOnline ? 1 : 0.5 }]}
         >
-          <Text style={st.cookBtnText}>START COOKING</Text>
+          <Ionicons name="play" size={16} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={st.cookBtnText}>Start Cooking</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={openPlanner}
+          style={[st.planBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={[st.planBtnText, { color: colors.primary }]}>Add to planner</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[st.heartBtn, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}>
+          <Ionicons name="heart-outline" size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
+
+      <Modal visible={plannerOpen} transparent animationType="slide" onRequestClose={() => setPlannerOpen(false)}>
+        <View style={st.modalOverlay}>
+          <View style={[st.modalCard, { backgroundColor: colors.surface }]}>
+            <View style={st.modalHeader}>
+              <Text style={[st.modalEyebrow, { color: colors.primary }]}>ADD TO MEAL PLANNER</Text>
+              <TouchableOpacity onPress={() => setPlannerOpen(false)} style={st.modalClose}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[st.modalTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
+
+            <Text style={[st.modalLabel, { color: colors.textSubtle }]}>DATE</Text>
+            <TextInput
+              value={planDate}
+              onChangeText={setPlanDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textSubtle}
+              style={[st.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+            />
+
+            <Text style={[st.modalLabel, { color: colors.textSubtle }]}>MEAL TYPE</Text>
+            <View style={st.mealTypeRow}>
+              {mealTypes.map((type) => {
+                const active = planMealType === type.id;
+                return (
+                  <TouchableOpacity
+                    key={type.id}
+                    onPress={() => setPlanMealType(type.id)}
+                    style={[st.mealTypeBtn, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.background }]}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[st.mealTypeText, { color: active ? '#fff' : colors.text }]}>
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              onPress={savePlan}
+              disabled={planning}
+              style={[st.modalSaveBtn, { backgroundColor: colors.primary, opacity: planning ? 0.6 : 1 }]}
+            >
+              <Text style={st.modalSaveText}>{planning ? 'SAVING...' : 'SAVE PLAN'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -345,7 +452,23 @@ const st = StyleSheet.create({
   aiDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, lineHeight: 18 },
   // Bottom bar
   bottomBar: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
-  saveBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
-  cookBtn: { flex: 1, height: 52, alignItems: 'center', justifyContent: 'center' },
-  cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
+  heartBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 26, borderWidth: 1 },
+  planBtn: { flex: 1, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 26 },
+  planBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1 },
+  cookBtn: { flex: 1.5, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26 },
+  cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1, color: '#fff' },
+  // Planner modal
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 14 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalEyebrow: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8 },
+  modalClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, lineHeight: 27 },
+  modalLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8, marginTop: 4 },
+  modalInput: { height: 48, borderWidth: 1, paddingHorizontal: 14, fontFamily: 'Geist_700Bold', fontSize: 14 },
+  mealTypeRow: { flexDirection: 'row', gap: 8 },
+  mealTypeBtn: { flex: 1, height: 46, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  mealTypeText: { fontFamily: 'Geist_700Bold', fontSize: 11 },
+  modalSaveBtn: { height: 52, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  modalSaveText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
 });

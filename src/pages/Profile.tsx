@@ -135,7 +135,7 @@ export default function ProfilePage() {
   };
 
   const validate = () => {
-    if (!normalizeFullName(form.fullName)) return 'Full name cannot be blank.';
+    if (!normalizeFullName(form.fullName)) return 'Username cannot be blank.';
     if (!EMAIL_RE.test(normalizeEmail(form.email))) return 'Please enter a valid email address.';
     if (securityChanging && !form.currentPassword) {
       return 'Current password is required to update your email or password.';
@@ -288,7 +288,7 @@ export default function ProfilePage() {
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="space-y-2">
-                          <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">Full Name</span>
+                          <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">Username</span>
                           <input
                             value={form.fullName}
                             onChange={(e) => setField('fullName', e.target.value)}

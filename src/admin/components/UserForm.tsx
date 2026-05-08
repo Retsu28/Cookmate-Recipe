@@ -57,7 +57,7 @@ function UserFormBase({ initialForm, onSave, onCancel, formRef }: UserFormProps)
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <motion.div variants={itemVariants}>
-          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Full Name *</label>
+          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Username *</label>
           <input
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}

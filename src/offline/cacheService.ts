@@ -8,7 +8,7 @@
 // is opt-in. Switch a screen to use the helpers below when you want offline
 // fallback for that specific endpoint.
 
-import { recipeCache, savedRecipeCache } from './db';
+import { groceryListCache, mealPlanCache, recipeCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
 
 type WithId = { id: string | number };
@@ -18,6 +18,7 @@ function toArray<T = WithId>(value: unknown): T[] {
   if (value && typeof value === 'object') {
     const v = value as Record<string, unknown>;
     if (Array.isArray(v.recipes)) return v.recipes as T[];
+    if (Array.isArray(v.plans)) return v.plans as T[];
     if (Array.isArray(v.data)) return v.data as T[];
     if (Array.isArray(v.results)) return v.results as T[];
     if (Array.isArray(v.saves)) return v.saves as T[];
@@ -141,9 +142,78 @@ export async function getSavedRecipesCached<T extends { saves?: WithId[] } = { s
   return { saves: cached, fromCache: true } as T & { fromCache?: boolean };
 }
 
+/**
+ * Read-through cache for authenticated meal plans.
+ * Returns `{ plans, fromCache? }`.
+ */
+export async function getMealPlansCached<T extends { plans?: WithId[] } = { plans: WithId[] }>(
+  apiFn: () => Promise<T>,
+): Promise<T & { fromCache?: boolean }> {
+  if (isOnlineNow()) {
+    try {
+      const response = await apiFn();
+      const plans = toArray<WithId>(response);
+      if (plans.length > 0) {
+        await mealPlanCache.clear();
+        await mealPlanCache.upsertMany(plans);
+      } else {
+        await mealPlanCache.clear();
+      }
+      return response;
+    } catch (err) {
+      const cached = await readCachedMealPlans();
+      if (cached.length > 0) {
+        return { plans: cached, fromCache: true } as T & { fromCache?: boolean };
+      }
+      throw err;
+    }
+  }
+
+  const cached = await readCachedMealPlans();
+  return { plans: cached, fromCache: true } as T & { fromCache?: boolean };
+}
+
+async function readCachedMealPlans(): Promise<WithId[]> {
+  const rows = await mealPlanCache.getAll({ limit: 500, order: 'ASC' });
+  return rows.map((r) => r.data as WithId).filter(Boolean);
+}
+
+/**
+ * Read-through cache for the last generated grocery list.
+ * Returns the same API shape as `/api/meal-planner/grocery-list`.
+ */
+export async function getGroceryListCached<T extends { groceryList?: unknown }>(
+  apiFn: () => Promise<T>,
+): Promise<T & { fromCache?: boolean }> {
+  if (isOnlineNow()) {
+    try {
+      const response = await apiFn();
+      await groceryListCache.upsert('latest', response as Record<string, unknown>);
+      return response;
+    } catch (err) {
+      const cached = await groceryListCache.get('latest');
+      if (cached?.data) {
+        return { ...(cached.data as T), fromCache: true };
+      }
+      throw err;
+    }
+  }
+
+  const cached = await groceryListCache.get('latest');
+  if (cached?.data) {
+    return { ...(cached.data as T), fromCache: true };
+  }
+
+  const error = new Error('Grocery list not available offline yet.') as Error & { code?: string };
+  error.code = 'OFFLINE_CACHE_MISS';
+  throw error;
+}
+
 // Direct handles for screens that fetched via the existing api and just want
 // to mirror the response into offline storage.
 export const offlineCache = {
   recipes: recipeCache,
   savedRecipes: savedRecipeCache,
+  mealPlans: mealPlanCache,
+  groceryList: groceryListCache,
 };

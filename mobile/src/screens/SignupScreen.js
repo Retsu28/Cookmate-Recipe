@@ -22,6 +22,7 @@ import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
 import AuthVideoBackground from '../components/AuthVideoBackground';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -70,6 +71,21 @@ export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('cookmate.auth.panelHidden').then((val) => {
+      if (val === 'true') setPanelCollapsed(true);
+    }).catch(() => {});
+  }, []);
+
+  const handleTogglePanel = () => {
+    setPanelCollapsed((c) => {
+      const next = !c;
+      AsyncStorage.setItem('cookmate.auth.panelHidden', String(next)).catch(() => {});
+      return next;
+    });
+  };
+
   const strengthBar = useRef(new Animated.Value(0)).current;
   const passwordRequirements = useMemo(() => getPasswordRequirements(password), [password]);
   const strength = useMemo(() => scorePassword(passwordRequirements), [passwordRequirements]);
@@ -83,7 +99,7 @@ export default function SignupScreen({ navigation }) {
   }, [strength.score, strengthBar]);
 
   const validate = () => {
-    if (!normalizeFullName(name)) return 'Please enter your full name.';
+    if (!normalizeFullName(name)) return 'Please enter your username.';
     if (!EMAIL_RE.test(normalizeEmail(email))) return 'Email must be a @gmail.com address.';
     if (password.length < MIN_PASSWORD_LEN) return `Password must be at least ${MIN_PASSWORD_LEN} characters.`;
     if (password !== confirm) return 'Passwords do not match.';
@@ -128,7 +144,7 @@ export default function SignupScreen({ navigation }) {
           >
             <AuthVisualPanel
               collapsed={panelCollapsed}
-              onToggle={() => setPanelCollapsed((c) => !c)}
+              onToggle={handleTogglePanel}
               heading="Join CookMate."
               subheading="Create an account to save recipes, plan meals, and cook with AI."
             />
@@ -145,7 +161,7 @@ export default function SignupScreen({ navigation }) {
               <AnimatedField index={0} fieldStyle={fieldStyle}>
                 <FieldInput
                   colors={colors}
-                  label="FULL NAME"
+                  label="USERNAME"
                   styles={styles}
                   value={name}
                   onChangeText={setName}
@@ -261,6 +277,12 @@ export default function SignupScreen({ navigation }) {
                   textContentType="newPassword"
                   editable={!loading}
                 />
+                {confirm.length > 0 && password === confirm && (
+                  <View style={styles.matchRow}>
+                    <Ionicons name="checkmark-outline" size={14} color={PASSWORD_SUCCESS_COLOR} />
+                    <Text style={styles.matchText}>Passwords match</Text>
+                  </View>
+                )}
               </AnimatedField>
 
               {error ? (
@@ -443,6 +465,17 @@ function createStyles(colors, isDark) {
     requirementTextMet: {
       color: PASSWORD_SUCCESS_COLOR,
       fontFamily: 'Geist_700Bold',
+    },
+    matchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 6,
+    },
+    matchText: {
+      color: PASSWORD_SUCCESS_COLOR,
+      fontFamily: 'Geist_600SemiBold',
+      fontSize: 12,
     },
     errorBox: {
       backgroundColor: isDark ? 'rgba(127, 29, 29, 0.2)' : '#fef2f2',

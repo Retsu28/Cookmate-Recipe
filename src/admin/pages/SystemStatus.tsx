@@ -10,7 +10,7 @@ export default function SystemStatus() {
     <div>
       <AdminPageHeader
         title="System Status"
-        description="Operational view of PWA readiness, API policy, service worker behavior, deployment status, and roadmap placeholders."
+        description="Operational view of web, mobile, authentication, API policy, service worker behavior, deployment readiness, and remaining roadmap items."
       />
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
@@ -31,8 +31,8 @@ export default function SystemStatus() {
           transition={{ duration: 0.45, delay: 0.07, ease: [0.22, 1, 0.36, 1] }}
         >
           <Server size={24} className="text-orange-700" />
-          <p className="mt-3 font-extrabold text-stone-900">Gemini network-only</p>
-          <p className="mt-1 text-sm leading-relaxed text-stone-600">AI responses should go through the server-side proxy and avoid service worker caching.</p>
+          <p className="mt-3 font-extrabold text-stone-900">AI server-side</p>
+          <p className="mt-1 text-sm leading-relaxed text-stone-600">Gemini camera analysis runs through the Express API and keeps provider keys out of client bundles.</p>
         </motion.div>
         <motion.div
           className="rounded-[2rem] border border-orange-200 bg-orange-50 p-5"
@@ -41,12 +41,12 @@ export default function SystemStatus() {
           transition={{ duration: 0.45, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
         >
           <AlertTriangle size={24} className="text-orange-700" />
-          <p className="mt-3 font-extrabold text-stone-900">Roadmap gaps visible</p>
-          <p className="mt-1 text-sm leading-relaxed text-stone-600">Offline recipe access, production auth, and favorites remain planned or placeholder features.</p>
+          <p className="mt-3 font-extrabold text-stone-900">Roadmap tracked</p>
+          <p className="mt-1 text-sm leading-relaxed text-stone-600">Firebase auth and database recipes are active while offline caching and saved recipe flows remain tracked separately.</p>
         </motion.div>
       </div>
 
-      <AdminSectionCard title="Status Matrix" description="The labels below follow ARCHITECTURE.md rather than pretending planned features are complete.">
+      <AdminSectionCard title="Status Matrix" description="Current implementation status for the main CookMate web, mobile, backend, and deployment areas.">
         <div className="grid gap-3 md:grid-cols-2">
           {systemStatuses.map((item) => (
             <div key={item.id} className="rounded-2xl border border-stone-100 bg-stone-50 p-4">

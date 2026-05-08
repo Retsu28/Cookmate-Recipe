@@ -96,8 +96,14 @@ export const mlApi = {
 };
 
 export const plannerApi = {
-  getPlan: (userId) => api.get(`/api/meal-planner/${userId}`),
-  assignMeal: (data) => api.post('/api/meal-planner/assign', data),
+  getPlan: () => api.get('/api/meal-planner'),
+  assignMeal: (data) => api.post('/api/meal-planner', data),
+  updateMeal: (id, data) => api.patch(`/api/meal-planner/${id}`, data),
+  deleteMeal: (id) => api.delete(`/api/meal-planner/${id}`),
+  getGroceryList: () => api.get('/api/meal-planner/grocery-list'),
+  listSavedGroceryLists: () => api.get('/api/meal-planner/grocery-list/saved'),
+  saveGroceryList: (data) => api.post('/api/meal-planner/grocery-list/saved', data),
+  deleteSavedGroceryList: (id) => api.delete(`/api/meal-planner/grocery-list/saved/${id}`),
 };
 
 export const shoppingApi = {

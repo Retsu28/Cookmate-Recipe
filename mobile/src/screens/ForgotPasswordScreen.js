@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
 import AuthVideoBackground from '../components/AuthVideoBackground';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +34,20 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('cookmate.auth.panelHidden').then((val) => {
+      if (val === 'true') setPanelCollapsed(true);
+    }).catch(() => {});
+  }, []);
+
+  const handleTogglePanel = () => {
+    setPanelCollapsed((c) => {
+      const next = !c;
+      AsyncStorage.setItem('cookmate.auth.panelHidden', String(next)).catch(() => {});
+      return next;
+    });
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -70,7 +85,7 @@ export default function ForgotPasswordScreen({ navigation }) {
           >
             <AuthVisualPanel
               collapsed={panelCollapsed}
-              onToggle={() => setPanelCollapsed((c) => !c)}
+              onToggle={handleTogglePanel}
               heading="Reset your password."
               subheading="We'll email you a secure link to set a new password."
             />

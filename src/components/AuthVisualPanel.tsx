@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useTheme } from 'next-themes';
-import { ChefHat, ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone } from 'lucide-react';
+import { ChefHat, ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone, X } from 'lucide-react';
 
 // ── floating icon data ──────────────────────────────────────────────
 const ICONS = [UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone];
@@ -147,6 +147,18 @@ export function AuthVisualPanel({
                 <Icon size={size} strokeWidth={1.5} />
               </motion.div>
             ))}
+
+            {/* Close button inside panel */}
+            <motion.button
+              type="button"
+              onClick={onToggle}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white/80 hover:text-white backdrop-blur-sm transition-colors"
+              aria-label="Hide visual panel"
+            >
+              <X size={16} strokeWidth={2.5} />
+            </motion.button>
 
             {/* Center content */}
             <div className="relative z-10 flex flex-col items-center text-center px-10 max-w-md">

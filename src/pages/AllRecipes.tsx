@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarPlus, ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Layout } from '../components/Layout';
 import { SearchResultsSkeleton } from '@/components/SkeletonScreen';
 import api from '@/services/api';
+import { type PlannerRecipeSummary } from '@/components/meal-planner/AddToPlannerModal';
+import { AddToPlannerForm } from '@/components/meal-planner/AddToPlannerForm';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -53,6 +55,7 @@ export default function AllRecipesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [plannerRecipe, setPlannerRecipe] = useState<PlannerRecipeSummary | null>(null);
 
   // Active category filter — null = show all
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -384,35 +387,71 @@ export default function AllRecipesPage() {
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ duration: 0.32, delay: Math.min(index, 12) * 0.04 }}
                     >
-                      <Link to={`/recipe/${recipe.id}`} className="group flex cursor-pointer flex-col">
-                        <div className="relative mb-4 aspect-square w-full overflow-hidden rounded-3xl bg-orange-100 dark:bg-stone-800">
-                          {recipe.image_url ? (
-                            <img
-                              src={recipe.image_url}
-                              alt={recipe.title}
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-orange-300">
-                              <ChefHat size={48} />
-                            </div>
+                      <div className="group flex flex-col">
+                        <Link to={`/recipe/${recipe.id}`} className="block cursor-pointer">
+                          <div className="relative mb-4 aspect-square w-full overflow-hidden rounded-3xl bg-orange-100 dark:bg-stone-800">
+                            {recipe.image_url ? (
+                              <img
+                                src={recipe.image_url}
+                                alt={recipe.title}
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-orange-300">
+                                <ChefHat size={48} />
+                              </div>
+                            )}
+                            {time ? (
+                              <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700 shadow-sm dark:bg-stone-800 dark:text-orange-400">
+                                <Clock size={11} />
+                                {time} MIN
+                              </div>
+                            ) : null}
+                          </div>
+                          <h4 className="mb-2 pr-4 text-lg font-bold uppercase leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
+                            {recipe.title}
+                          </h4>
+                          <p className="text-sm text-stone-500 dark:text-stone-400">
+                            {meta} &middot; {recipe.difficulty || 'Any level'}
+                          </p>
+                        </Link>
+                        
+                        {plannerRecipe?.id !== recipe.id && (
+                          <button
+                            type="button"
+                            onClick={() => setPlannerRecipe({
+                              id: recipe.id,
+                              title: recipe.title,
+                              image_url: recipe.image_url,
+                              category: recipe.category,
+                            })}
+                            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-orange-200 bg-white px-4 text-[10px] font-extrabold uppercase tracking-widest text-orange-700 shadow-sm transition-all hover:border-orange-300 hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400 dark:hover:bg-stone-700"
+                          >
+                            <CalendarPlus size={15} />
+                            Add to Meal Planner
+                          </button>
+                        )}
+                        
+                        <AnimatePresence>
+                          {plannerRecipe?.id === recipe.id && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <AddToPlannerForm
+                                recipe={plannerRecipe}
+                                onCancel={() => setPlannerRecipe(null)}
+                                onPlanned={() => setPlannerRecipe(null)}
+                              />
+                            </motion.div>
                           )}
-                          {time ? (
-                            <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700 shadow-sm dark:bg-stone-800 dark:text-orange-400">
-                              <Clock size={11} />
-                              {time} MIN
-                            </div>
-                          ) : null}
-                        </div>
-                        <h4 className="mb-2 pr-4 text-lg font-bold uppercase leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
-                          {recipe.title}
-                        </h4>
-                        <p className="text-sm text-stone-500 dark:text-stone-400">
-                          {meta} &middot; {recipe.difficulty || 'Any level'}
-                        </p>
-                      </Link>
+                        </AnimatePresence>
+                      </div>
                     </motion.div>
                   );
                 })}

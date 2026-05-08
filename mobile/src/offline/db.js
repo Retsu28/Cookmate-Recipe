@@ -4,6 +4,8 @@
 // Tables:
 //   recipes        (id, data JSON, updated_at)
 //   saved_recipes  (id, data JSON, updated_at)
+//   meal_plans     (id, data JSON, updated_at)
+//   grocery_lists  (id, data JSON, updated_at)
 //   sync_queue     (id, type, payload JSON, created_at)
 //
 // Usage:
@@ -18,14 +20,26 @@ let dbPromise = null;
 
 async function openDb() {
   const db = await SQLite.openDatabaseAsync(DB_NAME);
+  // PRAGMA cannot run inside a transaction; execAsync may wrap statements
+  // in an implicit one, so run WAL mode separately first.
+  await db.runAsync('PRAGMA journal_mode = WAL');
   await db.execAsync(`
-    PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS recipes (
       id TEXT PRIMARY KEY NOT NULL,
       data TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS saved_recipes (
+      id TEXT PRIMARY KEY NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS meal_plans (
+      id TEXT PRIMARY KEY NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS grocery_lists (
       id TEXT PRIMARY KEY NOT NULL,
       data TEXT NOT NULL,
       updated_at INTEGER NOT NULL
@@ -127,6 +141,8 @@ function makeCache(table) {
 
 export const recipeCache = makeCache('recipes');
 export const savedRecipeCache = makeCache('saved_recipes');
+export const mealPlanCache = makeCache('meal_plans');
+export const groceryListCache = makeCache('grocery_lists');
 
 export const queue = {
   async enqueue(type, payload) {
@@ -167,6 +183,8 @@ export async function clearOfflineCache() {
   try {
     await recipeCache.clear();
     await savedRecipeCache.clear();
+    await mealPlanCache.clear();
+    await groceryListCache.clear();
   } catch {
     // best-effort
   }

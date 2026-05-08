@@ -8,12 +8,13 @@
 // module is opt-in and additive. Only screens that want offline behavior need
 // to switch to the helpers below.
 
-import { recipeCache, savedRecipeCache } from './db';
+import { groceryListCache, mealPlanCache, recipeCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
 
 function toArray(value) {
   if (Array.isArray(value)) return value;
   if (value && Array.isArray(value.recipes)) return value.recipes;
+  if (value && Array.isArray(value.plans)) return value.plans;
   if (value && Array.isArray(value.data)) return value.data;
   if (value && Array.isArray(value.results)) return value.results;
   return [];
@@ -123,9 +124,58 @@ export async function getSavedRecipesCached(apiFn) {
   return buildAxiosLike({ saves: cached }, { fromCache: true });
 }
 
+export async function getMealPlansCached(apiFn) {
+  if (isOnlineNow()) {
+    try {
+      const response = await apiFn();
+      const plans = toArray(response?.data);
+      await mealPlanCache.clear();
+      if (plans.length > 0) {
+        await mealPlanCache.upsertMany(plans);
+      }
+      return response;
+    } catch (err) {
+      const cached = await readCachedMealPlans();
+      if (cached.length > 0) return buildAxiosLike({ plans: cached }, { fromCache: true });
+      throw err;
+    }
+  }
+
+  const cached = await readCachedMealPlans();
+  return buildAxiosLike({ plans: cached }, { fromCache: true });
+}
+
+async function readCachedMealPlans() {
+  const rows = await mealPlanCache.getAll({ limit: 500, order: 'ASC' });
+  return rows.map((r) => r.data).filter(Boolean);
+}
+
+export async function getGroceryListCached(apiFn) {
+  if (isOnlineNow()) {
+    try {
+      const response = await apiFn();
+      await groceryListCache.upsert('latest', response?.data || {});
+      return response;
+    } catch (err) {
+      const cached = await groceryListCache.get('latest');
+      if (cached?.data) return buildAxiosLike(cached.data, { fromCache: true });
+      throw err;
+    }
+  }
+
+  const cached = await groceryListCache.get('latest');
+  if (cached?.data) return buildAxiosLike(cached.data, { fromCache: true });
+
+  const err = new Error('Grocery list not available offline yet.');
+  err.code = 'OFFLINE_CACHE_MISS';
+  throw err;
+}
+
 // Primitive cache writers — useful when a screen already fetched data through
 // the existing API and just wants to mirror it for offline use.
 export const offlineCache = {
   recipes: recipeCache,
   savedRecipes: savedRecipeCache,
+  mealPlans: mealPlanCache,
+  groceryList: groceryListCache,
 };

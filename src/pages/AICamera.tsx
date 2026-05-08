@@ -411,7 +411,7 @@ export default function AICamera() {
       // Offline fallback — serve the locally cached saves if present.
       try {
         const rows = await offlineCache.savedRecipes.getAll({ limit: MAX_SAVES });
-        const cached = rows.map((r) => r.data).filter(Boolean) as SavedCameraImage[];
+        const cached = rows.map((r) => r.data).filter(Boolean) as unknown as SavedCameraImage[];
         if (cached.length > 0) {
           setSaves(cached);
           setSavesError(null);

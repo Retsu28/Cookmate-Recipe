@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
 import AuthVideoBackground from '../components/AuthVideoBackground';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,6 +39,20 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('cookmate.auth.panelHidden').then((val) => {
+      if (val === 'true') setPanelCollapsed(true);
+    }).catch(() => {});
+  }, []);
+
+  const handleTogglePanel = () => {
+    setPanelCollapsed((c) => {
+      const next = !c;
+      AsyncStorage.setItem('cookmate.auth.panelHidden', String(next)).catch(() => {});
+      return next;
+    });
+  };
 
   const validate = () => {
     if (!EMAIL_RE.test(email.trim())) return 'Please enter a valid email address.';
@@ -84,7 +99,7 @@ export default function LoginScreen({ navigation }) {
           >
             <AuthVisualPanel
               collapsed={panelCollapsed}
-              onToggle={() => setPanelCollapsed((c) => !c)}
+              onToggle={handleTogglePanel}
               heading="Cook smarter."
               subheading="Plan meals, discover recipes, and let AI be your sous-chef."
             />

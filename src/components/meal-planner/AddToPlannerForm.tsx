@@ -1,0 +1,164 @@
+import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { OFFLINE_MESSAGE } from '@/offline/network';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import {
+  mealPlannerService,
+  mealTypeLabels,
+  type MealPlan,
+  type MealType,
+} from '@/services/mealPlannerService';
+import { type PlannerRecipeSummary } from './AddToPlannerModal';
+
+const mealTypes = Object.entries(mealTypeLabels) as Array<[MealType, string]>;
+
+function todayInputValue() {
+  return format(new Date(), 'yyyy-MM-dd');
+}
+
+export function AddToPlannerForm({
+  recipe,
+  onCancel,
+  onPlanned,
+}: {
+  recipe: PlannerRecipeSummary;
+  onCancel: () => void;
+  onPlanned?: (plan: MealPlan) => void;
+}) {
+  const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
+  const [plannedDate, setPlannedDate] = useState(todayInputValue);
+  const [mealType, setMealType] = useState<MealType>('dinner');
+  const [saving, setSaving] = useState(false);
+
+  const canSave = useMemo(
+    () => Boolean(recipe?.id && plannedDate && mealType && isOnline && !saving),
+    [recipe?.id, plannedDate, mealType, isOnline, saving],
+  );
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!isOnline) {
+      toast.error('You are offline', { description: OFFLINE_MESSAGE });
+      return;
+    }
+
+    if (!recipe.id || !plannedDate || !mealType) {
+      toast.error('Choose a date and meal type first.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const data = await mealPlannerService.createPlan({
+        recipe_id: recipe.id,
+        planned_date: plannedDate,
+        meal_type: mealType,
+      });
+      toast.success('Added to Meal Planner', {
+        description: `${recipe.title} is planned for ${mealTypeLabels[mealType]}.`,
+        action: {
+          label: 'Open Planner',
+          onClick: () => navigate('/planner'),
+        },
+      });
+      onPlanned?.(data.plan);
+      onCancel();
+    } catch (err) {
+      toast.error('Could not save meal plan', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mt-4 w-full overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg shadow-orange-100/20 dark:border-stone-700 dark:bg-stone-900 animate-fade-up"
+    >
+      <div className="space-y-4 p-4">
+        {!isOnline ? (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200">
+            {OFFLINE_MESSAGE}
+          </div>
+        ) : null}
+
+        <label className="block space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+            Date
+          </span>
+          <input
+            type="date"
+            value={plannedDate}
+            onChange={(event) => setPlannedDate(event.target.value)}
+            className="h-10 w-full rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none transition-colors focus:border-orange-400 focus:ring-2 focus:ring-orange-500/10 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
+            required
+          />
+        </label>
+
+        <div className="space-y-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
+            Meal Type
+          </span>
+          <div className="grid grid-cols-3 gap-2">
+            {mealTypes.map(([value, label]) => {
+              const active = mealType === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMealType(value)}
+                  className={cn(
+                    'h-10 rounded-xl border text-[10px] font-extrabold uppercase tracking-widest transition-all',
+                    active
+                      ? 'border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                      : 'border-orange-100 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700',
+                  )}
+                  aria-pressed={active}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col-reverse gap-2 border-t border-orange-100 bg-orange-50/50 p-4 sm:flex-row sm:justify-end dark:border-stone-700 dark:bg-stone-900/60">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 rounded-full px-4 text-xs font-bold"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={!canSave}
+          className="h-9 rounded-full px-4 text-xs font-bold"
+        >
+          {saving ? (
+            <>
+              <Loader2 size={14} className="mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Save Plan'
+          )}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export default AddToPlannerForm;

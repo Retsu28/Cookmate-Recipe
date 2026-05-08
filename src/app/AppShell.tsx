@@ -7,7 +7,7 @@ import { AuthPageSkeleton, ContentSkeleton } from '@/components/SkeletonScreen';
 import { AuthVideoBackground } from '@/components/AuthVideoBackground';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
-const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup', '/forgot-password']);
+const SHELLLESS_PATHS = new Set(['/onboarding', '/login', '/signup', '/forgot-password', '/reset-password']);
 
 function OfflineBanner() {
   return (
@@ -37,7 +37,8 @@ export default function AppShell() {
   const isAuthPath =
     location.pathname === '/login' ||
     location.pathname === '/signup' ||
-    location.pathname === '/forgot-password';
+    location.pathname === '/forgot-password' ||
+    location.pathname === '/reset-password';
 
   const routeContent = (
     <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : isAuthPath ? null : <AuthPageSkeleton />}>

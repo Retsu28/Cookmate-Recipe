@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ChefHat, Eye, EyeOff, Loader2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -66,10 +66,16 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('cookmate.auth.panelHidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const validate = (): string | null => {
-    if (!normalizeFullName(name)) return 'Please enter your full name.';
+    if (!normalizeFullName(name)) return 'Please enter your username.';
     if (!GMAIL_RE.test(normalizeEmail(email))) return 'Email must be a @gmail.com address.';
     if (password.length < MIN_PASSWORD_LEN)
       return `Password must be at least ${MIN_PASSWORD_LEN} characters.`;
@@ -101,6 +107,12 @@ export default function Signup() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('cookmate.auth.panelHidden', String(panelCollapsed));
+    } catch {}
+  }, [panelCollapsed]);
 
   const inputCls =
     'w-full h-12 rounded-xl border border-stone-200 bg-white px-4 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all';
@@ -158,7 +170,7 @@ export default function Signup() {
               <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                 <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="show" className="space-y-2">
                   <label htmlFor="name" className="text-xs font-bold text-stone-500 uppercase tracking-widest">
-                    Full name
+                    Username
                   </label>
                   <input
                     id="name"
@@ -300,7 +312,7 @@ export default function Signup() {
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-600"
+                        className="flex items-center gap-1.5 text-[11px] font-semibold text-green-600"
                       >
                         <Check size={12} /> Passwords match.
                       </motion.p>

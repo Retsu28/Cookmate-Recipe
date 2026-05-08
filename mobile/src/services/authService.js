@@ -17,6 +17,7 @@ import {
   sendEmailVerification,
   signOut,
   updateProfile,
+  deleteUser,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { firebaseAuth } from '../lib/firebase';
@@ -112,8 +113,9 @@ export const authService = {
     if (!name || !email || !password) {
       throw new Error('Please fill in all fields.');
     }
+    let cred;
     try {
-      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
       if (name && name.trim()) {
         try {
           await updateProfile(cred.user, { displayName: name.trim() });
@@ -123,8 +125,16 @@ export const authService = {
       }
       // Send verification email but don't block signup on it.
       sendEmailVerification(cred.user).catch(() => {});
-      return exchangeFirebaseUser(cred.user, name);
+      return await exchangeFirebaseUser(cred.user, name);
     } catch (error) {
+      // Clean up the Firebase user if backend rejected (e.g., duplicate name/email).
+      if (cred?.user) {
+        try {
+          await deleteUser(cred.user);
+        } catch {
+          /* ignore cleanup failures */
+        }
+      }
       throw new Error(toFirebaseMessage(error, toMessage(error, 'Unable to create account. Please try again.')));
     }
   },

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
+
 
 const backgroundVideo = require('../../assets/authformbackground.mp4');
 const AUTH_FALLBACK = '#0c0a09';

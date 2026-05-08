@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -35,7 +35,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('cookmate.auth.panelHidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const submittingRef = useRef(false);
 
   const validate = (): string | null => {
@@ -43,6 +49,12 @@ export default function Login() {
     if (!password) return 'Please enter your password.';
     return null;
   };
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('cookmate.auth.panelHidden', String(panelCollapsed));
+    } catch {}
+  }, [panelCollapsed]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,15 +7,16 @@ import { Card, CardContent } from '../components/ui/card';
 import {
   Clock, ChefHat, Users, Flame, Info,
   CheckCircle2, Printer, Share2, Heart,
-  ShoppingCart, Star, ArrowLeft, Play, X, Sparkles, Loader2
+  ShoppingCart, Star, ArrowLeft, Play, X, Sparkles, Loader2, CalendarPlus
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import api from '@/services/api';
 import { getRecipeByIdCached } from '@/offline/cacheService';
 import { OFFLINE_MESSAGE } from '@/offline/network';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
+import { AddToPlannerModal } from '@/components/meal-planner/AddToPlannerModal';
 
 interface Ingredient {
   id: number;
@@ -59,6 +60,7 @@ export default function RecipeDetail() {
   const [isCooking, setIsCooking] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
+  const [plannerModalOpen, setPlannerModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -196,7 +198,7 @@ export default function RecipeDetail() {
               ))}
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 onClick={() => {
                   if (!isOnline) {
@@ -212,6 +214,13 @@ export default function RecipeDetail() {
                 disabled={steps.length === 0}
               >
                 <Play size={20} fill="currentColor" /> Start Cooking
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setPlannerModalOpen(true)}
+                className="flex-1 h-14 rounded-full border-stone-200 font-bold text-lg gap-2 text-stone-700 hover:border-orange-500 hover:text-orange-500 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400"
+              >
+                <CalendarPlus size={20} /> Add to meal planner
               </Button>
               <Button variant="outline" className="w-14 h-14 rounded-full border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 shrink-0 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400">
                 <Heart size={24} />
@@ -302,12 +311,12 @@ export default function RecipeDetail() {
                 )}
               </div>
             </section>
+
           </div>
 
           {/* Sticky Sidebar (Desktop) */}
           <div className="hidden lg:block lg:w-1/3">
             <div className="sticky top-24 space-y-6">
-
               <Card className="overflow-hidden rounded-[2rem] border-orange-100 bg-white shadow-xl shadow-orange-100/60 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
                 <div className="bg-stone-50 p-6 border-b border-stone-100 flex items-center gap-3 dark:bg-stone-800 dark:border-stone-700">
                   <Flame size={24} className="text-orange-500" />
@@ -348,7 +357,7 @@ export default function RecipeDetail() {
                   <Sparkles size={32} className="text-orange-100" />
                   <h3 className="font-bold text-xl">Ask AI Assistant</h3>
                   <p className="text-orange-50">Need a substitute or want to make this recipe differently?</p>
-                  <Button className="w-full bg-white text-orange-600 hover:bg-stone-50 rounded-full font-bold mt-4">
+                  <Button className="w-full bg-white text-stone-900 hover:bg-stone-200 rounded-full px-8 font-bold">
                     Ask CookMate
                   </Button>
                 </CardContent>
@@ -358,6 +367,20 @@ export default function RecipeDetail() {
           </div>
         </div>
       </div>
+      <AddToPlannerModal
+        recipe={
+          recipe
+            ? {
+                id: recipe.id,
+                title: recipe.title,
+                image_url: recipe.image_url,
+                category: recipe.category,
+              }
+            : null
+        }
+        open={plannerModalOpen}
+        onOpenChange={setPlannerModalOpen}
+      />
     </Layout>
   );
 }
@@ -433,7 +456,7 @@ function GuidedCooking({ mode, step, setStep, onExit }: any) {
           {step === mode.steps.length - 1 ? (
             <Button
               onClick={onExit}
-              className="h-16 rounded-full px-8 text-xl font-bold text-white shadow-lg shadow-orange-500/20 sm:px-12"
+              className="h-16 rounded-full bg-orange-500 px-8 text-xl font-bold text-white shadow-lg shadow-orange-500/20 sm:px-12"
             >
               FINISH
             </Button>

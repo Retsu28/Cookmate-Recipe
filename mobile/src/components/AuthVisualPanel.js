@@ -201,6 +201,24 @@ export default function AuthVisualPanel({
           <FloatingIcon key={f.id} {...f} color={iconColor} />
         ))}
 
+        {/* Close button inside panel */}
+        <Pressable
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            onToggle?.();
+          }}
+          style={({ pressed }) => [
+            styles.closeBtn,
+            {
+              opacity: pressed ? 0.6 : 0.9,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.55)',
+            },
+          ]}
+          accessibilityLabel="Hide visual panel"
+        >
+          <Ionicons name="close-outline" size={18} color={isDark ? colors.textMuted : '#44403c'} />
+        </Pressable>
+
         {/* Center content */}
         <View style={styles.content}>
           <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
@@ -239,6 +257,14 @@ export default function AuthVisualPanel({
 }
 
 const styles = StyleSheet.create({
+  closeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 20,
+    padding: 6,
+    borderRadius: 16,
+  },
   toggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',

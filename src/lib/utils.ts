@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Returns the first character of a full name, uppercased.
+ * Returns the first character of a username, uppercased.
  * Used to render avatar placeholders when no profile picture is set.
  * Falls back to '?' when the name is empty / nullish.
  */

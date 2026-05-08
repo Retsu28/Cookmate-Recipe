@@ -34,7 +34,7 @@ async function fetchAllRecipesAz() {
     const nextPayload = nextResponse?.data || {};
     const nextRecipes = Array.isArray(nextPayload.recipes) ? nextPayload.recipes : [];
 
-    if (nextRecipes.length === 0) break;
+    if (nextRecipes.length === 0 || allRecipes.length >= expectedTotal) break;
     allRecipes.push(...nextRecipes);
   }
 

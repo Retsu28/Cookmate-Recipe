@@ -104,9 +104,35 @@ CREATE TABLE meal_plans (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     recipe_id INTEGER REFERENCES recipes(id),
     planned_date DATE NOT NULL,
-    meal_slot VARCHAR(50), -- Breakfast, Lunch, Dinner, Snack
+    meal_type VARCHAR(50) NOT NULL CHECK (LOWER(meal_type) IN ('breakfast', 'lunch', 'dinner')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_meal_plans_user_date ON meal_plans (user_id, planned_date, meal_type);
+
+-- Meal planner grocery list generation metrics
+CREATE TABLE meal_planner_grocery_generations (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    item_count INTEGER NOT NULL DEFAULT 0,
+    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_meal_planner_grocery_generations_user_recent
+    ON meal_planner_grocery_generations (user_id, generated_at DESC);
+
+-- Saved grocery lists ("My Saves" on the meal planner)
+CREATE TABLE meal_planner_saved_grocery_lists (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(160) NOT NULL,
+    total_items INTEGER NOT NULL DEFAULT 0,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_meal_planner_saved_grocery_lists_user
+    ON meal_planner_saved_grocery_lists (user_id, created_at DESC);
 
 -- Shopping Lists table
 CREATE TABLE shopping_lists (

@@ -1,21 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChefHat, Loader2, Mail } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { authService } from '@/services/authService';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const MIN_PASSWORD_LEN = 8;
 const authCardClass =
   'bg-white/[0.88] dark:bg-stone-900/[0.84] backdrop-blur-xl shadow-2xl shadow-stone-950/20 rounded-2xl overflow-hidden border border-white/45 dark:border-white/10';
 
-export default function ForgotPassword() {
-  const [email, setEmail] = useState('');
+export default function ResetPassword() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const token = searchParams.get('token') || '';
+
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [panelCollapsed, setPanelCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('cookmate.auth.panelHidden') === 'true';
@@ -30,20 +36,34 @@ export default function ForgotPassword() {
     } catch {}
   }, [panelCollapsed]);
 
+  useEffect(() => {
+    if (!token) setError('Invalid reset link. Please request a new password reset.');
+  }, [token]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!EMAIL_RE.test(email.trim())) {
-      setError('Please enter a valid email address.');
+
+    if (!token) {
+      setError('Invalid reset link.');
       return;
     }
+    if (password.length < MIN_PASSWORD_LEN) {
+      setError(`Password must be at least ${MIN_PASSWORD_LEN} characters.`);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await authService.forgotPassword(email.trim());
-      setSent(true);
+      await authService.resetPassword(token, password);
+      setDone(true);
+      setTimeout(() => navigate('/login'), 3000);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Could not send the reset email. Please try again.';
+      const msg = err instanceof Error ? err.message : 'Could not reset password. Please try again.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -59,8 +79,8 @@ export default function ForgotPassword() {
         <AuthVisualPanel
           collapsed={panelCollapsed}
           onToggle={() => setPanelCollapsed((c) => !c)}
-          heading="Reset your password."
-          subheading="We'll email you a secure link to set a new password."
+          heading="Secure your account."
+          subheading="Choose a strong new password to keep your CookMate account safe."
         />
 
         <motion.div layout className="flex-1 flex items-center justify-center p-4 sm:p-8">
@@ -81,43 +101,26 @@ export default function ForgotPassword() {
                     <ChefHat className="w-7 h-7" />
                   </div>
                   <h1 className="text-2xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight">
-                    Forgot your password?
+                    Reset your password
                   </h1>
                   <p className="text-stone-500 dark:text-stone-400 text-sm mt-1">
-                    Enter the email tied to your CookMate account.
+                    Enter a new password below.
                   </p>
                 </div>
 
                 <AnimatePresence mode="wait">
-                  {sent ? (
+                  {done ? (
                     <motion.div
-                      key="sent"
+                      key="done"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
                       className="space-y-4"
                     >
-                      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:border-green-800/40 dark:text-green-300 flex gap-3">
-                        <Mail className="w-5 h-5 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="font-bold">Check your inbox.</p>
-                          <p className="mt-1">
-                            If <span className="font-semibold">{email}</span> is registered, you'll
-                            receive a password reset link shortly. The link expires in about an
-                            hour.
-                          </p>
-                        </div>
+                      <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:border-green-800/40 dark:text-green-300 text-center">
+                        <p className="font-bold">Password updated successfully.</p>
+                        <p className="mt-1">Redirecting you to sign in...</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSent(false);
-                          setEmail('');
-                        }}
-                        className="w-full text-sm font-semibold text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
-                      >
-                        Use a different email
-                      </button>
                     </motion.div>
                   ) : (
                     <motion.form
@@ -131,21 +134,52 @@ export default function ForgotPassword() {
                     >
                       <div className="space-y-2">
                         <label
-                          htmlFor="email"
+                          htmlFor="password"
                           className="text-xs font-bold text-stone-500 uppercase tracking-widest"
                         >
-                          Email
+                          New password
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder={`At least ${MIN_PASSWORD_LEN} characters`}
+                            className={`${inputCls} pr-12`}
+                            disabled={loading}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((s) => !s)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-stone-400 hover:text-stone-700 rounded-lg"
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="confirmPassword"
+                          className="text-xs font-bold text-stone-500 uppercase tracking-widest"
+                        >
+                          Confirm password
                         </label>
                         <input
-                          id="email"
-                          type="email"
-                          autoComplete="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="you@gmail.com"
+                          id="confirmPassword"
+                          type="password"
+                          autoComplete="new-password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Re-enter your password"
                           className={inputCls}
                           disabled={loading}
                         />
+                        {confirmPassword.length > 0 && password === confirmPassword && (
+                          <p className="text-xs text-green-600 font-medium">Passwords match</p>
+                        )}
                       </div>
 
                       <AnimatePresence>
@@ -164,15 +198,15 @@ export default function ForgotPassword() {
 
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || !token}
                         className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-xl py-4 text-base font-bold disabled:opacity-70 flex items-center justify-center transition-all"
                       >
                         {loading ? (
                           <span className="flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 animate-spin" /> Sending reset link...
+                            <Loader2 className="w-4 h-4 animate-spin" /> Updating password...
                           </span>
                         ) : (
-                          'Send reset link'
+                          'Reset password'
                         )}
                       </button>
                     </motion.form>

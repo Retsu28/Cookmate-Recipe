@@ -18,6 +18,7 @@ import {
   sendEmailVerification,
   signOut,
   updateProfile,
+  deleteUser,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { firebaseAuth, googleProvider } from '@/lib/firebase';
@@ -89,16 +90,26 @@ export const authService = {
    */
   async signup(name: string, email: string, password: string): Promise<AuthResult> {
     const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-    if (name && name.trim()) {
-      try {
-        await updateProfile(cred.user, { displayName: name.trim() });
-      } catch {
-        /* non-fatal: backend stores the name regardless */
+    try {
+      if (name && name.trim()) {
+        try {
+          await updateProfile(cred.user, { displayName: name.trim() });
+        } catch {
+          /* non-fatal: backend stores the name regardless */
+        }
       }
+      // Fire and forget — failure here shouldn't block account creation.
+      sendEmailVerification(cred.user).catch(() => {});
+      return await exchangeFirebaseUser(cred.user, name);
+    } catch (err) {
+      // Clean up the Firebase user if backend rejected (e.g., duplicate name/email).
+      try {
+        await deleteUser(cred.user);
+      } catch {
+        /* ignore cleanup failures */
+      }
+      throw err;
     }
-    // Fire and forget — failure here shouldn't block account creation.
-    sendEmailVerification(cred.user).catch(() => {});
-    return exchangeFirebaseUser(cred.user, name);
   },
 
   /**
@@ -123,6 +134,20 @@ export const authService = {
       if (code === 'auth/user-not-found' || code === 'auth/invalid-email') return;
       throw err;
     }
+  },
+
+  /**
+   * Request a custom password-reset email from the backend.
+   */
+  async forgotPassword(email: string): Promise<void> {
+    await api.post('/api/auth/forgot-password', { email: email.trim() });
+  },
+
+  /**
+   * Confirm a password reset using a token from the email link.
+   */
+  async resetPassword(token: string, password: string): Promise<void> {
+    await api.post('/api/auth/reset-password', { token, password });
   },
 
   /**

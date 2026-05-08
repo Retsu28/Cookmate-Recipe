@@ -18,6 +18,7 @@ import AdminLayout from './admin/AdminLayout';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const SearchPage = lazy(() => import('./pages/Search'));
@@ -99,6 +100,7 @@ export default function App() {
                 <Route path="login" element={<Login />} />
                 <Route path="signup" element={<Signup />} />
                 <Route path="forgot-password" element={<ForgotPassword />} />
+                <Route path="reset-password" element={<ResetPassword />} />
               </Route>
 
               {/* Protected routes — AuthGate redirects to /login if signed out */}

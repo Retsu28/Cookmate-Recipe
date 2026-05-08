@@ -43,18 +43,27 @@ React Web App              Expo Mobile App
 
 ```text
 Cookmate-Recipe/
+├── .env                     # Root web environment variables
+├── .env.example             # Environment template
+├── .gitignore
+├── README.md
+├── ARCHITECTURE.md          # This architecture reference
+├── cookmate_system_structure.md
+├── components.json          # shadcn/ui generator config
+├── index.html               # Vite HTML entry
+├── metadata.json
+├── package.json             # Root web package scripts/dependencies
+├── postcss.config.js
+├── tsconfig.json
+├── vite.config.ts           # Vite config, aliases, PWA, and API proxy
+├── vercel.json              # Web SPA deployment rewrites
+├── public/                  # Web static assets
 ├── src/                     # React + Vite web app
 ├── api/                     # Express backend package
 ├── database/                # PostgreSQL schema, migrations, and seed CSV
 ├── mobile/                  # Expo React Native app
-├── public/                  # Web static assets
-├── dist/                    # Web build output
-├── index.html               # Vite HTML entry
-├── package.json             # Root web package scripts/dependencies
-├── vite.config.ts           # Vite config, aliases, PWA, and API proxy
-├── vercel.json              # Web SPA deployment rewrites
-├── ARCHITECTURE.md          # This architecture reference
-└── cookmate_system_structure.md
+├── dist/                    # Web production build output
+└── dev-dist/                # Development build/runtime output
 ```
 
 ---
@@ -74,6 +83,8 @@ The root `src/` folder contains the browser app.
 - Provides offline-first support through an IndexedDB-backed cache, sync queue, and network status helpers under `src/offline/`
 - Registers a PWA service worker through `src/pwa/registerServiceWorker.ts`
 - Provides a web-only admin dashboard for recipe, user, ingredient, AI activity, reports, notifications, reviews, and system-status areas
+- Uses Firebase Authentication for email/password and Google sign-in, then exchanges the Firebase ID token with `POST /api/auth/firebase` to obtain the CookMate JWT
+- Loads `/login` and `/signup` synchronously (no `React.lazy`) with a persistent `AuthVideoBackground` rendered by the app shell to avoid flashes when switching auth forms
 
 ### Web route groups
 
@@ -81,6 +92,7 @@ Public guest routes:
 
 - `/login`
 - `/signup`
+- `/forgot-password`
 
 Authenticated app routes:
 
@@ -153,6 +165,7 @@ The backend lives in `api/` and starts from `api/src/server.js`.
 - `/api/ml/ai-camera-saves` stores and restores authenticated AI camera analysis snapshots.
 - `/api/ml/image-analysis/queue` exposes camera analysis queue status.
 - `/api/admin` exposes admin monitoring data, including AI camera save activity and user management.
+- `POST /api/auth/firebase` verifies a Firebase ID token (via `firebase-admin`), links legacy users by email, and returns a CookMate JWT.
 
 ---
 
@@ -170,7 +183,8 @@ database/
 │   ├── 20260502_recipe_views.sql
 │   ├── 20260503_recipe_viewed.sql
 │   ├── 20260503_ai_camera_saves.sql
-│   └── 20260503_allow_duplicate_user_full_names.sql
+│   ├── 20260503_allow_duplicate_user_full_names.sql
+│   └── 20260507_firebase_uid.sql
 └── seeds/
     └── philippine_food_recipes_100.csv
 ```
@@ -189,7 +203,7 @@ database/
 - `reviews`
 - `notifications`
 
-Important schema details include user roles through `users.role`, normalized unique auth fields, recipe publishing/featured flags, image URLs, recipe metadata, recipe-to-ingredient relationships, per-user recently viewed history, and persisted AI camera analysis snapshots.
+Important schema details include user roles through `users.role`, normalized unique auth fields, recipe publishing/featured flags, image URLs, recipe metadata, recipe-to-ingredient relationships, per-user recently viewed history, persisted AI camera analysis snapshots, and Firebase linking fields (`firebase_uid` with a partial unique constraint and `email_verified`).
 
 ---
 
@@ -204,10 +218,13 @@ The mobile app lives in `mobile/` and runs through Expo.
 - Calls the same Express API through `mobile/src/api/api.js`
 - Persists auth tokens and user data through mobile storage services
 - Uses mobile-specific theme tokens and native components
+- Authenticates through Firebase (email/password or Google via `expo-auth-session`), then exchanges the Firebase ID token with the backend `POST /api/auth/firebase` endpoint
 - Mirrors the core web product areas with Home, Search, Recipes, Planner, Camera, and Profile tabs
-- Provides stack screens for onboarding, all-recipes browsing, recipe details, notifications, notification settings, and cooking mode
+- Provides stack screens for onboarding, all-recipes browsing, recipe details, notifications, notification settings, cooking mode, and forgot password
 - Uses the shared AI camera API for image analysis, sticker/background-removal output, and real recipe navigation
 - Provides offline-first support through a SQLite/AsyncStorage-backed cache, sync queue, network watcher, and `OfflineIndicator` under `mobile/src/offline/`
+- Centralizes page-switch skeleton loading in `mobile/App.js`
+- Aligns visually with the web theme via stone/orange color tokens and Geist font families under `mobile/src/theme/`
 
 ### Mobile runtime API base URL
 
@@ -217,6 +234,8 @@ The mobile client reads the API base URL from Expo config when available, then f
 - Expo debugger host on port `5000`
 - Android emulator fallback `http://10.0.2.2:5000`
 - Localhost fallback `http://localhost:5000`
+
+Google Sign-In on mobile uses `expo-auth-session/providers/google` with ID-token auth so it works in Expo Go without native Google Sign-In modules.
 
 ---
 
@@ -229,21 +248,24 @@ The mobile client reads the API base URL from Expo config when available, then f
 - Login and signup return a token and public user object
 - The API also sets/clears an auth cookie
 - `/api/auth/me` refreshes the current authenticated user
+- `POST /api/auth/firebase` verifies Firebase ID tokens via `firebase-admin`, auto-links legacy users by email, and issues a CookMate JWT
+- `users.firebase_uid` stores the linked Firebase UID; `users.email_verified` tracks Firebase email verification status
 
 ### Web
 
 - `src/context/AuthContext.tsx` owns web auth state
-- `src/services/authService.ts` handles login, signup, logout, token persistence, and current-user refresh
+- `src/services/authService.ts` handles Firebase login/signup/Google/password-reset/email-verification, token persistence, and current-user refresh
 - `GuestGate` protects guest-only pages
 - `AuthGate` protects normal signed-in pages
-- `AdminGate` protects the admin route tree
+- `AdminGate` protects the admin route tree and also allows `admin@cookmate.com` as a fallback when cached role data is missing
 
 ### Mobile
 
 - `mobile/src/context/AuthContext.js` owns mobile auth state
-- `mobile/src/services/authService.js` persists token and user data
+- `mobile/src/services/authService.js` persists token and user data, clears stale sessions on 401/404, and supports Firebase-based Google login
 - Mobile navigation switches between auth and app screens based on auth state
 - Mobile profile data is loaded from the backend profile API instead of placeholder local data
+- Signup validation matches the backend: only `@gmail.com` emails and minimum 8-character passwords
 
 ---
 
@@ -313,7 +335,7 @@ Run from `mobile/`.
 | Web styling | Tailwind CSS 4, shadcn-style UI components, Lucide, Motion |
 | Web PWA | `vite-plugin-pwa` and Workbox |
 | API | Express 4, Node.js, CORS, cookie-parser |
-| Auth | `bcryptjs`, `jsonwebtoken` |
+| Auth | `bcryptjs`, `jsonwebtoken`, `firebase-admin` (API), Firebase JS SDK (web/mobile) |
 | Database | PostgreSQL, `pg` |
 | AI/ML | `@google/generative-ai`, `natural`, `express-rate-limit`, `jimp-compact`, `@imgly/background-removal-node` |
 | Mobile | Expo SDK 55, React Native 0.83, React 19.2 |
@@ -326,9 +348,9 @@ Run from `mobile/`.
 
 CookMate is currently a three-client-layer monorepo:
 
-- **Root web app** handles the browser UI, PWA behavior, protected user routes, AI camera experience, all-recipes browsing, and admin pages.
-- **Express API** is the shared backend for both web and mobile clients.
+- **Root web app** handles the browser UI, PWA behavior, protected user routes, AI camera experience, all-recipes browsing, admin pages, and Firebase-powered authentication.
+- **Express API** is the shared backend for both web and mobile clients, with Firebase Admin token verification and legacy user auto-linking.
 - **PostgreSQL** stores users, recipes, ingredients, recently viewed recipe history, AI camera saves, meal plans, shopping lists, inventory, reviews, and notifications.
-- **Expo mobile app** mirrors the core user experience on mobile, including AI camera, all-recipes browsing, cooking mode, notifications, and backend-backed profile data.
+- **Expo mobile app** mirrors the core user experience on mobile, including AI camera, all-recipes browsing, cooking mode, notifications, backend-backed profile data, and Firebase/expo-auth-session Google sign-in.
 
 This document should be updated whenever routes, API modules, database tables, package structure, or deployment assumptions change.

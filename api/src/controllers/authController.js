@@ -5,6 +5,7 @@ const { pool } = require('../config/db');
 const { getJwtSecret, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
 const { verifyGoogleIdToken } = require('../config/googleAuth');
 const { verifyFirebaseIdToken, getFirebaseAuth } = require('../config/firebaseAdmin');
+const { sendMail } = require('../config/mailer');
 
 const SIGNUP_EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const LOGIN_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -99,7 +100,22 @@ exports.signup = async (req, res) => {
     );
 
     if (duplicate.rowCount > 0) {
-      return res.status(409).json({ error: DUPLICATE_SIGNUP_MESSAGE });
+      return res.status(409).json({
+        code: 'auth/email-already-in-use',
+        error: 'An account with this email already exists.',
+      });
+    }
+
+    const nameDup = await pool.query(
+      'SELECT 1 FROM users WHERE LOWER(BTRIM(full_name)) = $1 LIMIT 1',
+      [cleanName.toLowerCase()]
+    );
+
+    if (nameDup.rowCount > 0) {
+      return res.status(409).json({
+        code: 'auth/name-already-in-use',
+        error: 'An account with this full name already exists.',
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -117,7 +133,10 @@ exports.signup = async (req, res) => {
     return res.status(201).json({ token, user });
   } catch (err) {
     if (err?.code === '23505') {
-      return res.status(409).json({ error: DUPLICATE_SIGNUP_MESSAGE });
+      return res.status(409).json({
+        code: 'auth/email-already-in-use',
+        error: 'An account with this email already exists.',
+      });
     }
     console.error('[auth/signup] failed:', err);
     return res.status(500).json({ error: 'Something went wrong creating your account.' });
@@ -382,11 +401,17 @@ exports.firebase = async (req, res) => {
     } else {
       // 2) Match an existing legacy account by email and link it.
       const byEmail = await pool.query(
-        'SELECT id, email, full_name, role FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+        'SELECT id, email, full_name, role, firebase_uid FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
         [normalizedEmail]
       );
       if (byEmail.rowCount > 0) {
         row = byEmail.rows[0];
+        if (row.firebase_uid && row.firebase_uid !== firebaseUid) {
+          return res.status(409).json({
+            code: 'auth/email-already-in-use',
+            error: 'An account with this email already exists.',
+          });
+        }
         await pool.query(
           'UPDATE users SET firebase_uid = $1, email_verified = $2 WHERE id = $3',
           [firebaseUid, emailVerified, row.id]
@@ -394,12 +419,36 @@ exports.firebase = async (req, res) => {
       } else {
         // 3) Brand-new user — create one. password_hash is NULL because
         //    Firebase owns the password from now on.
-        const inserted = await pool.query(
-          `INSERT INTO users (email, password_hash, full_name, role, firebase_uid, email_verified)
-           VALUES ($1, NULL, $2, 'user', $3, $4)
-           RETURNING id, email, full_name, role`,
-          [normalizedEmail, fullName, firebaseUid, emailVerified]
+        const nameDup = await pool.query(
+          'SELECT 1 FROM users WHERE LOWER(BTRIM(full_name)) = $1 LIMIT 1',
+          [fullName.toLowerCase()]
         );
+        if (nameDup.rowCount > 0) {
+          await getFirebaseAuth().deleteUser(firebaseUid).catch(() => {});
+          return res.status(409).json({
+            code: 'auth/name-already-in-use',
+            error: 'An account with this full name already exists.',
+          });
+        }
+
+        let inserted;
+        try {
+          inserted = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, role, firebase_uid, email_verified)
+             VALUES ($1, NULL, $2, 'user', $3, $4)
+             RETURNING id, email, full_name, role`,
+            [normalizedEmail, fullName, firebaseUid, emailVerified]
+          );
+        } catch (insertErr) {
+          if (insertErr?.code === '23505') {
+            await getFirebaseAuth().deleteUser(firebaseUid).catch(() => {});
+            return res.status(409).json({
+              code: 'auth/email-already-in-use',
+              error: 'An account with this email already exists.',
+            });
+          }
+          throw insertErr;
+        }
         row = inserted.rows[0];
       }
     }
@@ -411,5 +460,139 @@ exports.firebase = async (req, res) => {
   } catch (err) {
     console.error('[auth/firebase] failed:', err);
     return res.status(500).json({ error: 'Something went wrong signing you in.' });
+  }
+};
+
+const RESET_TOKEN_BYTES = 32;
+const RESET_EXPIRY_SECONDS = 60;
+
+function generateResetToken() {
+  return crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
+}
+
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email }
+ *
+ * Generates a secure token (expires in 30 seconds), stores it in the DB,
+ * and emails a branded reset link. Silently succeeds even if email isn't
+ * registered so we don't leak account existence.
+ */
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body ?? {};
+    if (typeof email !== 'string' || !LOGIN_EMAIL_RE.test(email.trim())) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+    const userResult = await pool.query(
+      'SELECT id, firebase_uid FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      [normalizedEmail]
+    );
+
+    if (userResult.rowCount === 0) {
+      return res.json({ sent: true });
+    }
+
+    try {
+      await getFirebaseAuth().getUserByEmail(normalizedEmail);
+    } catch (err) {
+      if (err?.code === 'auth/user-not-found') {
+        return res.json({ sent: true });
+      }
+      throw err;
+    }
+
+    const token = generateResetToken();
+    const expiresAt = new Date(Date.now() + RESET_EXPIRY_SECONDS * 1000);
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (email, token, expires_at)
+       VALUES ($1, $2, $3)`,
+      [normalizedEmail, token, expiresAt]
+    );
+
+    const baseUrl = process.env.WEB_APP_URL || 'http://localhost:5173';
+    const resetLink = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await sendMail({
+      to: normalizedEmail,
+      subject: 'Reset your CookMate password',
+      html: `
+        <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#1c1917;background:#fafaf9;border-radius:16px;border:1px solid #e7e5e4;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+            <div style="width:36px;height:36px;background:#f97316;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;">&#127860;</div>
+            <h2 style="color:#f97316;margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;">CookMate</h2>
+          </div>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.5;">Hello,</p>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.5;">We received a request to reset your CookMate password. Tap the button below to choose a new one. This link expires in <strong>60 seconds</strong> for security.</p>
+          <a href="${resetLink}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700;font-size:15px;margin:4px 0 18px;">Reset password</a>
+          <p style="font-size:13px;color:#78716c;line-height:1.5;margin:0;">If you didn't request this, you can safely ignore this email. Your password won't be changed.</p>
+          <hr style="border:none;border-top:1px solid #e7e5e4;margin:24px 0;">
+          <p style="font-size:12px;color:#a8a29e;margin:0;">CookMate Team</p>
+        </div>
+      `,
+    });
+
+    return res.json({ sent: true });
+  } catch (err) {
+    console.error('[auth/forgot-password] failed:', err);
+    return res.status(500).json({ error: 'Could not send the reset email. Please try again.' });
+  }
+};
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { token, password }
+ *
+ * Verifies the token (30-second expiry, single-use), updates the password
+ * in Firebase Auth via Admin SDK, marks the token used, and syncs the local
+ * PostgreSQL password_hash.
+ */
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body ?? {};
+    if (typeof token !== 'string' || !token.trim()) {
+      return res.status(400).json({ error: 'Reset token is required.' });
+    }
+    if (typeof password !== 'string' || password.length < MIN_PASSWORD_LEN) {
+      return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LEN} characters.` });
+    }
+
+    const result = await pool.query(
+      `SELECT email, expires_at, used
+       FROM password_reset_tokens
+       WHERE token = $1 LIMIT 1`,
+      [token.trim()]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(400).json({ error: 'Invalid or expired reset link.' });
+    }
+
+    const { email, expires_at, used } = result.rows[0];
+    if (used || new Date() > new Date(expires_at)) {
+      return res.status(400).json({ error: 'This reset link has expired or already been used.' });
+    }
+
+    const firebaseUser = await getFirebaseAuth().getUserByEmail(email);
+    await getFirebaseAuth().updateUser(firebaseUser.uid, { password });
+
+    await pool.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
+      [token.trim()]
+    );
+
+    const newHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE LOWER(BTRIM(email)) = $2',
+      [newHash, email]
+    );
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[auth/reset-password] failed:', err);
+    return res.status(500).json({ error: 'Could not reset your password. Please try again.' });
   }
 };

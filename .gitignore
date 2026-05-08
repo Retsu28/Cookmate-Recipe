@@ -37,3 +37,5 @@ firebase-adminsdk*.json
 
 api/cookmate-9272d-firebase-adminsdk-fbsvc-1ebdcfd79d.json
 firebase-adminsdk*.json
+
+.firebase.ts

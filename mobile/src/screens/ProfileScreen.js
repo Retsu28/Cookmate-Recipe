@@ -165,7 +165,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const validate = () => {
-    if (!normalizeFullName(form.fullName)) return 'Full name cannot be blank.';
+    if (!normalizeFullName(form.fullName)) return 'Username cannot be blank.';
     if (!EMAIL_RE.test(normalizeEmail(form.email))) return 'Please enter a valid email address.';
     if (securityChanging && !form.currentPassword) {
       return 'Current password is required to update your email or password.';
@@ -306,7 +306,7 @@ export default function ProfileScreen({ navigation }) {
                     colors={colors}
                   />
 
-                  <FieldLabel label="Full name" colors={colors} />
+                  <FieldLabel label="Username" colors={colors} />
                   <TextInput
                     value={form.fullName}
                     onChangeText={(value) => setField('fullName', value)}
