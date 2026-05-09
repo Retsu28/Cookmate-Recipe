@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '@/components/ui/button';
 import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat } from 'lucide-react';
 import { motion } from 'motion/react';
+import { format } from 'date-fns';
 import { DashboardSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { HomeSections } from '@/components/home/HomeSections';
 import api from '@/services/api';
-import { getRecipesCached } from '@/offline/cacheService';
+import { getMealPlansCached, getRecipesCached } from '@/offline/cacheService';
 import { useAIChat } from '@/context/AIChatContext';
+import {
+  mealPlannerService,
+  type MealPlan,
+  type MealType,
+} from '@/services/mealPlannerService';
 
 interface ApiRecipe {
   id: number;
@@ -28,12 +34,20 @@ interface ApiRecipe {
   created_at: string;
 }
 
+const todayMealSlots: Array<{ id: MealType; label: string }> = [
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+];
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { openChat } = useAIChat();
   const isInitialLoading = useInitialContentLoading();
   const [featuredRecipe, setFeaturedRecipe] = useState<ApiRecipe | null>(null);
   const [recentRecipes, setRecentRecipes] = useState<ApiRecipe[]>([]);
+  const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
+  const [mealPlansLoading, setMealPlansLoading] = useState(true);
 
   useEffect(() => {
     // Read-through cache: online → API + IndexedDB; offline → IndexedDB.
@@ -48,6 +62,52 @@ export default function Dashboard() {
       .then(data => setRecentRecipes(data.recipes || []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadMealPlans = async () => {
+      setMealPlansLoading(true);
+      try {
+        const data = await getMealPlansCached<{ plans: MealPlan[] }>(() => mealPlannerService.getPlans());
+        if (active) setMealPlans(data.plans || []);
+      } catch {
+        if (active) setMealPlans([]);
+      } finally {
+        if (active) setMealPlansLoading(false);
+      }
+    };
+
+    loadMealPlans();
+    window.addEventListener('cookmate:planner-sync', loadMealPlans);
+
+    return () => {
+      active = false;
+      window.removeEventListener('cookmate:planner-sync', loadMealPlans);
+    };
+  }, []);
+
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  const todayMealRows = useMemo(() => {
+    return todayMealSlots.map((slot) => {
+      const plans = mealPlans.filter((plan) => plan.planned_date === todayKey && plan.meal_type === slot.id);
+      return {
+        ...slot,
+        plans,
+        primaryPlan: plans[0] || null,
+      };
+    });
+  }, [mealPlans, todayKey]);
+  const todayPlanCount = todayMealRows.reduce((count, row) => count + row.plans.length, 0);
+
+  const openTodayPlanner = (params: Record<string, string> = {}) => {
+    const search = new URLSearchParams({
+      date: todayKey,
+      view: 'day',
+      ...params,
+    });
+    navigate(`/planner?${search.toString()}`);
+  };
 
   const hasSeenOnboarding = (() => {
     try {
@@ -189,41 +249,57 @@ export default function Dashboard() {
             <section className="rounded-3xl border border-orange-100 bg-white p-6 shadow-lg shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest dark:text-stone-400">Today's Meal Plan</h3>
-                <button className="text-orange-400 transition-colors hover:text-orange-600">
+                <button
+                  type="button"
+                  onClick={() => openTodayPlanner()}
+                  className="rounded-full p-1 text-orange-400 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-700"
+                  aria-label="Open today's meal planner"
+                >
                   <Edit2 size={12} />
                 </button>
               </div>
               <div className="space-y-4 mb-6">
-                <div className="flex items-start justify-between pb-4 border-b border-stone-200">
-                  <div>
-                    <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest mb-1 dark:text-stone-500">Breakfast</p>
-                    <p className="font-bold text-stone-900 text-xs leading-tight pr-4 dark:text-stone-100">Avocado Toast with Poached Egg</p>
-                  </div>
-                  <div className="mt-1 shrink-0">
-                    <CheckCircle2 size={14} className="text-stone-300" />
-                  </div>
-                </div>
-                <div className="flex items-start justify-between pb-4 border-b border-stone-200">
-                  <div>
-                    <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest mb-1 dark:text-stone-500">Lunch</p>
-                    <p className="font-bold text-stone-900 text-xs leading-tight pr-4 dark:text-stone-100">Harvest Grain Salad</p>
-                  </div>
-                  <div className="mt-1 shrink-0">
-                    <Circle size={14} className="text-stone-300" />
-                  </div>
-                </div>
-                <div className="flex items-start justify-between pb-4">
-                  <div>
-                    <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest mb-1 dark:text-stone-500">Dinner</p>
-                    <p className="font-bold text-stone-900 text-xs leading-tight pr-4 dark:text-stone-100">Pan-Seared Salmon & Greens</p>
-                  </div>
-                  <div className="mt-1 shrink-0">
-                    <Circle size={14} className="text-stone-300" />
-                  </div>
-                </div>
+                {todayMealRows.map((row, index) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => openTodayPlanner({ slot: row.id })}
+                    className={`group flex w-full items-start justify-between text-left transition-colors hover:text-orange-600 ${
+                      index < todayMealRows.length - 1 ? 'border-b border-stone-200 pb-4 dark:border-stone-700' : 'pb-4'
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="mb-1 block text-[8px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+                        {row.label}
+                      </span>
+                      <span className="block pr-4 text-xs font-bold leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
+                        {mealPlansLoading
+                          ? 'Loading planner...'
+                          : row.primaryPlan?.recipe.title || 'Not planned yet'}
+                      </span>
+                      {!mealPlansLoading && row.plans.length > 1 ? (
+                        <span className="mt-1 block text-[9px] font-bold uppercase tracking-widest text-orange-500">
+                          +{row.plans.length - 1} more planned
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-1 shrink-0">
+                      {row.primaryPlan ? (
+                        <CheckCircle2 size={14} className="text-orange-400" />
+                      ) : (
+                        <Circle size={14} className="text-stone-300" />
+                      )}
+                    </span>
+                  </button>
+                ))}
               </div>
-              <Button variant="outline" className="w-full rounded-2xl border-orange-200 bg-orange-50/40 py-4 text-[9px] font-bold uppercase tracking-widest text-orange-700 hover:bg-orange-100 dark:border-stone-700 dark:bg-stone-700/40 dark:text-orange-400 dark:hover:bg-stone-700">
-                Generate Shopping List
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => openTodayPlanner(todayPlanCount > 0 ? { select: 'today' } : {})}
+                className="w-full rounded-2xl border-orange-200 bg-orange-50/40 py-4 text-[9px] font-bold uppercase tracking-widest text-orange-700 hover:bg-orange-100 dark:border-stone-700 dark:bg-stone-700/40 dark:text-orange-400 dark:hover:bg-stone-700"
+              >
+                {todayPlanCount > 0 ? 'Generate Shopping List' : 'Open Meal Planner'}
               </Button>
             </section>
 

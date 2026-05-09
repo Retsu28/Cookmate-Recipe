@@ -14,8 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { recipeApi } from '../api/api';
-import { offlineCache } from '../offline/cacheService';
+import { format } from 'date-fns';
+import { plannerApi, recipeApi } from '../api/api';
+import { getMealPlansCached, offlineCache } from '../offline/cacheService';
 import OfflineIndicator from '../offline/OfflineIndicator';
 import RecipeCard from '../components/RecipeCard';
 import HomeRecipeCard from '../components/HomeRecipeCard';
@@ -64,10 +65,10 @@ const fallbackRecent = [
   { id: 2, title: 'Classic Basil Pesto Pasta', date: '2 hours ago', image: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=800&q=80' },
 ];
 
-const dailyPlan = [
-  { slot: 'Breakfast', recipe: 'Avocado Toast with Poached Egg', time: '10 min', dotColor: '#fdba74' },
-  { slot: 'Lunch', recipe: 'Harvest Grain Salad', time: '15 min', dotColor: '#fb923c' },
-  { slot: 'Dinner', recipe: 'Pan-Seared Salmon & Greens', time: '25 min', dotColor: '#f97316' },
+const mealPlanSlots = [
+  { id: 'breakfast', slot: 'Breakfast', dotColor: '#fdba74' },
+  { id: 'lunch', slot: 'Lunch', dotColor: '#fb923c' },
+  { id: 'dinner', slot: 'Dinner', dotColor: '#f97316' },
 ];
 
 const seasonalIngredients = [
@@ -88,6 +89,8 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const [featuredRecipes, setFeaturedRecipes] = useState(fallbackFeatured);
   const [recentRecipes, setRecentRecipes] = useState(fallbackRecent);
+  const [plannedMeals, setPlannedMeals] = useState([]);
+  const [plannedMealsLoading, setPlannedMealsLoading] = useState(true);
   const [homeSections, setHomeSections] = useState({
     categories: [],
     popularFilipinoRecipes: [],
@@ -117,6 +120,18 @@ export default function HomeScreen({ navigation }) {
     shadowOffset: { width: 0, height: 4 },
     elevation: isDark ? 0 : 2,
   };
+
+  const loadMealPlans = useCallback(async ({ showLoader = true } = {}) => {
+    if (showLoader) setPlannedMealsLoading(true);
+    try {
+      const response = await getMealPlansCached(() => plannerApi.getPlan());
+      setPlannedMeals(response?.data?.plans || []);
+    } catch {
+      setPlannedMeals([]);
+    } finally {
+      if (showLoader) setPlannedMealsLoading(false);
+    }
+  }, []);
 
   const fetchData = async () => {
     setHomeSectionsLoading(true);
@@ -180,15 +195,18 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     fetchData();
+    loadMealPlans();
     Animated.timing(introAnim, {
       toValue: 1,
       duration: 420,
       useNativeDriver: true,
     }).start();
-  }, [user?.id]);
+  }, [user?.id, loadMealPlans]);
 
   useFocusEffect(
     useCallback(() => {
+      loadMealPlans({ showLoader: false });
+
       if (!user?.id) {
         setHomeSections((prev) =>
           prev.recentlyViewedRecipes.length > 0
@@ -229,7 +247,7 @@ export default function HomeScreen({ navigation }) {
         active = false;
         clearTimeout(timer);
       };
-    }, [user?.id])
+    }, [loadMealPlans, user?.id])
   );
 
   const introStyle = {
@@ -247,6 +265,25 @@ export default function HomeScreen({ navigation }) {
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
+    loadMealPlans({ showLoader: false });
+  };
+
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  const todaysMealRows = mealPlanSlots.map((slot) => {
+    const plans = plannedMeals.filter((plan) => plan.planned_date === todayKey && plan.meal_type === slot.id);
+    return {
+      ...slot,
+      plans,
+      primaryPlan: plans[0] || null,
+    };
+  });
+  const todaysPlanCount = todaysMealRows.reduce((total, row) => total + row.plans.length, 0);
+  const openTodayPlanner = (params = {}) => {
+    navigation.navigate('Planner', {
+      plannedDate: todayKey,
+      view: 'day',
+      ...params,
+    });
   };
 
   if (isInitialLoading) {
@@ -465,28 +502,45 @@ export default function HomeScreen({ navigation }) {
           <View style={s.section}>
             <View style={s.sectionHeader}>
               <Text style={[s.sectionLabel, { color: colors.textMuted }]}>TODAY'S MEAL PLAN</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Planner')} style={s.editBtn}>
+              <TouchableOpacity onPress={() => openTodayPlanner()} style={s.editBtn}>
                 <Ionicons name="create-outline" size={14} color={colors.textSubtle} />
               </TouchableOpacity>
             </View>
             <View style={[s.mealPlanCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.background, borderColor: colors.border }]}>
-              {dailyPlan.map((item, i) => (
-                <View
-                  key={item.slot}
-                  style={[s.mealRow, i < dailyPlan.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+              {todaysMealRows.map((item, i) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => openTodayPlanner({ mealType: item.id })}
+                  activeOpacity={0.78}
+                  style={[s.mealRow, i < todaysMealRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
                 >
                   <View style={s.mealInfo}>
                     <Text style={[s.mealSlotLabel, { color: colors.textSubtle }]}>{item.slot.toUpperCase()}</Text>
-                    <Text style={[s.mealRecipeName, { color: colors.text }]}>{item.recipe}</Text>
+                    <Text style={[s.mealRecipeName, { color: colors.text }]}>
+                      {plannedMealsLoading
+                        ? 'Loading planner...'
+                        : item.primaryPlan?.recipe?.title || 'Not planned yet'}
+                    </Text>
+                    {!plannedMealsLoading && item.plans.length > 1 ? (
+                      <Text style={[s.mealExtraText, { color: colors.primary }]}>
+                        +{item.plans.length - 1} more planned
+                      </Text>
+                    ) : null}
                   </View>
-                  <Ionicons name="ellipse" size={14} color={colors.border} />
-                </View>
+                  <Ionicons
+                    name={item.primaryPlan ? 'checkmark-circle-outline' : 'ellipse-outline'}
+                    size={16}
+                    color={item.primaryPlan ? colors.primary : colors.border}
+                  />
+                </TouchableOpacity>
               ))}
               <TouchableOpacity
-                onPress={() => navigation.navigate('Planner')}
+                onPress={() => openTodayPlanner(todaysPlanCount > 0 ? { selectToday: true } : {})}
                 style={[s.genListBtn, { borderColor: colors.border }]}
               >
-                <Text style={[s.genListBtnText, { color: colors.primary }]}>GENERATE SHOPPING LIST</Text>
+                <Text style={[s.genListBtnText, { color: colors.primary }]}>
+                  {todaysPlanCount > 0 ? 'GENERATE SHOPPING LIST' : 'OPEN MEAL PLANNER'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -611,6 +665,7 @@ const s = StyleSheet.create({
   mealInfo: { flex: 1 },
   mealSlotLabel: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 2, marginBottom: 3 },
   mealRecipeName: { fontFamily: 'Geist_700Bold', fontSize: 12, paddingRight: 16 },
+  mealExtraText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.2, marginTop: 4, textTransform: 'uppercase' },
   genListBtn: { borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, marginTop: 14 },
   genListBtnText: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 2 },
   // Recent

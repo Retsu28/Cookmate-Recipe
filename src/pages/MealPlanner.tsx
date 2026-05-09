@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   BellRing,
@@ -56,6 +56,29 @@ function dayKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
 }
 
+function dateFromKey(value: string | null) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function viewFromParam(value: string | null): 'day' | 'week' | null {
+  return value === 'day' || value === 'week' ? value : null;
+}
+
+function mealTypeFromParam(value: string | null): MealType | null {
+  return mealSlots.some((slot) => slot.id === value) ? (value as MealType) : null;
+}
+
+function selectedSlotsFromFocus(date: Date, mealType: MealType | null, selectMode: string | null) {
+  const datePart = dayKey(date);
+  if (mealType) return new Set<string>([`${datePart}|${mealType}`]);
+  if (selectMode === 'today') return new Set<string>(mealSlots.map((slot) => `${datePart}|${slot.id}`));
+  return new Set<string>();
+}
+
 function planTime(plan: MealPlan) {
   const time =
     plan.recipe.total_time_minutes ??
@@ -85,11 +108,16 @@ function slotReminderStatus(slotPlans: MealPlan[], now: Date) {
 
 export default function MealPlanner() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialFocusedDate = dateFromKey(searchParams.get('date')) || new Date();
+  const initialView = viewFromParam(searchParams.get('view')) || 'week';
+  const initialMealType = mealTypeFromParam(searchParams.get('slot'));
+  const initialSelectMode = searchParams.get('select');
   const isInitialLoading = useInitialContentLoading();
   const isOnline = useOnlineStatus();
   const [now, setNow] = useState(() => new Date());
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<'day' | 'week'>('week');
+  const [currentDate, setCurrentDate] = useState(() => initialFocusedDate);
+  const [view, setView] = useState<'day' | 'week'>(initialView);
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
@@ -102,7 +130,9 @@ export default function MealPlanner() {
   const [savingGrocery, setSavingGrocery] = useState(false);
   const [expandedSavedId, setExpandedSavedId] = useState<number | null>(null);
   const [currentSavedListId, setCurrentSavedListId] = useState<number | null>(null);
-  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(() =>
+    selectedSlotsFromFocus(initialFocusedDate, initialMealType, initialSelectMode),
+  );
   const [slotModal, setSlotModal] = useState<{ plans: MealPlan[]; slotLabel: string; date: Date } | null>(null);
 
   useEffect(() => {
@@ -117,6 +147,21 @@ export default function MealPlanner() {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
+
+  const plannerFocusKey = searchParams.toString();
+
+  useEffect(() => {
+    const focusedDate = dateFromKey(searchParams.get('date'));
+    const focusedView = viewFromParam(searchParams.get('view'));
+    const focusedMealType = mealTypeFromParam(searchParams.get('slot'));
+    const focusedSelectMode = searchParams.get('select');
+
+    if (focusedDate) setCurrentDate(focusedDate);
+    if (focusedView) setView(focusedView);
+    if (focusedDate && (focusedMealType || focusedSelectMode === 'today')) {
+      setSelectedSlots(selectedSlotsFromFocus(focusedDate, focusedMealType, focusedSelectMode));
+    }
+  }, [plannerFocusKey]);
 
   const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
   const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
@@ -1148,34 +1193,34 @@ function EditPlanModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center overflow-y-auto bg-stone-950/45 p-2 backdrop-blur-sm sm:items-center sm:p-4">
       <form
         onSubmit={save}
-        className="w-full max-w-md overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 dark:border-stone-700 dark:bg-stone-900"
+        className="max-h-[calc(100svh-1rem)] w-full max-w-md overflow-y-auto rounded-[1.5rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 sm:max-h-[calc(100svh-2rem)] sm:rounded-[2rem] dark:border-stone-700 dark:bg-stone-900"
       >
-        <div className="border-b border-orange-100 p-5 dark:border-stone-700">
+        <div className="border-b border-orange-100 p-4 sm:p-5 dark:border-stone-700">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Edit Meal</p>
-          <h2 className="mt-1 text-xl font-extrabold text-stone-900 dark:text-stone-100">{plan.recipe.title}</h2>
+          <h2 className="mt-1 text-lg font-extrabold leading-tight text-stone-900 sm:text-xl dark:text-stone-100">{plan.recipe.title}</h2>
         </div>
-        <div className="space-y-5 p-5">
-          <label className="block space-y-2">
+        <div className="space-y-4 p-3 sm:space-y-5 sm:p-5">
+          <label className="block min-w-0 space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">Date</span>
             <input
               type="date"
               value={plannedDate}
               onChange={(event) => setPlannedDate(event.target.value)}
-              className="h-12 w-full rounded-2xl border border-orange-100 bg-white px-4 text-sm font-bold text-stone-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
+              className="h-11 w-full min-w-0 rounded-2xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 sm:h-12 sm:px-4 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
               required
             />
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(6.25rem,1fr))] gap-2">
             {mealSlots.map((slot) => (
               <button
                 key={slot.id}
                 type="button"
                 onClick={() => setMealType(slot.id)}
                 className={cn(
-                  'h-12 rounded-2xl border text-xs font-extrabold uppercase tracking-widest transition-all',
+                  'h-11 min-w-0 rounded-2xl border px-2 text-[11px] font-extrabold uppercase leading-none tracking-[0.04em] transition-all sm:h-12',
                   mealType === slot.id
                     ? 'border-orange-500 bg-orange-500 text-white shadow-lg shadow-orange-500/20'
                     : 'border-orange-100 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300',
@@ -1236,8 +1281,8 @@ function EditPlanModal({
                 )} />
               </span>
             </button>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block space-y-1.5">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(7.25rem,1fr))] gap-3">
+              <label className="block min-w-0 space-y-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
                   Start
                 </span>
@@ -1246,10 +1291,10 @@ function EditPlanModal({
                   value={startTime}
                   onChange={(event) => setStartTime(event.target.value)}
                   disabled={!customTimeEnabled}
-                  className="h-11 w-full rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                  className="h-11 w-full min-w-0 rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                 />
               </label>
-              <label className="block space-y-1.5">
+              <label className="block min-w-0 space-y-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400 dark:text-stone-500">
                   End
                 </span>
@@ -1258,17 +1303,17 @@ function EditPlanModal({
                   value={endTime}
                   onChange={(event) => setEndTime(event.target.value)}
                   disabled={!customTimeEnabled}
-                  className="h-11 w-full rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
+                  className="h-11 w-full min-w-0 rounded-xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100"
                 />
               </label>
             </div>
           </div>
         </div>
-        <div className="flex flex-col-reverse gap-2 border-t border-orange-100 bg-orange-50/50 p-5 sm:flex-row sm:justify-end dark:border-stone-700 dark:bg-stone-900/60">
-          <Button type="button" variant="outline" className="h-11 rounded-full px-5 font-bold" onClick={onClose} disabled={saving}>
+        <div className="grid grid-cols-2 gap-2 border-t border-orange-100 bg-orange-50/50 p-3 sm:flex sm:justify-end sm:p-5 dark:border-stone-700 dark:bg-stone-900/60">
+          <Button type="button" variant="outline" className="h-11 min-w-0 rounded-full px-3 font-bold sm:px-5" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" className="h-11 rounded-full px-5 font-bold" disabled={saving || !isOnline}>
+          <Button type="submit" className="h-11 min-w-0 rounded-full px-3 font-bold sm:px-5" disabled={saving || !isOnline}>
             {saving ? (
               <>
                 <Loader2 size={16} className="animate-spin" />

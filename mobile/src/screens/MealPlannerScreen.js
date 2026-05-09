@@ -48,6 +48,21 @@ function dateFromKey(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function normalizeViewParam(value) {
+  return value === 'day' || value === 'week' ? value : null;
+}
+
+function normalizeMealTypeParam(value) {
+  return mealSlots.some((slot) => slot.id === value) ? value : null;
+}
+
+function selectedSlotsFromFocus(date, mealType, selectToday) {
+  const key = dateKey(date);
+  if (mealType) return new Set([`${key}|${mealType}`]);
+  if (selectToday) return new Set(mealSlots.map((slot) => `${key}|${slot.id}`));
+  return new Set();
+}
+
 function fallbackSlotWindow(slotId) {
   if (slotId === 'breakfast') return '7:00 AM - 8:00 AM';
   if (slotId === 'lunch') return '11:00 AM - 2:00 PM';
@@ -87,8 +102,8 @@ export default function MealPlannerScreen({ navigation, route }) {
     return () => clearInterval(timer);
   }, []);
 
-  const startDate = view === 'week' ? startOfWeek(currentDate) : currentDate;
-  const endDate = view === 'week' ? endOfWeek(currentDate) : currentDate;
+  const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
+  const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
   const plansByDateAndType = useMemo(() => {
@@ -184,9 +199,26 @@ export default function MealPlannerScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       const focusedDate = dateFromKey(route?.params?.plannedDate);
+      const focusedView = normalizeViewParam(route?.params?.view);
+      const focusedMealType = normalizeMealTypeParam(route?.params?.mealType);
+      const shouldSelectToday = route?.params?.selectToday === true || route?.params?.selectToday === 'true';
+
       if (focusedDate) {
         setCurrentDate(focusedDate);
-        navigation.setParams?.({ plannedDate: undefined });
+      }
+      if (focusedView) {
+        setView(focusedView);
+      }
+      if (focusedDate && (focusedMealType || shouldSelectToday)) {
+        setSelectedSlots(selectedSlotsFromFocus(focusedDate, focusedMealType, shouldSelectToday));
+      }
+      if (focusedDate || focusedView || focusedMealType || shouldSelectToday) {
+        navigation.setParams?.({
+          plannedDate: undefined,
+          view: undefined,
+          mealType: undefined,
+          selectToday: undefined,
+        });
       }
 
       if (didInitialPlanFocus.current) {
@@ -196,11 +228,18 @@ export default function MealPlannerScreen({ navigation, route }) {
       }
 
       return undefined;
-    }, [loadPlans, navigation, route?.params?.plannedDate]),
+    }, [
+      loadPlans,
+      navigation,
+      route?.params?.mealType,
+      route?.params?.plannedDate,
+      route?.params?.selectToday,
+      route?.params?.view,
+    ]),
   );
 
   const saveCurrentGroceryList = async () => {
-    if (!groceryList || !groceryList.items?.length) {
+    if (!displayedGroceryList || !displayedGroceryList.items?.length) {
       Alert.alert('Nothing to save', 'Generate a grocery list first.');
       return;
     }
@@ -213,7 +252,7 @@ export default function MealPlannerScreen({ navigation, route }) {
       const defaultName = `Grocery list - ${format(new Date(), 'MMM d, yyyy')}`;
       const response = await plannerApi.saveGroceryList({
         name: defaultName,
-        grocery_list: groceryList,
+        grocery_list: displayedGroceryList,
       });
       const saved = response?.data?.saved;
       if (saved) {
@@ -469,7 +508,9 @@ export default function MealPlannerScreen({ navigation, route }) {
                 <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
               </TouchableOpacity>
               <Text style={[st.dateRange, { color: colors.text }]}>
-                {format(startDate, 'MMM d')} - {format(endDate, 'MMM d, yyyy')}
+                {view === 'week'
+                  ? `${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`
+                  : format(currentDate, 'EEEE, MMM d, yyyy')}
               </Text>
               <TouchableOpacity
                 onPress={() => setCurrentDate(addDays(currentDate, view === 'week' ? 7 : 1))}
