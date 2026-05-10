@@ -97,8 +97,25 @@ export const api = {
       headers,
     }),
 
-  delete: <T = unknown>(endpoint: string, headers?: Record<string, string>) =>
-    request<T>(endpoint, { method: 'DELETE', headers }),
+  delete: <T = unknown>(
+    endpoint: string,
+    bodyOrHeaders?: unknown,
+    headers?: Record<string, string>
+  ) => {
+    const looksLikeHeaders =
+      bodyOrHeaders &&
+      typeof bodyOrHeaders === 'object' &&
+      !Array.isArray(bodyOrHeaders) &&
+      ('Authorization' in bodyOrHeaders || 'authorization' in bodyOrHeaders);
+    const body = looksLikeHeaders ? undefined : bodyOrHeaders;
+    const requestHeaders = looksLikeHeaders ? (bodyOrHeaders as Record<string, string>) : headers;
+
+    return request<T>(endpoint, {
+      method: 'DELETE',
+      body: body ? JSON.stringify(body) : undefined,
+      headers: requestHeaders,
+    });
+  },
 
   patch: <T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(endpoint, {

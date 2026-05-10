@@ -30,9 +30,6 @@ const ProfilePage = lazy(() => import('./pages/Profile'));
 const NotificationsPage = lazy(() => import('./pages/Notifications'));
 const AICamera = lazy(() => import('./pages/AICamera'));
 const Settings = lazy(() => import('./pages/Settings'));
-const AppearanceSettings = lazy(() => import('./pages/AppearanceSettings'));
-const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
-const PrivacySecuritySettings = lazy(() => import('./pages/PrivacySecuritySettings'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
@@ -117,9 +114,6 @@ export default function App() {
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="camera" element={<AICamera />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="settings/appearance" element={<AppearanceSettings />} />
-                <Route path="settings/notifications" element={<NotificationSettings />} />
-                <Route path="settings/privacy-security" element={<PrivacySecuritySettings />} />
               </Route>
             </Route>
           </Routes>

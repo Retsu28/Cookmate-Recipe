@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
@@ -9,9 +10,11 @@ const config = require('./config');
 const { testDbConnection } = require('./config/db');
 const { ensureAdminAccount } = require('./models/adminBootstrap');
 const apiRoutes = require('./routes');
+const settingsRouter = require('./routes/settings');
 const errorHandler = require('./middleware/errorHandler');
 const { startMealReminderWorker } = require('./workers/mealReminderWorker');
 const { attachPlannerSocketServer } = require('./realtime/plannerSocket');
+const { purgeDeletedAccounts } = require('./jobs/purgeDeletedAccounts');
 
 async function startServer() {
   await testDbConnection();
@@ -22,6 +25,22 @@ async function startServer() {
     console.warn('⚠️  Admin bootstrap skipped (table may not exist yet):', err.message);
     console.warn('   Run database/schema.sql to create tables, then restart.');
   }
+
+  try {
+    await purgeDeletedAccounts();
+  } catch (err) {
+    console.error('[server] Initial deleted-account purge failed:', err);
+  }
+
+  setInterval(() => {
+    try {
+      purgeDeletedAccounts().catch((err) => {
+        console.error('[server] Scheduled deleted-account purge failed:', err);
+      });
+    } catch (err) {
+      console.error('[server] Scheduled deleted-account purge failed:', err);
+    }
+  }, 24 * 60 * 60 * 1000);
 
   const app = express();
 
@@ -34,8 +53,10 @@ async function startServer() {
   );
   app.use(express.json({ limit: '15mb' }));
   app.use(cookieParser());
+  app.use('/uploads', express.static(path.resolve(__dirname, '..', '..', '..', 'uploads')));
 
   // ─── API Routes ───
+  app.use('/api/settings', settingsRouter);
   app.use('/api', apiRoutes);
 
   // ─── Centralized Error Handler ───

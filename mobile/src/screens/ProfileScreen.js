@@ -12,22 +12,34 @@ import {
   Easing,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { profileApi } from '../api/api';
+import { profileApi, apiBaseUrl } from '../api/api';
 import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
+import { tokenStorage } from '../lib/tokenStorage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
 const skillLevels = ['Beginner', 'Intermediate', 'Advanced'];
 
-const profileTabs = ['Account Settings', 'My Recipes', 'Saved'];
+const profileTabs = [
+  { id: 'account', label: 'Account', icon: 'person-outline', description: 'Profile, email, password, and avatar' },
+  { id: 'notifications', label: 'Notifications', icon: 'notifications-outline', description: 'Email, push, digest, and recipe alerts' },
+  { id: 'appearance', label: 'Appearance', icon: 'color-palette-outline', description: 'Theme and reading preferences' },
+  { id: 'privacy', label: 'Privacy & Security', icon: 'shield-outline', description: 'Visibility and account safety' },
+  { id: 'inventory', label: 'Kitchen Inventory', icon: 'cube-outline', description: 'Ingredient tracking tools', disabled: true, badge: 'Coming Soon' },
+  { id: 'my-recipes', label: 'My Recipes', icon: 'restaurant-outline', description: 'Your created recipes' },
+  { id: 'saved', label: 'Saved', icon: 'bookmark-outline', description: 'Bookmarked recipes' },
+];
 
 const emptyForm = {
   fullName: '',
@@ -37,6 +49,13 @@ const emptyForm = {
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
+  // Notification settings
+  pushNotifications: true,
+  emailNotifications: true,
+  recipeAlerts: true,
+  weeklyDigest: false,
+  // Privacy settings
+  publicProfile: true,
 };
 
 function normalizeFullName(value) {
@@ -78,7 +97,7 @@ export default function ProfileScreen({ navigation }) {
   const { user, refreshUser } = useAuth();
   const { colors, isDark, toggleTheme } = useAppTheme();
   
-  const [activeTab, setActiveTab] = useState('Account Settings');
+  const [activeTab, setActiveTab] = useState('account');
   
   const userBaseline = useMemo(
     () => ({
@@ -97,6 +116,8 @@ export default function ProfileScreen({ navigation }) {
   const [showPasswords, setShowPasswords] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [avatarUri, setAvatarUri] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
   
   const saveScale = useRef(new Animated.Value(1)).current;
   const isInitialLoading = useInitialContentLoading();
@@ -157,6 +178,16 @@ export default function ProfileScreen({ navigation }) {
     return displayName.charAt(0).toUpperCase();
   }, [displayName]);
 
+  const avatarUrl = useMemo(() => {
+    if (avatarPreview) return avatarPreview;
+    if (user?.avatar_url) {
+      return user.avatar_url.startsWith('http') 
+        ? user.avatar_url 
+        : `${apiBaseUrl}${user.avatar_url}`;
+    }
+    return null;
+  }, [user?.avatar_url, avatarPreview]);
+
   const displayEmail = form.email || user?.email || 'No email available';
 
   const setField = (key, value) => {
@@ -183,6 +214,37 @@ export default function ProfileScreen({ navigation }) {
     setError(null);
     setSuccess(false);
     setForm({ ...emptyForm, ...initial });
+    setAvatarUri(null);
+    setAvatarPreview(null);
+  };
+
+  const pickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant access to your photo library to upload an avatar.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const selectedAsset = result.assets[0];
+        setAvatarUri(selectedAsset.uri);
+        setAvatarPreview(selectedAsset.uri);
+        setSuccess(false);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error picking avatar:', err);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
   };
 
   const animatePressIn = () => {
@@ -225,10 +287,41 @@ export default function ProfileScreen({ navigation }) {
 
     setSaving(true);
     try {
+      // Upload avatar if selected
+      if (avatarUri) {
+        const formData = new FormData();
+        const fileName = avatarUri.split('/').pop() || 'avatar.jpg';
+        const fileType = fileName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+        
+        formData.append('avatar', {
+          uri: avatarUri,
+          name: fileName,
+          type: fileType,
+        });
+
+        const token = await tokenStorage.getItem('userToken');
+        const uploadResponse = await fetch(`${apiBaseUrl}/api/profile/${user.id}/avatar`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to upload avatar');
+        }
+
+        setAvatarUri(null);
+      }
+
       const { data } = await profileApi.updateProfile(user.id, payload);
       const nextInitial = baselineFromProfile(data.profile);
       setInitial(nextInitial);
       setForm({ ...emptyForm, ...nextInitial });
+      setAvatarPreview(null);
       try {
         await refreshUser?.();
       } catch {
@@ -264,11 +357,32 @@ export default function ProfileScreen({ navigation }) {
         <ScrollView style={st.flex1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
           {/* Profile header card */}
           <View style={[st.headerCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
-            <View style={[st.avatarLg, { backgroundColor: colors.primary }]}>
-              <Text style={st.avatarLgText}>{displayInitial}</Text>
-            </View>
+            <TouchableOpacity onPress={pickAvatar} activeOpacity={0.9}>
+              <View style={st.avatarWrapper}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={[st.avatarLg, { backgroundColor: colors.primary }]} />
+                ) : (
+                  <View style={[st.avatarLg, { backgroundColor: colors.primary }]}>
+                    <Text style={st.avatarLgText}>{displayInitial}</Text>
+                  </View>
+                )}
+                <View style={[st.avatarOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
+                  <Ionicons name="camera" size={24} color="#fff" />
+                </View>
+                {avatarPreview && (
+                  <View style={[st.avatarBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={st.avatarBadgeText}>NEW</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
             <Text style={[st.nameText, { color: colors.text }]}>{displayName}</Text>
             <Text style={[st.emailText, { color: colors.textMuted }]}>{displayEmail}</Text>
+            {avatarPreview && (
+              <Text style={[st.avatarHint, { color: colors.textSubtle }]}>
+                Tap avatar to change · Save to upload
+              </Text>
+            )}
 
             <View style={[st.statsRow, { borderTopColor: isDark ? colors.border : '#d6d3d1' }]}>
               {[
@@ -282,21 +396,53 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Tabs */}
-          <View style={[st.tabRow, { borderBottomColor: colors.border }]}>
-            {profileTabs.map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={[st.tabItem, activeTab === tab && { borderBottomWidth: 2, borderBottomColor: colors.primary }]}
-              >
-                <Text style={[st.tabText, { color: activeTab === tab ? colors.primary : colors.textSubtle }]}>{tab.toUpperCase()}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {/* Tabs - Horizontal scrollable */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[st.tabRow, { borderBottomColor: colors.border, paddingHorizontal: 12 }]}
+          >
+            {profileTabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              const isDisabled = tab.disabled;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => !isDisabled && setActiveTab(tab.id)}
+                  disabled={isDisabled}
+                  style={[
+                    st.tabItem,
+                    isActive && { borderBottomWidth: 2, borderBottomColor: colors.primary },
+                    isDisabled && { opacity: 0.5 },
+                  ]}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={18}
+                    color={isActive ? colors.primary : isDisabled ? colors.textMuted : colors.textSubtle}
+                    style={{ marginBottom: 6 }}
+                  />
+                  <Text
+                    style={[
+                      st.tabText,
+                      { color: isActive ? colors.primary : isDisabled ? colors.textMuted : colors.textSubtle },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {tab.label}
+                  </Text>
+                  {tab.badge && (
+                    <View style={[st.badge, { backgroundColor: colors.primarySoft }]}>
+                      <Text style={[st.badgeText, { color: colors.primary }]}>{tab.badge}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
           <View style={st.body}>
-            {activeTab === 'Account Settings' && (
+            {activeTab === 'account' && (
               <View style={st.accountWrap}>
                 <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <SectionHeader
@@ -510,65 +656,221 @@ export default function ProfileScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
+                <View style={{ marginTop: 24, paddingHorizontal: 0 }}>
+                  <LogoutButton />
+                </View>
+
               </View>
             )}
 
-            {activeTab === 'My Recipes' && (
+            {activeTab === 'my-recipes' && (
               <View style={st.emptyState}>
                 <Ionicons name="restaurant-outline" size={40} color={colors.textSubtle} />
                 <Text style={[st.emptyText, { color: colors.textSubtle }]}>Your created recipes will appear here.</Text>
               </View>
             )}
-            {activeTab === 'Saved' && (
+            {activeTab === 'saved' && (
               <View style={st.emptyState}>
                 <Ionicons name="bookmark-outline" size={40} color={colors.textSubtle} />
                 <Text style={[st.emptyText, { color: colors.textSubtle }]}>Bookmark recipes to save them for later.</Text>
               </View>
             )}
 
-            {/* Settings Section */}
-            <View style={st.settingsSection}>
-              <Text style={[st.miniLabel, { color: colors.textSubtle, marginBottom: 12 }]}>PREFERENCES</Text>
+            {/* Notifications Tab */}
+            {activeTab === 'notifications' && (
+              <View style={st.accountWrap}>
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="notifications-outline"
+                    title="Notification preferences"
+                    caption="Choose how you want to be notified."
+                    colors={colors}
+                  />
 
-              <View style={[st.settingsCard, { borderColor: colors.border }]}>
-                {[
-                  { icon: 'moon-outline', label: 'Dark Mode', type: 'switch', value: isDark, onChange: () => toggleTheme() },
-                  { icon: 'notifications-outline', label: 'Notifications', type: 'arrow', onPress: () => navigation.navigate('NotificationSettings') },
-                  { icon: 'globe-outline', label: 'Language', type: 'value', value: 'English (US)' },
-                  { icon: 'help-circle-outline', label: 'Help & Support', type: 'arrow' },
-                ].map((item, i, arr) => (
-                  <TouchableOpacity 
-                    key={i} 
-                    onPress={item.onPress}
-                    disabled={!item.onPress && item.type !== 'switch'}
-                    activeOpacity={item.onPress ? 0.7 : 1}
-                    style={[st.settingRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                  >
-                    <View style={st.settingLeft}>
-                      <Ionicons name={item.icon} size={18} color={colors.primary} />
-                      <Text style={[st.settingLabel, { color: colors.text }]}>{item.label}</Text>
-                    </View>
-                    {item.type === 'switch' && (
+                  {[
+                    { icon: 'phone-portrait-outline', label: 'Push notifications', key: 'pushNotifications' },
+                    { icon: 'mail-outline', label: 'Email notifications', key: 'emailNotifications' },
+                    { icon: 'flame-outline', label: 'Recipe alerts', key: 'recipeAlerts' },
+                    { icon: 'newspaper-outline', label: 'Weekly digest', key: 'weeklyDigest' },
+                  ].map((item) => (
+                    <View key={item.key} style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
+                      <View style={st.settingLeft}>
+                        <Ionicons name={item.icon} size={18} color={colors.primary} />
+                        <Text style={[st.settingLabel, { color: colors.text }]}>{item.label}</Text>
+                      </View>
                       <Switch
-                        value={item.value}
-                        onValueChange={item.onChange}
+                        value={form[item.key] || false}
+                        onValueChange={(value) => setField(item.key, value)}
                         trackColor={{ false: colors.border, true: colors.primary }}
                         thumbColor={colors.surface}
                       />
-                    )}
-                    {item.type === 'value' && (
-                      <Text style={[st.settingValue, { color: colors.textSubtle }]}>{item.value}</Text>
-                    )}
-                    {item.type === 'arrow' && (
-                      <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
-                    )}
+                    </View>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {}}
+                  style={[st.settingsCard, { borderColor: colors.border, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                >
+                  <View style={st.settingLeft}>
+                    <Ionicons name="open-outline" size={18} color={colors.primary} />
+                    <Text style={[st.settingLabel, { color: colors.text }]}>Open system notification settings</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Appearance Tab */}
+            {activeTab === 'appearance' && (
+              <View style={st.accountWrap}>
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="color-palette-outline"
+                    title="Appearance"
+                    caption="Customize how CookMate looks."
+                    colors={colors}
+                  />
+
+                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
+                    <View style={st.settingLeft}>
+                      <Ionicons name="moon-outline" size={18} color={colors.primary} />
+                      <Text style={[st.settingLabel, { color: colors.text }]}>Dark Mode</Text>
+                    </View>
+                    <Switch
+                      value={isDark}
+                      onValueChange={() => toggleTheme()}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={colors.surface}
+                    />
+                  </View>
+
+                  <FieldLabel label="Theme" colors={colors} />
+                  <View style={st.skillGrid}>
+                    {['System', 'Light', 'Dark'].map((theme) => {
+                      const active = (theme === 'Dark' && isDark) || (theme === 'Light' && !isDark) || theme === 'System';
+                      return (
+                        <TouchableOpacity
+                          key={theme}
+                          onPress={() => {
+                            if (theme === 'Dark') toggleTheme();
+                            else if (theme === 'Light' && isDark) toggleTheme();
+                          }}
+                          style={[
+                            st.skillBtn,
+                            {
+                              backgroundColor: active ? colors.text : colors.surface,
+                              borderColor: active ? colors.text : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted }]}>
+                            {theme}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Privacy & Security Tab */}
+            {activeTab === 'privacy' && (
+              <View style={st.accountWrap}>
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="shield-outline"
+                    title="Privacy & Security"
+                    caption="Manage your account safety and visibility."
+                    colors={colors}
+                  />
+
+                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
+                    <View style={st.settingLeft}>
+                      <Ionicons name="eye-outline" size={18} color={colors.primary} />
+                      <View>
+                        <Text style={[st.settingLabel, { color: colors.text }]}>Public profile</Text>
+                        <Text style={[st.settingValue, { color: colors.textSubtle, fontSize: 11 }]}>
+                          Allow others to see your profile
+                        </Text>
+                      </View>
+                    </View>
+                    <Switch
+                      value={form.publicProfile !== false}
+                      onValueChange={(value) => setField('publicProfile', value)}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={colors.surface}
+                    />
+                  </View>
+                </View>
+
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="document-text-outline"
+                    title="Data & Privacy"
+                    caption="Manage your data and privacy settings."
+                    colors={colors}
+                  />
+
+                  <TouchableOpacity
+                    onPress={() => {}}
+                    style={[st.settingRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                  >
+                    <View style={st.settingLeft}>
+                      <Ionicons name="download-outline" size={18} color={colors.primary} />
+                      <Text style={[st.settingLabel, { color: colors.text }]}>Request data export</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
                   </TouchableOpacity>
-                ))}
+
+                  <TouchableOpacity
+                    onPress={() => {}}
+                    style={[st.settingRow, { borderBottomWidth: 0 }]}
+                  >
+                    <View style={st.settingLeft}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+                      <Text style={[st.settingLabel, { color: colors.text }]}>Privacy policy</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border, borderColor: colors.danger }]}>
+                  <SectionHeader
+                    icon="trash-outline"
+                    title="Danger Zone"
+                    caption="Permanent actions that cannot be undone."
+                    colors={colors}
+                  />
+
+                  <TouchableOpacity
+                    onPress={() => {}}
+                    style={[st.resetBtn, { backgroundColor: colors.danger + '20', borderColor: colors.danger }]}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                    <Text style={[st.resetText, { color: colors.danger, marginLeft: 8 }]}>Delete Account</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ marginTop: 24, paddingHorizontal: 0 }}>
+                  <LogoutButton />
+                </View>
               </View>
-              <View style={{ marginTop: 24, paddingHorizontal: 16 }}>
-                <LogoutButton />
+            )}
+
+            {/* Inventory Tab - Coming Soon */}
+            {activeTab === 'inventory' && (
+              <View style={st.emptyState}>
+                <Ionicons name="cube-outline" size={48} color={colors.primary} />
+                <Text style={[st.emptyText, { color: colors.text, fontFamily: 'Geist_800ExtraBold', fontSize: 18, marginTop: 16 }]}>
+                  Kitchen Inventory
+                </Text>
+                <Text style={[st.emptyText, { color: colors.textSubtle, marginTop: 8 }]}>
+                  Ingredient tracking tools coming soon.
+                </Text>
               </View>
-            </View>
+            )}
 
           </View>
         </ScrollView>
@@ -580,9 +882,41 @@ export default function ProfileScreen({ navigation }) {
 const st = StyleSheet.create({
   flex1: { flex: 1 },
   // Header
-  headerCard: { paddingTop: 32, paddingBottom: 24, alignItems: 'center' },
-  avatarLg: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  avatarLgText: { color: '#fff', fontFamily: 'Geist_800ExtraBold', fontSize: 30 },
+  headerCard: { paddingTop: 24, paddingBottom: 20, alignItems: 'center' },
+  avatarWrapper: { position: 'relative', marginBottom: 12 },
+  avatarLg: { width: 90, height: 90, borderRadius: 45, alignItems: 'center', justifyContent: 'center' },
+  avatarLgText: { color: '#fff', fontFamily: 'Geist_800ExtraBold', fontSize: 36 },
+  avatarOverlay: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    borderRadius: 45, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    opacity: 0.7,
+  },
+  avatarBadge: { 
+    position: 'absolute', 
+    top: -4, 
+    right: -4, 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 12,
+  },
+  avatarBadgeText: { 
+    color: '#fff', 
+    fontFamily: 'Geist_800ExtraBold', 
+    fontSize: 9, 
+    letterSpacing: 0.5,
+  },
+  avatarHint: { 
+    fontFamily: 'Geist_500Medium', 
+    fontSize: 11, 
+    marginTop: 4, 
+    marginBottom: 4,
+  },
   nameText: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, letterSpacing: -0.3 },
   emailText: { fontFamily: 'Geist_400Regular', fontSize: 13, marginTop: 2 },
   statsRow: { flexDirection: 'row', width: '100%', marginTop: 20, paddingTop: 18, borderTopWidth: 1 },
@@ -591,9 +925,9 @@ const st = StyleSheet.create({
   statLabel: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 1.5, marginTop: 4 },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 18, paddingHorizontal: 24 },
   // Tabs
-  tabRow: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16 },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
-  tabText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+  tabRow: { flexDirection: 'row', borderBottomWidth: 1 },
+  tabItem: { alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, minWidth: 70 },
+  tabText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 0.5 },
   // Body
   body: { padding: 16, gap: 24 },
   emptyState: { alignItems: 'center', paddingVertical: 40, gap: 12 },
@@ -636,4 +970,6 @@ const st = StyleSheet.create({
   settingLabel: { fontFamily: 'Geist_500Medium', fontSize: 14 },
   settingValue: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 0.5 },
   miniLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2 },
+  badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
+  badgeText: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 0.5, textTransform: 'uppercase' },
 });

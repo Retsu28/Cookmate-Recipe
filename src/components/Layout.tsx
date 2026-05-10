@@ -1,15 +1,14 @@
 import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Home, Search, Calendar, Camera, User, Settings as SettingsIcon, BookOpen,
-  Bell, Menu, ShieldCheck, UtensilsCrossed, X, LogOut
+  Home, Search, Calendar, Camera, User, BookOpen,
+  Bell, Menu, ShieldCheck, UtensilsCrossed, X
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getInitial } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export const LayoutShellContext = createContext(false);
@@ -44,13 +43,21 @@ function ConnectionDot() {
   );
 }
 
+function resolveAvatarUrl(value?: string | null) {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  return `${baseUrl}${value}`;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const isNestedInAppShell = useContext(LayoutShellContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';
+  const profileAvatarUrl = resolveAvatarUrl(user?.avatar_url);
   const isAdmin = isAdminUser(user);
 
   // When AppShell provides the persistent frame, page-level Layout calls flatten
@@ -66,7 +73,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: 'Planner', path: '/planner', icon: Calendar },
     { name: 'AI Camera', path: '/camera', icon: Camera },
     { name: 'Profile', path: '/profile', icon: User },
-    { name: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
   const navLinks = isAdmin
     ? [...baseNavLinks, { name: 'Admin Dashboard', path: '/admin', icon: ShieldCheck }]
@@ -175,7 +181,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="relative flex h-screen flex-1 flex-col overflow-hidden bg-orange-50/40 dark:bg-stone-950/40">
+      <div className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-orange-50/40 dark:bg-stone-950/40">
 
         {/* Topbar */}
         <header className="z-10 flex h-20 shrink-0 items-center justify-between border-b border-orange-100/60 bg-orange-50/85 px-4 backdrop-blur-xl dark:border-stone-800/60 dark:bg-stone-900/85 sm:px-8">
@@ -191,7 +197,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-            <ThemeToggle />
             {isAdmin && (
               <Link
               to="/admin"
@@ -210,71 +215,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Bell size={20} />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-stone-800" />
             </Link>
-            <div className="group/profile relative">
-              <Link
-                to="/profile"
-                aria-label={`${profileLabel} profile`}
-                aria-haspopup="true"
-                className="relative block rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300 focus-visible:ring-orange-400"
-              >
-                <div className="flex h-9 w-9 select-none items-center justify-center rounded-full orange-gradient shadow-lg shadow-orange-500/20">
+            <Link
+              to="/profile"
+              aria-label={`${profileLabel} – go to profile`}
+              className="relative block rounded-full p-1 ring-2 ring-transparent transition-all hover:ring-orange-300 focus-visible:ring-orange-400"
+            >
+              <div className="flex h-9 w-9 select-none items-center justify-center overflow-hidden rounded-full orange-gradient shadow-lg shadow-orange-500/20">
+                {profileAvatarUrl ? (
+                  <img src={profileAvatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
                   <span className="text-white text-sm font-extrabold tracking-tight">
                     {profileInitial}
                   </span>
-                </div>
-                <ConnectionDot />
-              </Link>
-
-              {/* Hover dropdown */}
-              <div className="pointer-events-none absolute right-0 top-full z-50 pt-2 opacity-0 translate-y-1 transition-all duration-200 ease-out group-hover/profile:pointer-events-auto group-hover/profile:opacity-100 group-hover/profile:translate-y-0">
-                <div className="w-52 overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-xl shadow-orange-900/8 dark:border-stone-700 dark:bg-stone-800 dark:shadow-black/30">
-                  {/* User info header */}
-                  <div className="border-b border-orange-100 px-4 py-3 dark:border-stone-700">
-                    <p className="text-sm font-extrabold text-stone-900 dark:text-stone-100 truncate">{user?.name || 'Guest'}</p>
-                    <p className="text-[11px] font-medium text-stone-500 dark:text-stone-400 truncate mt-0.5">{user?.email || 'Not signed in'}</p>
-                  </div>
-
-                  <div className="py-1.5">
-                    <Link
-                      to="/profile"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400"
-                    >
-                      <User size={16} className="text-stone-400 dark:text-stone-500" />
-                      Profile
-                    </Link>
-                    <Link
-                      to="/settings"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400"
-                    >
-                      <SettingsIcon size={16} className="text-stone-400 dark:text-stone-500" />
-                      Settings
-                    </Link>
-                  </div>
-
-                  <div className="border-t border-orange-100 py-1.5 dark:border-stone-700">
-                    <button
-                      type="button"
-                      onClick={async () => { await logout(); window.location.href = '/login'; }}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                    >
-                      <LogOut size={16} />
-                      Sign out
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
+              <ConnectionDot />
+            </Link>
           </div>
         </header>
 
         {/* Scrollable Main Area */}
-        <main className="flex-1 overflow-y-auto scrollbar-hide">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto scrollbar-hide">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
               className="mx-auto w-full max-w-7xl px-4 pb-28 sm:px-8 md:pb-12"
             >

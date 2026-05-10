@@ -28,6 +28,8 @@ function toPublicUser(row) {
     id: row.id,
     email: row.email,
     name: row.full_name || row.email.split('@')[0],
+    avatar_url: row.avatar_url || null,
+    notifications_enabled: row.notifications_enabled !== false,
     role: row.role === 'admin' ? 'admin' : 'user',
   };
 }
@@ -123,7 +125,7 @@ exports.signup = async (req, res) => {
     const insert = await pool.query(
       `INSERT INTO users (email, password_hash, full_name, role)
        VALUES ($1, $2, $3, 'user')
-       RETURNING id, email, full_name, role`,
+       RETURNING id, email, full_name, avatar_url, notifications_enabled, role`,
       [normalizedEmail, passwordHash, cleanName]
     );
 
@@ -156,7 +158,7 @@ exports.login = async (req, res) => {
 
     const normalizedEmail = normalizeEmail(email);
     const result = await pool.query(
-      'SELECT id, email, full_name, role, password_hash FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, password_hash FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
       [normalizedEmail]
     );
 
@@ -185,7 +187,7 @@ exports.me = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized.' });
 
   const result = await pool.query(
-    'SELECT id, email, full_name, role FROM users WHERE id = $1 LIMIT 1',
+    'SELECT id, email, full_name, avatar_url, notifications_enabled, role FROM users WHERE id = $1 LIMIT 1',
     [userId]
   );
   if (result.rowCount === 0) return res.status(404).json({ error: 'User not found.' });
@@ -291,7 +293,7 @@ exports.google = async (req, res) => {
     );
 
     const existing = await pool.query(
-      'SELECT id, email, full_name, role FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
       [normalizedEmail]
     );
 
@@ -306,7 +308,7 @@ exports.google = async (req, res) => {
       const inserted = await pool.query(
         `INSERT INTO users (email, password_hash, full_name, role)
          VALUES ($1, $2, $3, 'user')
-         RETURNING id, email, full_name, role`,
+         RETURNING id, email, full_name, avatar_url, notifications_enabled, role`,
         [normalizedEmail, passwordHash, fullName]
       );
       row = inserted.rows[0];
@@ -388,7 +390,7 @@ exports.firebase = async (req, res) => {
     // 1) Try by firebase_uid (returning user already linked).
     let row;
     const byUid = await pool.query(
-      'SELECT id, email, full_name, role, firebase_uid FROM users WHERE firebase_uid = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid FROM users WHERE firebase_uid = $1 LIMIT 1',
       [firebaseUid]
     );
     if (byUid.rowCount > 0) {
@@ -401,7 +403,7 @@ exports.firebase = async (req, res) => {
     } else {
       // 2) Match an existing legacy account by email and link it.
       const byEmail = await pool.query(
-        'SELECT id, email, full_name, role, firebase_uid FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+        'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
         [normalizedEmail]
       );
       if (byEmail.rowCount > 0) {
@@ -436,7 +438,7 @@ exports.firebase = async (req, res) => {
           inserted = await pool.query(
             `INSERT INTO users (email, password_hash, full_name, role, firebase_uid, email_verified)
              VALUES ($1, NULL, $2, 'user', $3, $4)
-             RETURNING id, email, full_name, role`,
+             RETURNING id, email, full_name, avatar_url, notifications_enabled, role`,
             [normalizedEmail, fullName, firebaseUid, emailVerified]
           );
         } catch (insertErr) {

@@ -16,7 +16,7 @@ interface RecipeFormProps {
   onSave: (form: any, ingredientRows: IngredientRow[]) => Promise<void>;
   onCancel: () => void;
   isEdit: boolean;
-  formRef?: React.RefObject<HTMLDivElement>;
+  formRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const formContainerVariants: Variants = {

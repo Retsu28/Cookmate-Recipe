@@ -256,11 +256,11 @@ export default function PrivacySecuritySettings() {
               <div className="grid gap-3">
                 <SecurityActionRow
                   title="Account credentials"
-                  description="Change your email or password from your profile."
+                  description="Change your email or password from settings."
                   icon={KeyRound}
                   action={
                     <Link
-                      to="/profile"
+                      to="/settings"
                       className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-orange-500 px-4 text-sm font-bold text-white transition-colors hover:bg-orange-600"
                     >
                       Manage

@@ -32,6 +32,8 @@ export interface AuthUser {
   id?: number;
   name: string;
   email: string;
+  avatar_url?: string | null;
+  notifications_enabled?: boolean;
   role?: 'user' | 'admin';
 }
 

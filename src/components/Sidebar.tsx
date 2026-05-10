@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, Camera, User, Settings, Bell, UtensilsCrossed } from 'lucide-react';
+import { Home, Search, Calendar, Camera, User, Bell, UtensilsCrossed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -9,7 +9,6 @@ const navItems = [
   { icon: Camera, label: 'AI Camera', path: '/camera' },
   { icon: Bell, label: 'Notifications', path: '/notifications', badge: 3 },
   { icon: User, label: 'Profile', path: '/profile' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
 export function Sidebar() {
@@ -54,3 +53,5 @@ export function Sidebar() {
     </aside>
   );
 }
+
+

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChefHat, Search, Camera, Book, User, Menu, X, ShoppingBag } from 'lucide-react';
+import { ChefHat, Search, Camera, User, Menu, X, ShoppingBag } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function Navbar() {
@@ -11,7 +11,7 @@ export function Navbar() {
     { name: 'Discover', path: '/', icon: <Search className="w-5 h-5" /> },
     { name: 'AI Camera', path: '/camera', icon: <Camera className="w-5 h-5" /> },
     { name: 'Pantry', path: '/search', icon: <ShoppingBag className="w-5 h-5" /> },
-    { name: 'My Recipes', path: '/profile', icon: <Book className="w-5 h-5" /> },
+    { name: 'Profile', path: '/profile', icon: <User className="w-5 h-5" /> },
   ];
 
   return (
@@ -87,3 +87,5 @@ export function Navbar() {
     </nav>
   );
 }
+
+

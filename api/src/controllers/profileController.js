@@ -1,9 +1,19 @@
 const bcrypt = require('bcryptjs');
+const fs = require('fs/promises');
+const path = require('path');
 const { pool } = require('../config/db');
+const { AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
 const BCRYPT_ROUNDS = 10;
+const AVATAR_UPLOAD_DIR = path.resolve(__dirname, '..', '..', '..', 'uploads', 'avatars');
+const AVATAR_PUBLIC_PREFIX = '/uploads/avatars/';
+const AVATAR_EXT_BY_MIME = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
 
 function normalizeEmail(value) {
   return value.trim().toLowerCase();
@@ -20,6 +30,26 @@ function getRequestedUserId(rawUserId) {
 
 function canAccessProfile(req, requestedUserId) {
   return req.userRole === 'admin' || req.userId === requestedUserId;
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  });
+}
+
+function localAvatarPathFromUrl(avatarUrl) {
+  if (typeof avatarUrl !== 'string' || !avatarUrl.startsWith(AVATAR_PUBLIC_PREFIX)) {
+    return null;
+  }
+  const filename = path.basename(avatarUrl);
+  if (!filename || filename !== avatarUrl.slice(AVATAR_PUBLIC_PREFIX.length)) {
+    return null;
+  }
+  return path.join(AVATAR_UPLOAD_DIR, filename);
 }
 
 exports.getProfile = async (req, res) => {
@@ -168,5 +198,106 @@ exports.updateProfile = async (req, res) => {
     }
     console.error('[profile/updateProfile]', err);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+};
+
+exports.uploadAvatar = async (req, res) => {
+  let savedFilePath = null;
+
+  try {
+    const userId = getRequestedUserId(req.params.userId);
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user id.' });
+    }
+    if (!canAccessProfile(req, userId)) {
+      return res.status(403).json({ error: 'You can only update your own profile.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Avatar image is required.' });
+    }
+
+    const ext = AVATAR_EXT_BY_MIME[req.file.mimetype];
+    if (!ext) {
+      return res.status(400).json({ error: 'Please upload a JPEG, PNG, or WebP image.' });
+    }
+
+    const existing = await pool.query(
+      'SELECT id, avatar_url FROM users WHERE id = $1 LIMIT 1',
+      [userId]
+    );
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    await fs.mkdir(AVATAR_UPLOAD_DIR, { recursive: true });
+    const filename = `${userId}-${Date.now()}${ext}`;
+    savedFilePath = path.join(AVATAR_UPLOAD_DIR, filename);
+    await fs.writeFile(savedFilePath, req.file.buffer);
+
+    const avatarUrl = `${AVATAR_PUBLIC_PREFIX}${filename}`;
+    await pool.query(
+      'UPDATE users SET avatar_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [avatarUrl, userId]
+    );
+
+    const previousPath = localAvatarPathFromUrl(existing.rows[0].avatar_url);
+    if (previousPath && previousPath !== savedFilePath) {
+      await fs.unlink(previousPath).catch(() => {});
+    }
+
+    res.json({ avatar_url: avatarUrl });
+  } catch (err) {
+    if (savedFilePath) {
+      await fs.unlink(savedFilePath).catch(() => {});
+    }
+    console.error('[profile/uploadAvatar]', err);
+    res.status(500).json({ error: 'Failed to upload avatar.' });
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    const userId = getRequestedUserId(req.params.userId);
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user id.' });
+    }
+    if (!canAccessProfile(req, userId)) {
+      return res.status(403).json({ error: 'You can only delete your own account.' });
+    }
+
+    const { current_password } = req.body ?? {};
+    if (typeof current_password !== 'string' || current_password.length === 0) {
+      return res.status(400).json({ error: 'Current password is required' });
+    }
+
+    const existing = await pool.query(
+      'SELECT id, password_hash FROM public.users WHERE id = $1 LIMIT 1',
+      [userId]
+    );
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const passwordHash = existing.rows[0].password_hash;
+    const passwordOk =
+      typeof passwordHash === 'string' && (await bcrypt.compare(current_password, passwordHash));
+    if (!passwordOk) {
+      return res.status(400).json({ error: 'Incorrect password' });
+    }
+
+    await pool.query(
+      `UPDATE public.users
+       SET deleted_at = NOW(),
+           deletion_scheduled_at = NOW() + INTERVAL '7 days',
+           updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+
+    clearAuthCookie(res);
+    res.status(200).json({ message: 'Account scheduled for deletion' });
+  } catch (err) {
+    console.error('[profile/deleteAccount]', err);
+    res.status(500).json({ error: 'Failed to delete account.' });
   }
 };
