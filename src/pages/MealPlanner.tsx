@@ -148,6 +148,14 @@ export default function MealPlanner() {
     };
   }, []);
 
+  const todayPhKeyForEffect = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  useEffect(() => {
+    setCurrentDate((prev) => {
+      const prevKey = dayKey(prev);
+      return prevKey < todayPhKeyForEffect ? new Date() : prev;
+    });
+  }, [todayPhKeyForEffect]);
+
   const plannerFocusKey = searchParams.toString();
 
   useEffect(() => {
@@ -163,11 +171,15 @@ export default function MealPlanner() {
     }
   }, [plannerFocusKey]);
 
-  const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
-  const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 }) : currentDate;
-  const visibleDays = view === 'week'
+  const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
+  const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
+  const todayPhKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const allDays = view === 'week'
     ? eachDayOfInterval({ start: startDate, end: endDate })
     : [currentDate];
+  const visibleDays = view === 'week'
+    ? allDays.filter((d) => dayKey(d) >= todayPhKey)
+    : allDays;
 
   const plansByDateAndType = useMemo(() => {
     const grouped = new Map<string, MealPlan[]>();
@@ -463,14 +475,15 @@ export default function MealPlanner() {
         <div className="flex-1 w-full min-w-0 space-y-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">
-                Recipe to plan to groceries
+              <p className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.22em] text-orange-500 dark:text-orange-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-orange-500 dark:bg-orange-400" />
+                Recipe · Plan · Groceries
               </p>
               <h1 className="text-4xl font-extrabold tracking-tight text-stone-900 md:text-5xl dark:text-stone-100">
                 Meal Planner
               </h1>
-              <p className="max-w-2xl text-lg font-medium text-stone-500 dark:text-stone-400">
-                Plan breakfast, lunch, and dinner from your saved CookMate recipes.
+              <p className="max-w-2xl text-base font-medium text-stone-500 dark:text-stone-400">
+                Plan breakfast, lunch & dinner from your saved recipes.
               </p>
             </div>
             <div className="flex items-center rounded-full bg-stone-100 p-1.5 dark:bg-stone-800">
@@ -493,16 +506,20 @@ export default function MealPlanner() {
 
           <div className="flex flex-col gap-4 rounded-[2rem] border border-orange-100 bg-white p-4 shadow-xl shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-900 dark:shadow-none sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div className="flex items-center justify-between gap-3 sm:justify-start">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                className="rounded-full"
-                onClick={() => shiftDate(-1)}
-                aria-label={view === 'week' ? 'Previous week' : 'Previous day'}
-              >
-                <ChevronLeft size={22} />
-              </Button>
+              {dayKey(startDate) > todayPhKey || (view === 'day' && dayKey(currentDate) > todayPhKey) ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-lg"
+                  className="rounded-full"
+                  onClick={() => shiftDate(-1)}
+                  aria-label={view === 'week' ? 'Previous week' : 'Previous day'}
+                >
+                  <ChevronLeft size={22} />
+                </Button>
+              ) : (
+                <div className="h-11 w-11" />
+              )}
               <h2 className="min-w-0 flex-1 text-center text-xl font-extrabold text-stone-900 dark:text-stone-100 sm:min-w-[230px] sm:flex-none">
                 {view === 'week'
                   ? `${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`
@@ -606,167 +623,264 @@ export default function MealPlanner() {
             </div>
           ) : (
             <div className="overflow-x-auto pb-3">
-              <div className={cn('grid gap-4', view === 'week' ? 'grid-cols-[repeat(7,minmax(175px,1fr))]' : 'grid-cols-1')}>
-                {visibleDays.map((day) => {
-                  const dateKey = dayKey(day);
-                  const isToday = isSameDay(day, new Date());
-                  return (
-                    <section key={dateKey} className="flex flex-col gap-4">
-                      <div
-                        className={cn(
-                          'rounded-[1.5rem] border p-4 text-center shadow-sm',
-                          isToday
-                            ? 'border-orange-500 bg-orange-500 text-white shadow-orange-500/20'
-                            : 'border-orange-100 bg-white text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100',
-                        )}
-                      >
-                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-75">{format(day, 'EEE')}</p>
-                        <p className="mt-1 text-3xl font-extrabold">{format(day, 'd')}</p>
-                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest opacity-75">{format(day, 'MMM yyyy')}</p>
-                      </div>
+              {view === 'week' ? (
+                <div style={{ minWidth: `${visibleDays.length * 180}px` }}>
+                  {/* Day header row */}
+                  <div className={`grid gap-3 mb-3`} style={{ gridTemplateColumns: `repeat(${visibleDays.length}, 1fr)` }}>
+                    {visibleDays.map((day) => {
+                      const isToday = dayKey(day) === todayPhKey;
+                      return (
+                        <div
+                          key={dayKey(day)}
+                          className={cn(
+                            'rounded-[1.25rem] border p-3 text-center shadow-sm',
+                            isToday
+                              ? 'border-orange-500 bg-orange-500 text-white shadow-orange-500/20'
+                              : 'border-orange-100 bg-white text-stone-900 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100',
+                          )}
+                        >
+                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-75">{format(day, 'EEE')}</p>
+                          <p className="mt-0.5 text-2xl font-extrabold">{format(day, 'd')}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-                      <div className="flex flex-1 flex-col gap-3">
-                        {mealSlots.map((slot) => {
-                          const slotPlans = plansByDateAndType.get(`${dateKey}|${slot.id}`) || [];
-                          const windowLabel = slotWindowLabel(slot.id, slotPlans);
-                          const hasCustomTime = slotPlans.some((plan) => plan.custom_time_enabled);
-                          const statusLabel = slotReminderStatus(slotPlans, now);
-                          const isActiveSlot = slotPlans.some((plan) => getPlanWindowStatus(plan, now) === 'active');
+                  {/* Meal type rows */}
+                  {mealSlots.map((slot) => (
+                    <div key={slot.id} className="grid gap-3 mb-3" style={{ gridTemplateColumns: `repeat(${visibleDays.length}, 1fr)` }}>
+                      {visibleDays.map((day) => {
+                        const dk = dayKey(day);
+                        const slotPlans = plansByDateAndType.get(`${dk}|${slot.id}`) || [];
+                        const windowLabel = slotWindowLabel(slot.id, slotPlans);
+                        const hasCustomTime = slotPlans.some((plan) => plan.custom_time_enabled);
+                        const statusLabel = slotReminderStatus(slotPlans, now);
+                        const isActiveSlot = slotPlans.some((plan) => getPlanWindowStatus(plan, now) === 'active');
+                        const isSelected = selectedSlots.has(`${dk}|${slot.id}`);
 
-                          return (
-                            <div
-                              key={slot.id}
-                              onClick={() => toggleSlot(`${dateKey}|${slot.id}`)}
-                              className={cn(
-                                "flex flex-col h-[270px] w-full rounded-[1.5rem] p-4 shadow-sm transition-all cursor-pointer",
-                                selectedSlots.has(`${dateKey}|${slot.id}`)
-                                  ? "border-2 border-orange-500 bg-orange-50 dark:border-orange-500 dark:bg-orange-500/10 ring-4 ring-orange-500/20"
-                                  : "border border-orange-100 bg-white dark:border-[#2e2b28] dark:bg-[#161514] hover:border-orange-200 dark:hover:border-[#3d3835]"
-                              )}
-                            >
-                              <div className="mb-3 flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className={cn('h-2.5 w-2.5 rounded-full', slot.color)} />
-                                  <div>
-                                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">
-                                      {slot.label} · {windowLabel}
+                        return (
+                          <div
+                            key={dk}
+                            onClick={() => toggleSlot(`${dk}|${slot.id}`)}
+                            className={cn(
+                              'flex flex-col h-[220px] w-full rounded-[1.25rem] p-4 transition-all cursor-pointer',
+                              isSelected
+                                ? 'border-2 border-orange-500 bg-orange-50/80 dark:border-orange-500 dark:bg-orange-500/10 ring-2 ring-orange-500/20'
+                                : slotPlans.length > 0
+                                  ? 'border border-orange-200 bg-orange-50/60 dark:border-orange-500/25 dark:bg-orange-500/[0.07] hover:border-orange-400 hover:shadow-sm dark:hover:border-orange-400/50'
+                                  : 'border border-dashed border-stone-300 bg-white dark:border-stone-600 dark:bg-stone-900 hover:border-orange-300 dark:hover:border-orange-500/40',
+                            )}
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-1">
+                              <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
+                              <Link
+                                to="/recipes"
+                                onClick={(e) => e.stopPropagation()}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
+                                aria-label={`Add ${slot.label} recipe`}
+                              >
+                                <Plus size={13} />
+                              </Link>
+                            </div>
+
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
+                            <p className="text-[9px] font-bold text-stone-400 dark:text-stone-500 truncate">
+                              {windowLabel}{hasCustomTime ? ' · CUSTOM' : ''}
+                            </p>
+                            <p className={cn(
+                              'mt-0.5 text-[9px] font-extrabold uppercase tracking-widest',
+                              isActiveSlot ? 'text-orange-500 dark:text-orange-400' : 'text-stone-300 dark:text-stone-600',
+                            )}>
+                              {statusLabel}
+                            </p>
+
+                            {slotPlans.length === 0 ? (
+                              <div className="mt-2 flex flex-1 flex-col justify-end">
+                                <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
+                                <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                              </div>
+                            ) : (
+                              <div className="mt-2 flex flex-1 flex-col gap-1.5">
+                                {slotPlans.slice(0, 1).map((plan) => (
+                                  <div
+                                    key={plan.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(event) => { event.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); }}
+                                    onKeyDown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); } }}
+                                    className="flex flex-1 flex-col cursor-pointer"
+                                  >
+                                    <p className="line-clamp-2 text-[14px] font-extrabold leading-snug text-stone-900 dark:text-white">
+                                      {plan.recipe.title}
                                     </p>
                                     <p className={cn(
-                                      'mt-1 text-[9px] font-extrabold uppercase tracking-widest',
-                                      isActiveSlot
-                                        ? 'text-orange-600 dark:text-orange-300'
-                                        : 'text-stone-300 dark:text-stone-600',
+                                      'mt-1 text-[10px] font-bold uppercase tracking-widest',
+                                      getPlanWindowStatus(plan, now) === 'active' ? 'text-orange-600 dark:text-orange-300' : 'text-stone-400 dark:text-stone-500',
                                     )}>
-                                      {hasCustomTime ? 'Custom time · ' : ''}{statusLabel}
+                                      {getCountdownText(plan, now)}
                                     </p>
-                                  </div>
-                                </div>
-                                <Link
-                                  to="/recipes"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="rounded-full p-1.5 text-stone-300 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-800"
-                                  aria-label={`Add ${slot.label} recipe`}
-                                >
-                                  <Plus size={15} />
-                                </Link>
-                              </div>
-
-                              {slotPlans.length === 0 ? (
-                                <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-stone-200 bg-stone-50/50 px-3 text-center text-[11px] font-bold uppercase tracking-widest text-stone-300 dark:border-[#2e2b28] dark:bg-[#1c1a19] dark:text-[#5c5651]">
-                                  Empty
-                                </div>
-                              ) : (
-                                <div className="flex flex-1 flex-col gap-2 pr-1">
-                                  {slotPlans.slice(0, 1).map((plan) => (
-                                    <div
-                                      key={plan.id}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        navigate(`/recipe/${plan.recipe.id}`);
-                                      }}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                          event.stopPropagation();
-                                          navigate(`/recipe/${plan.recipe.id}`);
-                                        }
-                                      }}
-                                      className="group flex flex-col flex-1 cursor-pointer rounded-2xl border border-orange-500/30 bg-orange-50/40 p-4 transition-all hover:border-orange-400 hover:bg-orange-50 dark:border-orange-500/30 dark:bg-[#252320] dark:hover:border-orange-400/50"
-                                    >
-                                      <p className="line-clamp-2 text-sm font-extrabold leading-tight text-stone-900 group-hover:text-orange-700 dark:text-white dark:group-hover:text-orange-300">
-                                        {plan.recipe.title}
-                                      </p>
-                                      <div className="mt-2 flex flex-col gap-1 text-[10px] font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">
-                                        <span>{planTime(plan)}</span>
-                                        <span className={cn(
-                                          getPlanWindowStatus(plan, now) === 'active'
-                                            ? 'text-orange-600 dark:text-orange-300'
-                                            : 'text-stone-400 dark:text-stone-500',
-                                        )}>
-                                          {getCountdownText(plan, now)}
-                                        </span>
-                                        {plan.recipe.category ? <span>{plan.recipe.category}</span> : null}
-                                      </div>
-                                      <div className="mt-auto flex items-center gap-2 pt-3">
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            navigate(`/recipe/${plan.recipe.id}`);
-                                          }}
-                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
-                                          aria-label={`View ${plan.recipe.title}`}
-                                        >
-                                          <Eye size={14} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            setEditingPlan(plan);
-                                          }}
-                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
-                                          aria-label={`Edit ${plan.recipe.title}`}
-                                        >
-                                          <Edit3 size={14} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            removePlan(plan);
-                                          }}
-                                          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"
-                                          aria-label={`Remove ${plan.recipe.title}`}
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </div>
+                                    <div className="mt-auto flex items-center gap-1.5 pt-2">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); }}
+                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                                        aria-label={`View ${plan.recipe.title}`}
+                                      >
+                                        <Eye size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setEditingPlan(plan); }}
+                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                                        aria-label={`Edit ${plan.recipe.title}`}
+                                      >
+                                        <Edit3 size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); removePlan(plan); }}
+                                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"
+                                        aria-label={`Remove ${plan.recipe.title}`}
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
                                     </div>
-                                  ))}
-                                  {slotPlans.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setSlotModal({ plans: slotPlans, slotLabel: slot.label, date: day });
-                                      }}
-                                      className="flex flex-1 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 p-3 text-xs font-extrabold text-orange-600 transition-colors hover:bg-orange-100 dark:border-orange-500/30 dark:bg-[#252320] dark:text-orange-300"
-                                    >
-                                      +{slotPlans.length - 1} more
-                                    </button>
-                                  )}
+                                  </div>
+                                ))}
+                                {slotPlans.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setSlotModal({ plans: slotPlans, slotLabel: slot.label, date: day }); }}
+                                    className="text-[10px] font-extrabold text-orange-600 hover:underline dark:text-orange-300"
+                                  >
+                                    +{slotPlans.length - 1} more
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Day view — single column, one card per meal slot */
+                <div className="flex flex-col gap-3">
+                  {mealSlots.map((slot) => {
+                    const dk = dayKey(currentDate);
+                    const slotPlans = plansByDateAndType.get(`${dk}|${slot.id}`) || [];
+                    const windowLabel = slotWindowLabel(slot.id, slotPlans);
+                    const hasCustomTime = slotPlans.some((plan) => plan.custom_time_enabled);
+                    const statusLabel = slotReminderStatus(slotPlans, now);
+                    const isActiveSlot = slotPlans.some((plan) => getPlanWindowStatus(plan, now) === 'active');
+                    const isSelected = selectedSlots.has(`${dk}|${slot.id}`);
+
+                    return (
+                      <div
+                        key={slot.id}
+                        onClick={() => toggleSlot(`${dk}|${slot.id}`)}
+                        className={cn(
+                          'flex flex-col h-[220px] w-full rounded-[1.5rem] p-4 transition-all cursor-pointer',
+                          isSelected
+                            ? 'border-2 border-orange-500 bg-orange-50/80 dark:border-orange-500 dark:bg-orange-500/10 ring-2 ring-orange-500/20'
+                            : slotPlans.length > 0
+                              ? 'border border-orange-200 bg-orange-50/60 dark:border-orange-500/25 dark:bg-orange-500/[0.07] hover:border-orange-400 hover:shadow-sm dark:hover:border-orange-400/50'
+                              : 'border border-dashed border-stone-300 bg-white dark:border-stone-600 dark:bg-stone-900 hover:border-orange-300 dark:hover:border-orange-500/40',
+                        )}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-1">
+                          <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
+                          <Link
+                            to="/recipes"
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
+                            aria-label={`Add ${slot.label} recipe`}
+                          >
+                            <Plus size={13} />
+                          </Link>
+                        </div>
+
+                        <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
+                        <p className="text-[9px] font-bold text-stone-400 dark:text-stone-500 truncate">
+                          {windowLabel}{hasCustomTime ? ' · CUSTOM' : ''}
+                        </p>
+                        <p className={cn(
+                          'mt-0.5 text-[9px] font-extrabold uppercase tracking-widest',
+                          isActiveSlot ? 'text-orange-500 dark:text-orange-400' : 'text-stone-300 dark:text-stone-600',
+                        )}>
+                          {statusLabel}
+                        </p>
+
+                        {slotPlans.length === 0 ? (
+                          <div className="mt-2 flex flex-1 flex-col justify-end">
+                            <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
+                            <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                          </div>
+                        ) : (
+                          <div className="mt-2 flex flex-1 flex-col gap-1.5">
+                            {slotPlans.slice(0, 1).map((plan) => (
+                              <div
+                                key={plan.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={(event) => { event.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); }}
+                                onKeyDown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); } }}
+                                className="flex flex-1 flex-col cursor-pointer"
+                              >
+                                <p className="line-clamp-2 text-[14px] font-extrabold leading-snug text-stone-900 dark:text-white">
+                                  {plan.recipe.title}
+                                </p>
+                                <p className={cn(
+                                  'mt-1 text-[10px] font-bold uppercase tracking-widest',
+                                  getPlanWindowStatus(plan, now) === 'active' ? 'text-orange-600 dark:text-orange-300' : 'text-stone-400 dark:text-stone-500',
+                                )}>
+                                  {getCountdownText(plan, now)}
+                                </p>
+                                <div className="mt-auto flex items-center gap-1.5 pt-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); }}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                                    aria-label={`View ${plan.recipe.title}`}
+                                  >
+                                    <Eye size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setEditingPlan(plan); }}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-orange-100 hover:text-orange-700 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                                    aria-label={`Edit ${plan.recipe.title}`}
+                                  >
+                                    <Edit3 size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); removePlan(plan); }}
+                                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-[#33302c] dark:text-stone-200 dark:hover:bg-red-500/20 dark:hover:text-red-300"
+                                    aria-label={`Remove ${plan.recipe.title}`}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                              </div>
+                            ))}
+                            {slotPlans.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setSlotModal({ plans: slotPlans, slotLabel: slot.label, date: currentDate }); }}
+                                className="text-[10px] font-extrabold text-orange-600 hover:underline dark:text-orange-300"
+                              >
+                                +{slotPlans.length - 1} more
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </section>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

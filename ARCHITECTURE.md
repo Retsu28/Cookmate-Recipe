@@ -85,6 +85,8 @@ The root `src/` folder contains the browser app.
 - Provides a web-only admin dashboard for recipe, user, ingredient, AI activity, reports, notifications, reviews, and system-status areas
 - Uses Firebase Authentication for email/password and Google sign-in, then exchanges the Firebase ID token with `POST /api/auth/firebase` to obtain the CookMate JWT
 - Loads `/login` and `/signup` synchronously (no `React.lazy`) with a persistent `AuthVideoBackground` rendered by the app shell to avoid flashes when switching auth forms
+- Provides planner reminder notifications through `src/notifications/` and realtime planner updates through `src/socket/` (Socket.io)
+- Service layer includes `authService.ts`, `mealPlannerService.ts`, and `profileService.ts` under `src/services/`
 
 ### Web route groups
 
@@ -93,6 +95,7 @@ Public guest routes:
 - `/login`
 - `/signup`
 - `/forgot-password`
+- `/reset-password`
 
 Authenticated app routes:
 
@@ -106,7 +109,6 @@ Authenticated app routes:
 - `/notifications`
 - `/camera`
 - `/settings`
-- `/settings/account`
 - `/settings/appearance`
 - `/settings/notifications`
 - `/settings/privacy-security`
@@ -140,6 +142,11 @@ The backend lives in `api/` and starts from `api/src/server.js`.
 - Handles authentication, recipes, ingredients, meal planning, shopping lists, notifications, profiles, inventory, and ML endpoints
 - Keeps Gemini API keys and image-analysis logic server-side
 - Supports AI camera saves, AI camera monitoring data, queue status, rate-limited image analysis, and background-removal/sticker image output
+- Provides meal planner CRUD, preferences, reminder token registration, grocery list generation, saved grocery lists, and planner-related push notifications via `expo-server-sdk`
+- Runs background workers for meal-reminder scheduling (`workers/mealReminderWorker.js`) and image background-removal (`workers/removeBackgroundWorker.js`)
+- Provides realtime planner events through Socket.io (`realtime/plannerSocket.js`)
+- Planner reminder service and time helpers live under `services/`
+- Supports password reset flow (`/api/auth/forgot-password`, `/api/auth/reset-password`) via `nodemailer`
 
 ### Mounted API route groups
 
@@ -155,6 +162,22 @@ The backend lives in `api/` and starts from `api/src/server.js`.
 - `/api/ml`
 - `/api/admin`
 
+### API source layout
+
+```text
+api/src/
+├── server.js                # Express bootstrap
+├── config/                  # Runtime config and database setup
+├── controllers/             # Request handlers
+├── middleware/              # Auth and error middleware
+├── models/                  # Database/model helpers
+├── realtime/                # Socket.io planner realtime events
+├── routes/                  # Express routers
+├── scripts/                 # API scripts such as CSV import
+├── services/                # Planner reminder service and time helpers
+└── workers/                 # Background workers (meal reminders, background removal)
+```
+
 ### Important API endpoints and behavior
 
 - `/api/auth/login`, `/api/auth/signup`, `/api/auth/logout`, and `/api/auth/me` provide the shared session contract for web and mobile.
@@ -164,8 +187,10 @@ The backend lives in `api/` and starts from `api/src/server.js`.
 - `/api/ml/camera/remove-bg` supports background removal for mobile camera output.
 - `/api/ml/ai-camera-saves` stores and restores authenticated AI camera analysis snapshots.
 - `/api/ml/image-analysis/queue` exposes camera analysis queue status.
+- `/api/meal-planner` supports plan CRUD, upcoming meals, preferences, reminder tokens, local-schedule acknowledgment, reminder logging, grocery list generation, and saved grocery lists.
 - `/api/admin` exposes admin monitoring data, including AI camera save activity and user management.
 - `POST /api/auth/firebase` verifies a Firebase ID token (via `firebase-admin`), links legacy users by email, and returns a CookMate JWT.
+- `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` handle password-reset token flow via `nodemailer`.
 
 ---
 
@@ -184,7 +209,12 @@ database/
 │   ├── 20260503_recipe_viewed.sql
 │   ├── 20260503_ai_camera_saves.sql
 │   ├── 20260503_allow_duplicate_user_full_names.sql
-│   └── 20260507_firebase_uid.sql
+│   ├── 20260507_firebase_uid.sql
+│   ├── 20260507_meal_planner_system.sql
+│   ├── 20260508_meal_planner_notifications.sql
+│   ├── 20260508_password_reset_tokens.sql
+│   ├── 20260508_relax_meal_planner_timezones.sql
+│   └── 20260508_saved_grocery_lists.sql
 └── seeds/
     └── philippine_food_recipes_100.csv
 ```
@@ -203,7 +233,7 @@ database/
 - `reviews`
 - `notifications`
 
-Important schema details include user roles through `users.role`, normalized unique auth fields, recipe publishing/featured flags, image URLs, recipe metadata, recipe-to-ingredient relationships, per-user recently viewed history, persisted AI camera analysis snapshots, and Firebase linking fields (`firebase_uid` with a partial unique constraint and `email_verified`).
+Important schema details include user roles through `users.role`, normalized unique auth fields, recipe publishing/featured flags, image URLs, recipe metadata, recipe-to-ingredient relationships, per-user recently viewed history, persisted AI camera analysis snapshots, Firebase linking fields (`firebase_uid` with a partial unique constraint and `email_verified`), meal planner system tables, meal planner notification/reminder tables, password reset tokens, and saved grocery lists.
 
 ---
 
@@ -214,28 +244,58 @@ The mobile app lives in `mobile/` and runs through Expo.
 ### Main responsibilities
 
 - Provides the native/mobile version of the CookMate experience
-- Uses React Navigation for stack and tab navigation
+- Uses React Navigation for stack and tab navigation with a custom `FloatingTabBar` (rounded pill bar matching web mobile bottom nav) and `TabSceneAnimator` (focus-triggered fade-up entrance)
 - Calls the same Express API through `mobile/src/api/api.js`
 - Persists auth tokens and user data through mobile storage services
 - Uses mobile-specific theme tokens and native components
 - Authenticates through Firebase (email/password or Google via `expo-auth-session`), then exchanges the Firebase ID token with the backend `POST /api/auth/firebase` endpoint
-- Mirrors the core web product areas with Home, Search, Recipes, Planner, Camera, and Profile tabs
+- Mirrors the core web product areas with Home, Search, Recipes, Planner, Camera, and Profile bottom tabs
 - Provides stack screens for onboarding, all-recipes browsing, recipe details, notifications, notification settings, cooking mode, and forgot password
 - Uses the shared AI camera API for image analysis, sticker/background-removal output, and real recipe navigation
 - Provides offline-first support through a SQLite/AsyncStorage-backed cache, sync queue, network watcher, and `OfflineIndicator` under `mobile/src/offline/`
 - Centralizes page-switch skeleton loading in `mobile/App.js`
 - Aligns visually with the web theme via stone/orange color tokens and Geist font families under `mobile/src/theme/`
+- Schedules and manages planner push notifications through `mobile/src/notifications/plannerNotifications.js`
+- Connects to backend Socket.io for live planner updates through `mobile/src/socket/plannerSocket.js`
+- Includes 15 reusable components: `AIAssistantWidget`, `AuthThemeToggle`, `AuthVideoBackground`, `AuthVisualPanel`, `CategoryChip`, `GoogleSignInButton`, `HomeRecipeCard`, `HomeSection`, `IngredientTag`, `LogoutButton`, `MealSlot`, `NotificationCard`, `RecipeCard`, `SkeletonPlaceholder`, `SplashScreen`
+
+### Mobile source layout
+
+```text
+mobile/src/
+├── api/                     # Axios API client and exported API helper groups
+├── components/              # Reusable native components (15 files)
+├── context/                 # Auth and theme context providers
+├── hooks/                   # Auth animations, initial content loading
+├── lib/                     # Firebase config, timezone, token storage
+├── navigation/              # AppNavigator, BottomTabNavigator, FloatingTabBar, TabSceneAnimator
+├── notifications/           # Planner push notification scheduling
+├── offline/                 # SQLite/AsyncStorage cache, sync queue, network watcher, OfflineIndicator
+├── screens/                 # 14 mobile screens
+├── services/                # Auth service (Firebase + backend JWT exchange)
+├── socket/                  # Socket.io planner realtime client
+├── theme/                   # Colors, spacing, typography
+└── dataconnect-generated/   # Generated Firebase Data Connect client artifacts
+```
 
 ### Mobile runtime API base URL
 
 The mobile client reads the API base URL from Expo config when available, then falls back to development-friendly URLs:
 
-- Expo configured `extra.apiBaseUrl`
+- Expo configured `extra.apiBaseUrl`; leave it empty in Expo Go so the Metro host IP is reused automatically
 - Expo debugger host on port `5000`
 - Android emulator fallback `http://10.0.2.2:5000`
 - Localhost fallback `http://localhost:5000`
 
 Google Sign-In on mobile uses `expo-auth-session/providers/google` with ID-token auth so it works in Expo Go without native Google Sign-In modules.
+
+### Mobile navigation structure
+
+- **Auth stack:** `Login`, `Signup`, `ForgotPassword` — cross-fade transitions, no headers
+- **App stack (authenticated):** `Onboarding` → `Main` (bottom tabs) → push screens
+- **Bottom tabs (via `FloatingTabBar`):** `Home`, `Search`, `Recipes`, `Planner`, `Camera`, `Profile`
+- **Push stack screens:** `AllRecipes`, `RecipeDetail`, `Notifications`, `NotificationSettings`, `CookingMode` — slide + fade transitions
+- `TabSceneAnimator` wraps each tab scene with a focus-triggered fade-up animation matching the web layout page transition
 
 ---
 
@@ -263,9 +323,10 @@ Google Sign-In on mobile uses `expo-auth-session/providers/google` with ID-token
 
 - `mobile/src/context/AuthContext.js` owns mobile auth state
 - `mobile/src/services/authService.js` persists token and user data, clears stale sessions on 401/404, and supports Firebase-based Google login
-- Mobile navigation switches between auth and app screens based on auth state
+- Mobile navigation switches between auth and app screens based on auth state (`AppNavigator` acts as the mobile `AuthGate`)
 - Mobile profile data is loaded from the backend profile API instead of placeholder local data
 - Signup validation matches the backend: only `@gmail.com` emails and minimum 8-character passwords
+- Forgot-password flow uses `ForgotPasswordScreen` in the auth stack
 
 ---
 
@@ -339,8 +400,10 @@ Run from `mobile/`.
 | Database | PostgreSQL, `pg` |
 | AI/ML | `@google/generative-ai`, `natural`, `express-rate-limit`, `jimp-compact`, `@imgly/background-removal-node` |
 | Mobile | Expo SDK 55, React Native 0.83, React 19.2 |
-| Mobile navigation | React Navigation stack and bottom tabs |
-| Mobile storage | `expo-secure-store`, AsyncStorage where needed |
+| Mobile navigation | React Navigation stack and bottom tabs, custom FloatingTabBar |
+| Mobile storage | `expo-secure-store`, AsyncStorage, expo-sqlite where needed |
+| Mobile realtime | `socket.io-client` for planner updates |
+| Push notifications | `expo-server-sdk` (API), `expo-notifications` (mobile) |
 
 ---
 
@@ -349,8 +412,8 @@ Run from `mobile/`.
 CookMate is currently a three-client-layer monorepo:
 
 - **Root web app** handles the browser UI, PWA behavior, protected user routes, AI camera experience, all-recipes browsing, admin pages, and Firebase-powered authentication.
-- **Express API** is the shared backend for both web and mobile clients, with Firebase Admin token verification and legacy user auto-linking.
-- **PostgreSQL** stores users, recipes, ingredients, recently viewed recipe history, AI camera saves, meal plans, shopping lists, inventory, reviews, and notifications.
-- **Expo mobile app** mirrors the core user experience on mobile, including AI camera, all-recipes browsing, cooking mode, notifications, backend-backed profile data, and Firebase/expo-auth-session Google sign-in.
+- **Express API** is the shared backend for both web and mobile clients, with Firebase Admin token verification, legacy user auto-linking, Socket.io realtime planner events, background workers, and push notification delivery via Expo Server SDK.
+- **PostgreSQL** stores users, recipes, ingredients, recently viewed recipe history, AI camera saves, meal plans, meal planner notifications, password reset tokens, saved grocery lists, shopping lists, inventory, reviews, and notifications.
+- **Expo mobile app** mirrors the core user experience on mobile, including AI camera, all-recipes browsing, cooking mode, notifications, backend-backed profile data, Firebase/expo-auth-session Google sign-in, planner push notifications, Socket.io realtime updates, and a custom FloatingTabBar with TabSceneAnimator transitions.
 
 This document should be updated whenever routes, API modules, database tables, package structure, or deployment assumptions change.

@@ -1,22 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   View,
   Text,
   ScrollView,
-  Image,
   TouchableOpacity,
   TextInput,
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { DateTime } from 'luxon';
+import { format, addDays, parseISO } from 'date-fns';
 import { plannerApi, recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import OptimizedImage from '../components/OptimizedImage';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
 import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
 import { getRecipeByIdCached, offlineCache } from '../offline/cacheService';
@@ -106,8 +107,180 @@ function timeToMinutes(value) {
 }
 
 function todayInputValue() {
-  return DateTime.now().setZone(getDeviceTimezone()).toISODate();
+  return format(new Date(), 'yyyy-MM-dd');
 }
+
+function buildDateList() {
+  const dates = [];
+  for (let i = 0; i < 60; i++) {
+    dates.push(format(addDays(new Date(), i), 'yyyy-MM-dd'));
+  }
+  return dates;
+}
+
+function InlineDatePicker({ visible, selected, onSelect, onClose, colors }) {
+  if (!visible) return null;
+  const dates = buildDateList();
+  return (
+    <View style={[ipSt.dateWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+      <View style={ipSt.dateHeader}>
+        <Text style={[ipSt.dateTitle, { color: colors.textSubtle }]}>SELECT DATE</Text>
+        <TouchableOpacity onPress={onClose}>
+          <Ionicons name="close" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+        {dates.map((item) => {
+          const active = item === selected;
+          const label = format(parseISO(item), 'EEE, MMM d yyyy');
+          return (
+            <TouchableOpacity
+              key={item}
+              onPress={() => onSelect(item)}
+              style={[ipSt.dateItem, active && { backgroundColor: colors.primary }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[ipSt.dateItemText, { color: active ? '#fff' : colors.text }]}>{label}</Text>
+              {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const WHEEL_ITEM_H = 48;
+const WHEEL_VISIBLE = 3;
+
+function WheelColumn({ items, selected, onSelect, colors }) {
+  const scrollRef = useRef(null);
+  const idx = items.indexOf(selected);
+
+  useEffect(() => {
+    if (scrollRef.current && idx >= 0) {
+      scrollRef.current.scrollTo({ y: idx * WHEEL_ITEM_H, animated: false });
+    }
+  }, []);
+
+  const onMomentumEnd = (e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const snapped = Math.round(y / WHEEL_ITEM_H);
+    const clamped = Math.max(0, Math.min(snapped, items.length - 1));
+    onSelect(items[clamped]);
+  };
+
+  return (
+    <View style={ipSt.wheelOuter}>
+      {/* selection highlight */}
+      <View pointerEvents="none" style={[ipSt.wheelHighlight, { borderColor: colors.primary, top: WHEEL_ITEM_H }]} />
+      <ScrollView
+        ref={scrollRef}
+        style={ipSt.wheelScroll}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_H}
+        decelerationRate="fast"
+        onMomentumScrollEnd={onMomentumEnd}
+        contentContainerStyle={{ paddingVertical: WHEEL_ITEM_H }}
+        nestedScrollEnabled
+      >
+        {items.map((item) => {
+          const active = item === selected;
+          return (
+            <TouchableOpacity
+              key={item}
+              onPress={() => {
+                const i = items.indexOf(item);
+                scrollRef.current?.scrollTo({ y: i * WHEEL_ITEM_H, animated: true });
+                onSelect(item);
+              }}
+              activeOpacity={0.7}
+              style={ipSt.wheelItem}
+            >
+              <Text style={[ipSt.wheelItemText, { color: active ? colors.primary : colors.textMuted, fontFamily: active ? 'Geist_800ExtraBold' : 'Geist_400Regular' }]}>
+                {item}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function InlineTimePicker({ visible, hour12, period, onConfirm, onClose, colors }) {
+  const hours = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const minutes = ['00','05','10','15','20','25','30','35','40','45','50','55'];
+
+  const initHour = String(Math.min(12, Math.max(1, Number(hour12?.slice(0, 2)) || 6))).padStart(2,'0');
+  const initMinRaw = Math.round((Number(hour12?.slice(2, 4)) || 0) / 5) * 5 % 60;
+  const initMin = String(initMinRaw).padStart(2,'0');
+
+  const [selHour, setSelHour] = useState(initHour);
+  const [selMin, setSelMin] = useState(initMin);
+  const [selPeriod, setSelPeriod] = useState(period || 'AM');
+
+  if (!visible) return null;
+
+  const confirm = () => {
+    onConfirm(`${selHour}${selMin}`, selPeriod);
+  };
+
+  return (
+    <View style={[ipSt.timeWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+      <View style={ipSt.dateHeader}>
+        <Text style={[ipSt.dateTitle, { color: colors.textSubtle }]}>SELECT TIME</Text>
+        <TouchableOpacity onPress={onClose}>
+          <Ionicons name="close" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={ipSt.clockRow}>
+        <WheelColumn items={hours} selected={selHour} onSelect={setSelHour} colors={colors} />
+        <Text style={[ipSt.clockColon, { color: colors.text }]}>:</Text>
+        <WheelColumn items={minutes} selected={selMin} onSelect={setSelMin} colors={colors} />
+
+        <View style={ipSt.clockPeriodCol}>
+          {['AM', 'PM'].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => setSelPeriod(p)}
+              style={[ipSt.clockPeriodBtn, { backgroundColor: selPeriod === p ? colors.primary : colors.background, borderColor: selPeriod === p ? colors.primary : colors.border }]}
+              activeOpacity={0.8}
+            >
+              <Text style={[ipSt.clockPeriodText, { color: selPeriod === p ? '#fff' : colors.textSubtle }]}>{p}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <TouchableOpacity onPress={confirm} style={[ipSt.timeConfirm, { backgroundColor: colors.primary }]}>
+        <Text style={ipSt.timeConfirmText}>SET TIME</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const ipSt = StyleSheet.create({
+  dateWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', marginTop: 4 },
+  dateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 },
+  dateTitle: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+  dateItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11 },
+  dateItemText: { fontFamily: 'Geist_500Medium', fontSize: 13 },
+  timeWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', marginTop: 4 },
+  clockRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
+  clockColon: { fontFamily: 'Geist_800ExtraBold', fontSize: 28, opacity: 0.6 },
+  clockPeriodCol: { gap: 8, alignItems: 'center', justifyContent: 'center' },
+  clockPeriodBtn: { width: 52, height: 40, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  clockPeriodText: { fontFamily: 'Geist_700Bold', fontSize: 13 },
+  wheelOuter: { width: 70, height: WHEEL_ITEM_H * WHEEL_VISIBLE, overflow: 'hidden', position: 'relative' },
+  wheelHighlight: { position: 'absolute', left: 4, right: 4, height: WHEEL_ITEM_H, borderTopWidth: 1.5, borderBottomWidth: 1.5, zIndex: 1 },
+  wheelScroll: { flex: 1 },
+  wheelItem: { height: WHEEL_ITEM_H, alignItems: 'center', justifyContent: 'center' },
+  wheelItemText: { fontSize: 22, textAlign: 'center' },
+  timeConfirm: { margin: 8, borderRadius: 8, height: 44, alignItems: 'center', justifyContent: 'center' },
+  timeConfirmText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1.5, color: '#fff' },
+});
 
 export default function RecipeDetailScreen({ route, navigation }) {
   const { colors, isDark } = useAppTheme();
@@ -129,6 +302,17 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [planEndTimeInput, setPlanEndTimeInput] = useState(toTime12Input(defaultMealTimes.dinner.end).digits);
   const [planEndPeriod, setPlanEndPeriod] = useState(toTime12Input(defaultMealTimes.dinner.end).period);
   const [planning, setPlanning] = useState(false);
+  const [plannerKeyboardHeight, setPlannerKeyboardHeight] = useState(0);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  const startTime24 = planCustomTimeEnabled
+    ? parseTime12Input(planStartTimeInput, planStartPeriod)
+    : defaultMealTimes[planMealType]?.start;
+  const endTime24 = planCustomTimeEnabled
+    ? parseTime12Input(planEndTimeInput, planEndPeriod)
+    : defaultMealTimes[planMealType]?.end;
 
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -169,6 +353,31 @@ export default function RecipeDetailScreen({ route, navigation }) {
     };
     fetchRecipe();
   }, [id]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setPlannerKeyboardHeight(event.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setPlannerKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!plannerOpen) {
+      setPlannerKeyboardHeight(0);
+      setShowDatePicker(false);
+      setShowStartTimePicker(false);
+      setShowEndTimePicker(false);
+    }
+  }, [plannerOpen]);
 
   // Record the view in the database (fire-and-forget)
   useEffect(() => {
@@ -292,7 +501,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
       <ScrollView style={st.flex1} showsVerticalScrollIndicator={false}>
         {/* Hero image */}
         <View style={st.heroWrap}>
-          <Image source={{ uri: recipe.image }} style={st.heroImg} resizeMode="cover" />
+          <OptimizedImage source={{ uri: recipe.image }} style={st.heroImg} resizeMode="cover" />
           <View style={st.heroOverlay} />
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -301,7 +510,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[st.heartBtn, { backgroundColor: isDark ? 'rgba(28,25,23,0.8)' : 'rgba(255,255,255,0.85)' }]}
+            style={[st.heroHeartBtn, { backgroundColor: isDark ? 'rgba(28,25,23,0.8)' : 'rgba(255,255,255,0.85)' }]}
           >
             <Ionicons name="heart-outline" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -447,7 +656,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
           activeOpacity={isOnline ? 0.7 : 0.9}
           style={[st.cookBtn, { backgroundColor: colors.primary, opacity: isOnline ? 1 : 0.5 }]}
         >
-          <Ionicons name="play" size={16} color="#fff" style={{ marginRight: 6 }} />
+          <Ionicons name="play" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={st.cookBtnText}>Start Cooking</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -455,8 +664,8 @@ export default function RecipeDetailScreen({ route, navigation }) {
           style={[st.planBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
           activeOpacity={0.8}
         >
-          <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-          <Text style={[st.planBtnText, { color: colors.primary }]}>Add to planner</Text>
+          <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={[st.planBtnText, { color: colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>Add to planner</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[st.heartBtn, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}>
           <Ionicons name="heart-outline" size={22} color={colors.text} />
@@ -466,10 +675,16 @@ export default function RecipeDetailScreen({ route, navigation }) {
       <Modal visible={plannerOpen} transparent animationType="slide" onRequestClose={() => setPlannerOpen(false)}>
         <KeyboardAvoidingView
           style={st.modalKeyboardAvoider}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'android' ? 24 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={st.modalOverlay}>
+          <View
+            style={[
+              st.modalOverlay,
+              Platform.OS === 'android' && plannerKeyboardHeight > 0 && {
+                paddingBottom: plannerKeyboardHeight,
+              },
+            ]}
+          >
             <ScrollView
               style={st.modalScroll}
               keyboardShouldPersistTaps="handled"
@@ -486,12 +701,21 @@ export default function RecipeDetailScreen({ route, navigation }) {
             <Text style={[st.modalTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
 
             <Text style={[st.modalLabel, { color: colors.textSubtle }]}>DATE</Text>
-            <TextInput
-              value={planDate}
-              onChangeText={setPlanDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textSubtle}
-              style={[st.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+            <TouchableOpacity
+              onPress={() => setShowDatePicker(true)}
+              style={[st.pickerBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+              <Text style={[st.pickerBtnText, { color: colors.text }]}>{planDate}</Text>
+              <Ionicons name="chevron-down" size={16} color={colors.textSubtle} />
+            </TouchableOpacity>
+            <InlineDatePicker
+              visible={showDatePicker}
+              selected={planDate}
+              onSelect={(d) => { setPlanDate(d); setShowDatePicker(false); }}
+              onClose={() => setShowDatePicker(false)}
+              colors={colors}
             />
 
             <Text style={[st.modalLabel, { color: colors.textSubtle }]}>MEAL TYPE</Text>
@@ -540,63 +764,47 @@ export default function RecipeDetailScreen({ route, navigation }) {
                 </View>
               </TouchableOpacity>
               <View style={st.timeInputRow}>
-                <View style={st.timeField}>
-                  <TextInput
-                    value={planStartTimeInput}
-                    onChangeText={updateStartTimeInput}
-                    editable={planCustomTimeEnabled}
-                    placeholder="HHMM"
-                    placeholderTextColor={colors.textSubtle}
-                    keyboardType="number-pad"
-                    inputMode="numeric"
-                    maxLength={4}
-                    style={[st.timeInput, { color: colors.text, borderColor: colors.border, opacity: planCustomTimeEnabled ? 1 : 0.55 }]}
-                  />
-                  <View style={[st.periodRow, { opacity: planCustomTimeEnabled ? 1 : 0.55 }]}>
-                    {['AM', 'PM'].map((period) => {
-                      const active = planStartPeriod === period;
-                      return (
-                        <TouchableOpacity
-                          key={period}
-                          onPress={() => updateStartPeriod(period)}
-                          disabled={!planCustomTimeEnabled}
-                          style={[st.periodBtn, { backgroundColor: active ? colors.primary : colors.surfaceAlt, borderColor: active ? colors.primary : colors.border }]}
-                        >
-                          <Text style={[st.periodText, { color: active ? '#fff' : colors.textSubtle }]}>{period}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-                <View style={st.timeField}>
-                  <TextInput
-                    value={planEndTimeInput}
-                    onChangeText={updateEndTimeInput}
-                    editable={planCustomTimeEnabled}
-                    placeholder="HHMM"
-                    placeholderTextColor={colors.textSubtle}
-                    keyboardType="number-pad"
-                    inputMode="numeric"
-                    maxLength={4}
-                    style={[st.timeInput, { color: colors.text, borderColor: colors.border, opacity: planCustomTimeEnabled ? 1 : 0.55 }]}
-                  />
-                  <View style={[st.periodRow, { opacity: planCustomTimeEnabled ? 1 : 0.55 }]}>
-                    {['AM', 'PM'].map((period) => {
-                      const active = planEndPeriod === period;
-                      return (
-                        <TouchableOpacity
-                          key={period}
-                          onPress={() => updateEndPeriod(period)}
-                          disabled={!planCustomTimeEnabled}
-                          style={[st.periodBtn, { backgroundColor: active ? colors.primary : colors.surfaceAlt, borderColor: active ? colors.primary : colors.border }]}
-                        >
-                          <Text style={[st.periodText, { color: active ? '#fff' : colors.textSubtle }]}>{period}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
+                <TouchableOpacity
+                  onPress={() => planCustomTimeEnabled && setShowStartTimePicker(true)}
+                  style={[st.timePickerBtn, { borderColor: colors.border, backgroundColor: colors.background, opacity: planCustomTimeEnabled ? 1 : 0.45 }]}
+                  activeOpacity={planCustomTimeEnabled ? 0.8 : 1}
+                >
+                  <Ionicons name="time-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={[st.timePickerBtnText, { color: colors.text }]}>
+                    {startTime24
+                      ? (() => { const [h, m] = startTime24.split(':').map(Number); const p = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${p}`; })()
+                      : 'Start time'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => planCustomTimeEnabled && setShowEndTimePicker(true)}
+                  style={[st.timePickerBtn, { borderColor: colors.border, backgroundColor: colors.background, opacity: planCustomTimeEnabled ? 1 : 0.45 }]}
+                  activeOpacity={planCustomTimeEnabled ? 0.8 : 1}
+                >
+                  <Ionicons name="time-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={[st.timePickerBtnText, { color: colors.text }]}>
+                    {endTime24
+                      ? (() => { const [h, m] = endTime24.split(':').map(Number); const p = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12; return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${p}`; })()
+                      : 'End time'}
+                  </Text>
+                </TouchableOpacity>
               </View>
+              <InlineTimePicker
+                visible={showStartTimePicker}
+                hour12={planStartTimeInput}
+                period={planStartPeriod}
+                onConfirm={(digits, period) => { setPlanStartTimeInput(digits); setPlanStartPeriod(period); setShowStartTimePicker(false); }}
+                onClose={() => setShowStartTimePicker(false)}
+                colors={colors}
+              />
+              <InlineTimePicker
+                visible={showEndTimePicker}
+                hour12={planEndTimeInput}
+                period={planEndPeriod}
+                onConfirm={(digits, period) => { setPlanEndTimeInput(digits); setPlanEndPeriod(period); setShowEndTimePicker(false); }}
+                onClose={() => setShowEndTimePicker(false)}
+                colors={colors}
+              />
             </View>
 
             <TouchableOpacity
@@ -621,7 +829,7 @@ const st = StyleSheet.create({
   heroImg: { width: '100%', height: '100%' },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.12)' },
   backBtn: { position: 'absolute', top: 48, left: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  heartBtn: { position: 'absolute', top: 48, right: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  heroHeartBtn: { position: 'absolute', top: 48, right: 16, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   heroBadge: { position: 'absolute', bottom: 20, left: 20, backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 14, paddingVertical: 6 },
   heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5, color: '#ea580c', textTransform: 'uppercase' },
   body: { padding: 20, gap: 24 },
@@ -669,18 +877,18 @@ const st = StyleSheet.create({
   aiTitle: { fontFamily: 'Geist_700Bold', fontSize: 14 },
   aiDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, lineHeight: 18 },
   // Bottom bar
-  bottomBar: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
+  bottomBar: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 50, gap: 10, borderTopWidth: 1, alignItems: 'center' },
   heartBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 26, borderWidth: 1 },
-  planBtn: { flex: 1, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderRadius: 26 },
-  planBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1 },
-  cookBtn: { flex: 1.5, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26 },
-  cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 1, color: '#fff' },
+  planBtn: { flex: 1, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 26 },
+  planBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 0.3, flexShrink: 1 },
+  cookBtn: { flex: 1.3, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26 },
+  cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 13, letterSpacing: 0.5, color: '#fff' },
   // Planner modal
   modalKeyboardAvoider: { flex: 1 },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)', paddingTop: 80 },
   modalScroll: { flex: 1 },
   modalScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
-  modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 14 },
+  modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 32, paddingBottom: 48, gap: 14 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalEyebrow: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8 },
   modalClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
@@ -696,12 +904,11 @@ const st = StyleSheet.create({
   switchTrack: { width: 44, height: 24, borderRadius: 12, padding: 3 },
   switchThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
   switchThumbOn: { transform: [{ translateX: 20 }] },
+  pickerBtn: { height: 48, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
+  pickerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14, flex: 1 },
   timeInputRow: { flexDirection: 'row', gap: 8 },
-  timeField: { flex: 1, gap: 6 },
-  timeInput: { height: 42, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Geist_700Bold', fontSize: 13, textAlign: 'center' },
-  periodRow: { flexDirection: 'row', gap: 6 },
-  periodBtn: { flex: 1, height: 30, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  periodText: { fontFamily: 'Geist_700Bold', fontSize: 10 },
+  timePickerBtn: { flex: 1, height: 44, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  timePickerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12 },
   modalSaveBtn: { height: 52, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   modalSaveText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
 });

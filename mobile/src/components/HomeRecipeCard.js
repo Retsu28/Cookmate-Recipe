@@ -1,7 +1,8 @@
 import React, { memo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
+import OptimizedImage from './OptimizedImage';
 
 /**
  * Compact recipe card used by the homepage discovery rows. Mirrors the
@@ -29,7 +30,7 @@ function HomeRecipeCard({ recipe, onPress }) {
     >
       <View style={[st.imageWrap, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
         {imageUri ? (
-          <Image source={{ uri: imageUri }} style={st.image} resizeMode="cover" />
+          <OptimizedImage source={{ uri: imageUri }} style={st.image} resizeMode="cover" />
         ) : (
           <View style={st.imageFallback}>
             <Ionicons name="restaurant" size={28} color={colors.primary} />

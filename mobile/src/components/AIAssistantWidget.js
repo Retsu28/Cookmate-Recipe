@@ -1,13 +1,16 @@
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import {
+  Animated,
   TouchableOpacity,
   View,
   Text,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  PanResponder,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,23 +19,127 @@ import { AIChatTypingSkeleton } from './SkeletonPlaceholder';
 
 // Sit above the FloatingTabBar (~76px tall + 12px bottom margin + safe-area inset).
 const TAB_BAR_CLEARANCE = 96;
+const FAB_SIZE = 52;
+const FAB_RIGHT = 20;
+const HIDDEN_HANDLE_WIDTH = 14;
 
 const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref) {
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const fabBottom = TAB_BAR_CLEARANCE + Math.max(insets.bottom, 0);
   const [open, setOpen] = useState(false);
+  const [fabHidden, setFabHidden] = useState(false);
+  const fabSlideX = useRef(new Animated.Value(0)).current;
+  const dragStartX = useRef(0);
+  const currentFabX = useRef(0);
+  const fabHiddenRef = useRef(false);
+  const hiddenTranslateX = -Math.max(0, screenWidth - FAB_RIGHT - HIDDEN_HANDLE_WIDTH);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
     { role: 'assistant', text: "Hi! I'm your CookMate AI. Ask me anything about cooking, substitutions, or meal ideas." },
   ]);
   const [isReplying, setIsReplying] = useState(false);
 
-  useImperativeHandle(ref, () => ({
-    open: () => setOpen(true),
-  }));
-
   const toggle = () => setOpen(!open);
+
+  const clampFabX = useCallback((value) => (
+    Math.min(0, Math.max(hiddenTranslateX, value))
+  ), [hiddenTranslateX]);
+
+  const animateFab = useCallback((toValue, hidden) => {
+    fabSlideX.stopAnimation();
+    currentFabX.current = toValue;
+    fabHiddenRef.current = hidden;
+    setFabHidden(hidden);
+    Animated.timing(fabSlideX, {
+      toValue,
+      duration: 160,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        currentFabX.current = toValue;
+        fabSlideX.setValue(toValue);
+      }
+    });
+  }, [fabSlideX]);
+
+  const hideFab = useCallback(() => {
+    animateFab(hiddenTranslateX, true);
+  }, [animateFab, hiddenTranslateX]);
+
+  const showFab = useCallback(() => {
+    animateFab(0, false);
+  }, [animateFab]);
+
+  const handleFabPress = () => {
+    if (fabHidden) {
+      showFab();
+      return;
+    }
+
+    if (onPress) {
+      onPress();
+    }
+    toggle();
+  };
+
+  useEffect(() => {
+    const nextX = fabHiddenRef.current ? hiddenTranslateX : 0;
+    currentFabX.current = nextX;
+    fabSlideX.setValue(nextX);
+    setFabHidden(fabHiddenRef.current);
+  }, [fabSlideX, hiddenTranslateX]);
+
+  useImperativeHandle(ref, () => ({
+    open: () => {
+      showFab();
+      setOpen(true);
+    },
+  }), [showFab]);
+
+  const fabPanResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) =>
+      Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderGrant: () => {
+      fabSlideX.stopAnimation((value) => {
+        const clampedValue = clampFabX(value);
+        dragStartX.current = clampedValue;
+        currentFabX.current = clampedValue;
+        fabSlideX.setValue(clampedValue);
+      });
+    },
+    onPanResponderMove: (_, gesture) => {
+      const nextX = clampFabX(dragStartX.current + gesture.dx);
+      currentFabX.current = nextX;
+      fabSlideX.setValue(nextX);
+    },
+    onPanResponderRelease: (_, gesture) => {
+      const projectedX = clampFabX(currentFabX.current + gesture.vx * 28);
+
+      if (fabHiddenRef.current) {
+        if (gesture.dx > 18 || gesture.vx > 0.25 || projectedX > hiddenTranslateX + 36) {
+          showFab();
+        } else {
+          hideFab();
+        }
+        return;
+      }
+
+      if (gesture.dx < -18 || gesture.vx < -0.25 || projectedX < -36) {
+        hideFab();
+      } else {
+        showFab();
+      }
+    },
+    onPanResponderTerminate: () => {
+      if (currentFabX.current < hiddenTranslateX / 2) {
+        hideFab();
+      } else {
+        showFab();
+      }
+    },
+  }), [clampFabX, fabSlideX, hiddenTranslateX, hideFab, showFab]);
 
   const send = () => {
     if (!input.trim()) return;
@@ -47,21 +154,31 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
 
   if (!open) {
     return (
-      <TouchableOpacity
+      <Animated.View
+        {...fabPanResponder.panHandlers}
         style={[
-          st.fab,
+          st.fabWrap,
           {
-            backgroundColor: colors.primary,
-            shadowColor: colors.brandShadow || colors.primary,
             bottom: fabBottom,
+            transform: [{ translateX: fabSlideX }],
           },
         ]}
-        onPress={toggle}
-        activeOpacity={0.85}
       >
-        <Ionicons name="chatbubble-ellipses" size={21} color="#fff" />
-        <View style={[st.fabDot, { borderColor: colors.surface }]} />
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            st.fab,
+            {
+              backgroundColor: colors.primary,
+              shadowColor: colors.brandShadow || colors.primary,
+            },
+          ]}
+          onPress={handleFabPress}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chatbubble-ellipses" size={21} color="#fff" />
+          <View style={[st.fabDot, { borderColor: colors.surface }]} />
+        </TouchableOpacity>
+      </Animated.View>
     );
   }
 
@@ -130,7 +247,8 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
 export default AIAssistantWidget;
 
 const st = StyleSheet.create({
-  fab: { position: 'absolute', right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center', shadowColor: '#f97316', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
+  fabWrap: { position: 'absolute', right: FAB_RIGHT, width: FAB_SIZE, height: FAB_SIZE },
+  fab: { width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center', shadowColor: '#f97316', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
   fabDot: { position: 'absolute', top: 1, right: 1, width: 12, height: 12, borderRadius: 6, backgroundColor: '#f97316', borderWidth: 2 },
   overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 12 },
   panel: { borderWidth: 1, borderRadius: 20, overflow: 'hidden', maxHeight: 420, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 6 },

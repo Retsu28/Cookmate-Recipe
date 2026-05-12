@@ -89,6 +89,10 @@ export default function HomeSection({
           renderItem={renderItem}
           contentContainerStyle={{ paddingRight: 16 }}
           ItemSeparatorComponent={() => <View style={{ width: itemSpacing }} />}
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          windowSize={3}
+          removeClippedSubviews={true}
         />
       )}
     </View>

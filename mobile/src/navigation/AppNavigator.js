@@ -25,26 +25,37 @@ const Stack = createStackNavigator();
 const authTransitionSpec = {
   animation: 'timing',
   config: {
-    duration: 280,
-    easing: Easing.inOut(Easing.ease),
+    duration: 320,
+    easing: Easing.bezier(0.22, 1, 0.36, 1),
   },
 };
 
-function authCardStyleInterpolator({ current, next }) {
-  const incomingOpacity = current.progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
+function authCardStyleInterpolator({ current, next, layouts }) {
+  const screenWidth = layouts?.screen?.width || 400;
+
+  const opacity = current.progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.3, 1],
   });
-  const outgoingOpacity = next
-    ? next.progress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [1, 0],
-      })
-    : 1;
-  const opacity = next ? Animated.multiply(incomingOpacity, outgoingOpacity) : incomingOpacity;
+
+  // Determine direction: next exists and moving means going back (slide from left)
+  const isGoingBack = next && next.progress.__getValue() > 0;
+
+  const translateX = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [isGoingBack ? -screenWidth * 0.35 : screenWidth * 0.35, 0],
+  });
+
+  const scale = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1],
+  });
 
   return {
-    cardStyle: { opacity },
+    cardStyle: {
+      opacity,
+      transform: [{ translateX }, { scale }],
+    },
   };
 }
 
@@ -55,6 +66,7 @@ function AuthStack() {
         <Stack.Navigator
           initialRouteName="Login"
           screenOptions={{
+            animationEnabled: true,
             headerShown: false,
             gestureEnabled: false,
             cardShadowEnabled: false,
@@ -76,6 +88,63 @@ function AuthStack() {
   );
 }
 
+const sharedTransitionSpec = {
+  animation: 'timing',
+  config: {
+    duration: 320,
+    easing: Easing.bezier(0.22, 1, 0.36, 1),
+  },
+};
+
+function sharedCardStyleInterpolator({ current, next, layouts }) {
+  const screenWidth = layouts?.screen?.width || 400;
+
+  // Incoming screen: slides from right + fades in
+  const opacity = current.progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.6, 1],
+  });
+
+  const translateX = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [screenWidth * 0.3, 0],
+  });
+
+  const scale = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.94, 1],
+  });
+
+  // When this screen is being covered by the next (pop direction),
+  // push it slightly left and fade it out
+  if (next) {
+    const nextOpacity = next.progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [1, 0.85],
+    });
+    const nextTranslateX = next.progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, -screenWidth * 0.15],
+    });
+    return {
+      cardStyle: {
+        opacity: Animated.multiply(opacity, nextOpacity),
+        transform: [
+          { translateX: Animated.add(translateX, nextTranslateX) },
+          { scale },
+        ],
+      },
+    };
+  }
+
+  return {
+    cardStyle: {
+      opacity,
+      transform: [{ translateX }, { scale }],
+    },
+  };
+}
+
 function AppStack({ colors }) {
   const headerScreenOptions = {
     headerStyle: {
@@ -95,111 +164,27 @@ function AppStack({ colors }) {
     },
   };
 
+  const sharedOptions = {
+    headerShown: false,
+    gestureEnabled: true,
+    gestureDirection: 'horizontal',
+    transitionSpec: {
+      open: sharedTransitionSpec,
+      close: sharedTransitionSpec,
+    },
+    cardStyleInterpolator: sharedCardStyleInterpolator,
+  };
+
   return (
-    <Stack.Navigator initialRouteName="Onboarding" screenOptions={headerScreenOptions}>
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
+    <Stack.Navigator initialRouteName="Onboarding" screenOptions={{ ...headerScreenOptions, animationEnabled: true }}>
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={sharedOptions} />
       <Stack.Screen name="Main" component={BottomTabNavigator} options={{ headerShown: false, gestureEnabled: false }} />
 
-      <Stack.Screen
-        name="AllRecipes"
-        component={AllRecipesScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.25, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
-      <Stack.Screen
-        name="RecipeDetail"
-        component={RecipeDetailScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.25, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
-      <Stack.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.25, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
-      <Stack.Screen
-        name="NotificationSettings"
-        component={NotificationSettingsScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.25, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
-      <Stack.Screen
-        name="CookingMode"
-        component={CookingModeScreen}
-        options={{
-          headerShown: false,
-          cardStyleInterpolator: ({ current, layouts }) => ({
-            cardStyle: {
-              opacity: current.progress,
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width * 0.25, 0],
-                  }),
-                },
-              ],
-            },
-          }),
-        }}
-      />
+      <Stack.Screen name="AllRecipes" component={AllRecipesScreen} options={sharedOptions} />
+      <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} options={sharedOptions} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={sharedOptions} />
+      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={sharedOptions} />
+      <Stack.Screen name="CookingMode" component={CookingModeScreen} options={sharedOptions} />
     </Stack.Navigator>
   );
 }

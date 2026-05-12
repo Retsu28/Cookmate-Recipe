@@ -5,7 +5,6 @@ import {
   FlatList,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { recipeApi } from '../api/api';
 import { offlineCache } from '../offline/cacheService';
 import { useAppTheme } from '../context/ThemeContext';
+import OptimizedImage from '../components/OptimizedImage';
 import { AllRecipesContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
@@ -21,7 +21,7 @@ import useInitialContentLoading from '../hooks/useInitialContentLoading';
 /*  Data fetching                                                      */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 50;
 
 async function fetchAllRecipesAz() {
   const firstResponse = await recipeApi.getAllRecipesAz({ limit: PAGE_SIZE, offset: 0 });
@@ -61,7 +61,7 @@ const AllRecipeGridCard = memo(function AllRecipeGridCard({ item, colors, isDark
     >
       <View style={[st.imageWrap, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft, borderColor: colors.border }]}>
         {imageUri ? (
-          <Image source={{ uri: imageUri }} style={st.recipeImage} resizeMode="cover" />
+          <OptimizedImage source={{ uri: imageUri }} style={st.recipeImage} resizeMode="cover" />
         ) : (
           <View style={st.imageFallback}>
             <Ionicons name="restaurant-outline" size={30} color={colors.primary} />
@@ -205,7 +205,7 @@ export default function AllRecipesScreen({ navigation }) {
           ]}
         >
           {imageUrl ? (
-            <Image
+            <OptimizedImage
               source={{ uri: imageUrl }}
               style={st.chipImage}
               resizeMode="cover"
@@ -301,6 +301,8 @@ export default function AllRecipesScreen({ navigation }) {
             contentContainerStyle={st.categoryRow}
             decelerationRate="fast"
             snapToInterval={0}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
           >
             {renderCategoryChip(null, true)}
             {categories.map((item) => renderCategoryChip(item, false))}
@@ -385,10 +387,11 @@ export default function AllRecipesScreen({ navigation }) {
         updateCellsBatchingPeriod={60}
         windowSize={7}
         removeClippedSubviews
-        extraData={colors}
         refreshing={refreshing}
         onRefresh={handleRefresh}
         contentContainerStyle={st.content}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
       />
     </SafeAreaView>
   );

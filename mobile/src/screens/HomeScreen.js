@@ -18,6 +18,7 @@ import { format } from 'date-fns';
 import { plannerApi, recipeApi } from '../api/api';
 import { getMealPlansCached, offlineCache } from '../offline/cacheService';
 import OfflineIndicator from '../offline/OfflineIndicator';
+import OptimizedImage from '../components/OptimizedImage';
 import RecipeCard from '../components/RecipeCard';
 import HomeRecipeCard from '../components/HomeRecipeCard';
 import HomeSection from '../components/HomeSection';
@@ -251,7 +252,7 @@ export default function HomeScreen({ navigation }) {
   );
 
   const introStyle = {
-    opacity: introAnim,
+    opacity: 1,
     transform: [
       {
         translateY: introAnim.interpolate({
@@ -336,9 +337,10 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('RecipeDetail', { id: featuredRecipes[0]?.id || 1 })}
             style={s.heroWrap}
           >
-            <Image
+            <OptimizedImage
               source={{ uri: featuredRecipes[0]?.image_url || featuredRecipes[0]?.image || 'https://picsum.photos/seed/chicken/800/800' }}
               style={s.heroImage}
+              resizeMode="cover"
             />
             <View style={s.heroOverlay} />
             <View style={s.heroContent}>
@@ -383,6 +385,10 @@ export default function HomeScreen({ navigation }) {
               data={featuredRecipes}
               keyExtractor={(item, index) => `${item.id || item.title || index}`}
               contentContainerStyle={{ paddingRight: 16 }}
+              initialNumToRender={4}
+              maxToRenderPerBatch={4}
+              windowSize={3}
+              removeClippedSubviews={true}
               renderItem={({ item }) => (
                 <RecipeCard
                   recipe={item}
@@ -563,9 +569,10 @@ export default function HomeScreen({ navigation }) {
                 onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id || 1 })}
                 style={s.recentItem}
               >
-                <Image
+                <OptimizedImage
                   source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
                   style={[s.recentImage, { borderColor: colors.borderSoft }]}
+                  resizeMode="cover"
                 />
                 <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
                 <Text style={[s.recentTime, { color: colors.textMuted }]}>{recipe.date || 'Recently cooked'}</Text>

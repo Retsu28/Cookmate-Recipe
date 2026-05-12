@@ -1,7 +1,8 @@
 import React, { memo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
+import OptimizedImage from './OptimizedImage';
 
 function RecipeCard({ recipe, horizontal, onPress }) {
   const { colors, isDark } = useAppTheme();
@@ -9,7 +10,7 @@ function RecipeCard({ recipe, horizontal, onPress }) {
   if (horizontal) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[st.hCard, { borderColor: colors.border }]}>
-        <Image
+        <OptimizedImage
           source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/placeholder/400/200' }}
           style={st.hImage}
           resizeMode="cover"
@@ -30,7 +31,7 @@ function RecipeCard({ recipe, horizontal, onPress }) {
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={st.vCard}>
-      <Image
+      <OptimizedImage
         source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/placeholder/400/400' }}
         style={[st.vImage, { borderColor: colors.border }]}
         resizeMode="cover"

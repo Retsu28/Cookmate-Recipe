@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import OptimizedImage from './OptimizedImage';
 import { useAppTheme } from '../context/ThemeContext';
 
 export default function MealSlot({ label, meal, color, onAdd, onRemove }) {
@@ -13,7 +14,7 @@ export default function MealSlot({ label, meal, color, onAdd, onRemove }) {
       {meal ? (
         <View style={[st.filledSlot, { borderColor: colors.border }]}>
           <View style={st.filledLeft}>
-            <Image source={{ uri: meal.image }} style={st.mealImg} />
+            <OptimizedImage source={{ uri: meal.image }} style={st.mealImg} />
             <View>
               <Text style={[st.mealTitle, { color: colors.text }]}>{meal.recipe}</Text>
               <Text style={[st.mealMeta, { color: colors.textSubtle }]}>15 MIN · EASY</Text>

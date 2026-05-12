@@ -47,7 +47,7 @@ async function startServer() {
   // ─── Global Middleware ───
   app.use(
     cors({
-      origin: config.corsOrigins,
+      origin: config.corsOrigin,
       credentials: true,
     })
   );
@@ -64,12 +64,15 @@ async function startServer() {
 
   // ─── Start ───
   const server = http.createServer(app);
-  attachPlannerSocketServer(server, { corsOrigins: config.corsOrigins });
+  attachPlannerSocketServer(server, { corsOrigin: config.corsOrigin });
 
   server.listen(config.port, '0.0.0.0', () => {
     console.log(`🚀 CookMate API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
-    console.log(`   CORS origins: ${config.corsOrigins.join(', ')}`);
+    console.log(`   CORS origins: ${config.corsOrigins.join(', ') || '(none)'}`);
+    if (config.nodeEnv !== 'production') {
+      console.log('   Local Expo/LAN origins are allowed in development.');
+    }
     startMealReminderWorker();
   });
 }

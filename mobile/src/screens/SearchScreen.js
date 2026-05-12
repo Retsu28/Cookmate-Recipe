@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   Animated,
-  Image,
   ScrollView,
   Keyboard,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api, { mlApi, recipeApi } from '../api/api';
 import IngredientTag from '../components/IngredientTag';
+import OptimizedImage from '../components/OptimizedImage';
 import RecipeCard from '../components/RecipeCard';
 import { useAppTheme } from '../context/ThemeContext';
 import { SearchContentSkeleton, SearchResultsSkeleton } from '../components/SkeletonPlaceholder';
@@ -34,7 +34,7 @@ const mockResults = [
   { id: 4, title: 'Crispy Garlic Smashed Taters', match: '74%', time: '15 MIN' },
 ];
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 50;
 
 function sortResultsByTitle(items) {
   return [...items].sort((a, b) => {
@@ -328,7 +328,7 @@ export default function SearchScreen({ navigation, route }) {
                     <View style={st.suggLeft}>
                       <View style={[st.suggImageWrap, { backgroundColor: isDark ? colors.surface : '#fff7ed' }]}>
                         {sugg.image_url ? (
-                          <Image source={{ uri: sugg.image_url }} style={st.suggImage} />
+                          <OptimizedImage source={{ uri: sugg.image_url }} style={st.suggImage} />
                         ) : (
                           <Text style={[st.suggImageFallback, { color: brandOrange }]}>{sugg.name.charAt(0).toUpperCase()}</Text>
                         )}

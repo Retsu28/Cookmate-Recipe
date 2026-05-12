@@ -24,39 +24,12 @@ async function openDb() {
   // PRAGMA cannot run inside a transaction; execAsync may wrap statements
   // in an implicit one, so run WAL mode separately first.
   await db.runAsync('PRAGMA journal_mode = WAL');
-  await db.execAsync(`
-    CREATE TABLE IF NOT EXISTS recipes (
-      id TEXT PRIMARY KEY NOT NULL,
-      data TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS saved_recipes (
-      id TEXT PRIMARY KEY NOT NULL,
-      data TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS meal_plans (
-      id TEXT PRIMARY KEY NOT NULL,
-      data TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS grocery_lists (
-      id TEXT PRIMARY KEY NOT NULL,
-      data TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS reminder_events (
-      id TEXT PRIMARY KEY NOT NULL,
-      data TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sync_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-  `);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS recipes (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS saved_recipes (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS meal_plans (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS grocery_lists (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS reminder_events (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS sync_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL)`);
   return db;
 }
 
@@ -101,18 +74,16 @@ function makeCache(table) {
     async upsertMany(items) {
       if (!Array.isArray(items) || items.length === 0) return;
       const db = await getDb();
-      await db.withTransactionAsync(async () => {
-        const now = Date.now();
-        for (const item of items) {
-          const id = item?.id;
-          if (id == null) continue;
-          await db.runAsync(
-            `INSERT INTO ${table} (id, data, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`,
-            [String(id), safeStringify(item), now]
-          );
-        }
-      });
+      const now = Date.now();
+      for (const item of items) {
+        const id = item?.id;
+        if (id == null) continue;
+        await db.runAsync(
+          `INSERT INTO ${table} (id, data, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at`,
+          [String(id), safeStringify(item), now]
+        );
+      }
     },
     async get(id) {
       if (id == null) return null;

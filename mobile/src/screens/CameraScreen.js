@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Alert,
   ScrollView,
   LayoutAnimation,
+  Animated as RNAnimated,
+  PanResponder,
+  Easing as RNEasing,
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,6 +126,7 @@ export default function CameraScreen({ navigation }) {
   const [savesError, setSavesError] = useState(null);
   const [restoringSaveId, setRestoringSaveId] = useState(null);
   const [currentOriginalImageData, setCurrentOriginalImageData] = useState(null);
+  const [isResultHidden, setIsResultHidden] = useState(false);
   const cooldownRef = useRef(null);
   const queuePollRef = useRef(null);
   const cameraRef = useRef(null);
@@ -132,6 +136,10 @@ export default function CameraScreen({ navigation }) {
   const isInitialLoading = useInitialContentLoading();
 
   /* ── Animated values ── */
+  const resultSlideY = useRef(new RNAnimated.Value(0)).current;
+  const resultOpacity = useRef(new RNAnimated.Value(1)).current;
+  const resultScale = useRef(new RNAnimated.Value(1)).current;
+
   const scanY = useSharedValue(-2);
   const scanOpacity = useSharedValue(0);
   const imgOpacity = useSharedValue(1);
@@ -503,9 +511,77 @@ export default function CameraScreen({ navigation }) {
     setQueueStatus(null);
     setShowMoreRecipes(false);
     setCurrentOriginalImageData(null);
-    setPhase(P.IDLE);
+    setIsResultHidden(false);
     reset();
+    setPhase(P.IDLE);
   };
+
+  // Slide output down to hide
+  const hideResult = useCallback(() => {
+    setIsResultHidden(true);
+    RNAnimated.parallel([
+      RNAnimated.timing(resultSlideY, {
+        toValue: 300,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(resultOpacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(resultScale, {
+        toValue: 0.95,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [resultSlideY, resultOpacity, resultScale]);
+
+  // Slide output up to show
+  const showResult = useCallback(() => {
+    setIsResultHidden(false);
+    RNAnimated.parallel([
+      RNAnimated.timing(resultSlideY, {
+        toValue: 0,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(resultOpacity, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(resultScale, {
+        toValue: 1,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [resultSlideY, resultOpacity, resultScale]);
+
+  // Pan responder for swipe-to-hide gesture
+  const resultPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return gestureState.dy > 10 && Math.abs(gestureState.dx) < Math.abs(gestureState.dy);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (gestureState.dy > 0) {
+          resultSlideY.setValue(gestureState.dy);
+          resultOpacity.setValue(1 - Math.min(gestureState.dy / 200, 0.8));
+          resultScale.setValue(1 - Math.min(gestureState.dy / 1000, 0.05));
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dy > 100) {
+          hideResult();
+        } else {
+          showResult();
+        }
+      },
+    })
+  ).current;
 
   const restoreSave = async (id) => {
     setRestoringSaveId(id);
@@ -678,8 +754,19 @@ export default function CameraScreen({ navigation }) {
 
           {/* Error state */}
           {showResults && analysisError && (
-            <SafeAreaView style={st.resultSafe} pointerEvents="box-none">
-              <View style={[st.resultCard, { backgroundColor: colors.surface }]}>
+            <>
+            <RNAnimated.View
+              style={[
+                st.resultSafe,
+                {
+                  transform: [{ translateY: resultSlideY }],
+                  opacity: resultOpacity,
+                },
+              ]}
+              pointerEvents={isResultHidden ? 'none' : 'box-none'}
+              {...resultPanResponder.panHandlers}
+            >
+              <RNAnimated.View style={[st.resultCard, { backgroundColor: colors.surface }, { transform: [{ scale: resultScale }] }]}>
                 <View style={[st.resultHeader, { backgroundColor: '#b91c1c' }]}>
                   <View style={st.resultIconBox}>
                     <Ionicons name="alert-circle" size={16} color="#b91c1c" />
@@ -694,14 +781,46 @@ export default function CameraScreen({ navigation }) {
                     <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : 'TRY AGAIN'}</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            </SafeAreaView>
+
+                {/* Swipe hint */}
+                <View style={st.swipeHint}>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                  <Text style={[st.swipeHintText, { color: colors.textMuted }]}>Swipe down to hide</Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                </View>
+              </RNAnimated.View>
+            </RNAnimated.View>
+
+            {/* Floating restore button when hidden */}
+            {isResultHidden && (
+              <TouchableOpacity
+                style={[st.restoreBtn, { backgroundColor: colors.surface }]}
+                onPress={showResult}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-up" size={18} color={colors.primary} />
+                <Text style={[st.restoreBtnText, { color: colors.text }]}>Show Results</Text>
+                <Ionicons name="chevron-up" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            </>
           )}
 
           {/* Analysis result card — real data from backend */}
           {showResults && analysisResult && (
-            <SafeAreaView style={st.resultSafe} pointerEvents="box-none">
-              <View style={[st.resultCard, { backgroundColor: colors.surface }]}>
+            <>
+            <RNAnimated.View
+              style={[
+                st.resultSafe,
+                {
+                  transform: [{ translateY: resultSlideY }],
+                  opacity: resultOpacity,
+                },
+              ]}
+              pointerEvents={isResultHidden ? 'none' : 'box-none'}
+              {...resultPanResponder.panHandlers}
+            >
+              <RNAnimated.View style={[st.resultCard, { backgroundColor: colors.surface }, { transform: [{ scale: resultScale }] }]}>
                 <View style={st.resultHeader}>
                   <View style={st.resultIconBox}>
                     <Ionicons name="restaurant" size={16} color={colors.primary} />
@@ -850,8 +969,29 @@ export default function CameraScreen({ navigation }) {
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
-            </SafeAreaView>
+
+                {/* Swipe hint */}
+                <View style={st.swipeHint}>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                  <Text style={[st.swipeHintText, { color: colors.textMuted }]}>Swipe down to hide</Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                </View>
+              </RNAnimated.View>
+            </RNAnimated.View>
+
+            {/* Floating restore button when hidden */}
+            {isResultHidden && (
+              <TouchableOpacity
+                style={[st.restoreBtn, { backgroundColor: colors.surface }]}
+                onPress={showResult}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-up" size={18} color={colors.primary} />
+                <Text style={[st.restoreBtnText, { color: colors.text }]}>Show Results</Text>
+                <Ionicons name="chevron-up" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            </>
           )}
         </View>
       ) : (
@@ -970,7 +1110,28 @@ const st = StyleSheet.create({
   queueBadge: { marginBottom: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa' },
   queueBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 12, color: '#c2410c', textAlign: 'center' },
   loadingCardWrap: { position: 'absolute', left: 12, right: 12, bottom: 100 },
-  resultSafe: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 },
+  resultSafe: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 },
+  swipeHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, gap: 6 },
+  swipeHintText: { fontFamily: 'Geist_500Medium', fontSize: 11, letterSpacing: 0.3 },
+  restoreBtn: {
+    position: 'absolute',
+    bottom: 110,
+    left: '50%',
+    marginLeft: -80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  restoreBtnText: { fontFamily: 'Geist_600SemiBold', fontSize: 13 },
   resultCard: { overflow: 'hidden', borderRadius: 0 },
   resultHeader: { backgroundColor: '#24160f', flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
   resultIconBox: { width: 36, height: 36, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },

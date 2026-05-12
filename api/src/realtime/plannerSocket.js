@@ -16,10 +16,10 @@ function extractToken(socket) {
   return match?.[1] || null;
 }
 
-function attachPlannerSocketServer(server, { corsOrigins = [] } = {}) {
+function attachPlannerSocketServer(server, { corsOrigin, corsOrigins = [] } = {}) {
   io = new Server(server, {
     cors: {
-      origin: corsOrigins,
+      origin: corsOrigin || corsOrigins,
       credentials: true,
     },
   });
