@@ -121,8 +121,7 @@ export default defineConfig(({ mode }) => {
     },
 
     server: {
-      // Keep dev-time hot reload off so the auth pages do not refresh while editing.
-      hmr: false,
+      hmr: true,
       // Proxy API requests to the Express API server during development
       proxy: {
         '/api': {

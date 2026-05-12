@@ -1,5 +1,4 @@
 import { useState, useEffect, memo } from 'react';
-import { motion, Variants } from 'motion/react';
 import { Plus, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -18,16 +17,6 @@ interface RecipeFormProps {
   isEdit: boolean;
   formRef?: React.RefObject<HTMLDivElement | null>;
 }
-
-const formContainerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.02 } },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 5 },
-  visible: { opacity: 1, y: 0, transition: { type: 'tween', duration: 0.2, ease: 'easeOut' } },
-};
 
 function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, isEdit, formRef }: RecipeFormProps) {
   const [form, setForm] = useState(initialForm);
@@ -63,24 +52,21 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
   };
 
   return (
-    <motion.div
+    <div
       ref={formRef}
-      variants={formContainerVariants}
-      initial="hidden"
-      animate="visible"
       className="space-y-4"
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Title *</label>
           <input
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Description</label>
           <textarea
             value={form.description}
@@ -88,18 +74,18 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             rows={2}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Region / Origin</label>
           <input
             value={form.region_or_origin}
             onChange={(e) => setForm({ ...form, region_or_origin: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Category</label>
           <select
             value={form.category}
@@ -115,9 +101,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
               )
             )}
           </select>
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Difficulty</label>
           <select
             value={form.difficulty}
@@ -128,9 +114,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             <option value="Medium">Medium</option>
             <option value="Hard">Hard</option>
           </select>
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Image URL</label>
           <input
             value={form.image_url}
@@ -138,9 +124,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
             placeholder="https://..."
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Prep Time (min)</label>
           <input
             type="number"
@@ -148,9 +134,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             onChange={(e) => setForm({ ...form, prep_time_minutes: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Cook Time (min)</label>
           <input
             type="number"
@@ -158,9 +144,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             onChange={(e) => setForm({ ...form, cook_time_minutes: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Servings</label>
           <input
             type="number"
@@ -168,9 +154,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             onChange={(e) => setForm({ ...form, servings: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants}>
+        <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Calories</label>
           <input
             type="number"
@@ -178,9 +164,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             onChange={(e) => setForm({ ...form, calories: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
             Tags (semicolon-separated)
           </label>
@@ -190,9 +176,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
             placeholder="savory; braised; rice meal"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">Ingredients</label>
           <div className="space-y-2">
             {ingredientRows.map((row, idx) => (
@@ -220,9 +206,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
           >
             <Plus size={14} /> Add Ingredient
           </button>
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
             Extra Normalized Ingredients (optional, semicolon-separated)
           </label>
@@ -232,9 +218,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
             placeholder="additional keywords; alternate names"
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="sm:col-span-2">
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
             Instructions (one step per line)
           </label>
@@ -245,9 +231,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
             placeholder="Step 1...\nStep 2..."
           />
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="flex items-center gap-6">
+        <div className="flex items-center gap-6">
           <label className="flex items-center gap-2 text-sm font-bold text-stone-700">
             <input
               type="checkbox"
@@ -266,10 +252,10 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             />{' '}
             Published
           </label>
-        </motion.div>
+        </div>
       </div>
 
-      <motion.div variants={itemVariants} className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" className="rounded-full bg-white" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
@@ -288,8 +274,8 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
             'Create Recipe'
           )}
         </Button>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 

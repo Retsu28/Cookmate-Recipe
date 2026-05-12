@@ -1,31 +1,13 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import {
-
   Alert,
-
   View,
-
   Text,
-
   ScrollView,
-
   TouchableOpacity,
-
-  Pressable,
-
-  StyleSheet,
-
-  Animated,
-
-  Easing,
-
   Modal,
-
-  TextInput,
-
-  Switch,
-
+  StyleSheet,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,7 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { Ionicons } from '@expo/vector-icons';
 
-import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
 import { useAppTheme } from '../context/ThemeContext';
 
@@ -43,29 +25,23 @@ import {
   MealPlannerHeader,
   DateNavigationCard,
   UpcomingMealCard,
+  MealSlotCard,
+  EditPlanModal,
+  RecipeRecommendationsSheet,
 } from '../components/mealPlanner';
+import useMealPlannerData from '../hooks/useMealPlannerData';
+import useGroceryList from '../hooks/useGroceryList';
 import SlideIconButton from '../components/SlideIconButton';
 
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 
 import AIAssistantWidget from '../components/AIAssistantWidget';
 
-import { plannerApi } from '../api/api';
-
-import { getGroceryListCached, getMealPlansCached, offlineCache } from '../offline/cacheService';
-
-import { OFFLINE_MESSAGE, useNetwork } from '../offline/network';
+import { useNetwork } from '../offline/network';
 
 import {
-
   formatPlanWindow,
-
-  getCountdownText,
-
   getPlanWindowStatus,
-
-  syncPlannerLocalNotifications,
-
 } from '../notifications/plannerNotifications';
 
 
@@ -159,83 +135,31 @@ function slotWindowLabel(slotId, slotMeals) {
 }
 
 export default function MealPlannerScreen({ navigation, route }) {
-
   const { colors, isDark } = useAppTheme();
-
   const { isOnline } = useNetwork();
-
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  const [currentDate, setCurrentDate] = useState(new Date());
-
-  const [view, setView] = useState('week'); // 'day' | 'week' — matches web pill toggle state
-
-  const [plannedMeals, setPlannedMeals] = useState([]);
-
-  // Combined loading states to reduce hook count
-  const [loading, setLoading] = useState({
-    plans: true,
-    grocery: false,
-    saved: false,
-    savingGrocery: false,
-  });
-
-  const [groceryList, setGroceryList] = useState(null);
-
-  const [checkedItems, setCheckedItems] = useState({});
-
-  const [savedLists, setSavedLists] = useState([]);
-
-  const [savedListState, setSavedListState] = useState({
-    expandedId: null,
-    currentId: null,
-  });
-
   const isInitialLoading = useInitialContentLoading();
 
-
-
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [view, setView] = useState('week');
   const [selectedSlots, setSelectedSlots] = useState(new Set());
-
   const [modalState, setModalState] = useState({ slot: null, editing: null });
+  const [recommendationsSheet, setRecommendationsSheet] = useState({ visible: false, mealType: null, day: null });
+  const [addRecipeModal, setAddRecipeModal] = useState({ visible: false, recipe: null });
 
+  const {
+    plannedMeals,
+    savedLists,
+    setSavedLists,
+    loadingPlans,
+    loadingSaved,
+    loadPlans,
+    loadSavedLists,
+    updatePlan,
+    removePlan,
+    confirmRemoveSavedList,
+  } = useMealPlannerData({ isOnline });
 
-
-  useEffect(() => {
-
-    const timer = setInterval(() => setNowMs(Date.now()), 30000);
-
-    return () => clearInterval(timer);
-
-  }, []);
-
-  const todayPhKeyForEffect = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nowMs);
-
-  useEffect(() => {
-
-    setCurrentDate((prev) => {
-
-      const prevKey = dateKey(prev);
-
-      return prevKey < todayPhKeyForEffect ? new Date() : prev;
-
-    });
-
-  }, [todayPhKeyForEffect]);
-
-
-
-
-  // Compute dates directly - no need for useMemo (cheap operations)
-  const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
-  const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
-  const todayPhKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nowMs);
-  const allDays = eachDayOfInterval({ start: startDate, end: endDate });
-  const weekDays = view === 'week' ? allDays.filter((d) => dateKey(d) >= todayPhKey) : allDays;
-
-
-
-  // Compute plans grouping directly (not useMemo)
   const plansByDateAndType = (() => {
     const grouped = new Map();
     plannedMeals.forEach((plan) => {
@@ -246,103 +170,55 @@ export default function MealPlannerScreen({ navigation, route }) {
     return grouped;
   })();
 
-
-
-  // Compute upcoming meal inline (not useMemo)
-  const getUpcomingMeal = () => plannedMeals
-    .filter((plan) => plan.reminder_enabled && getPlanWindowStatus(plan, nowMs) !== 'ended')
-    .sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime())[0] || null;
-
-
-
-  // Compute displayed grocery list directly (not useMemo - called only when rendered)
-  const getDisplayedGroceryList = () => {
-    if (!groceryList) return null;
-    if (selectedSlots.size === 0) return groceryList;
-
-    const selectedRecipeIds = new Set();
-    selectedSlots.forEach((slotKey) => {
-      const slotPlans = plansByDateAndType.get(slotKey) || [];
-      slotPlans.forEach((p) => {
-        if (p.recipe?.id) selectedRecipeIds.add(p.recipe.id);
-        else if (p.recipe_id) selectedRecipeIds.add(p.recipe_id);
-      });
-    });
-
-    if (selectedRecipeIds.size === 0) {
-      return { ...groceryList, items: [], groups: [], totalItems: 0 };
-    }
-
-    const filteredGroups = groceryList.groups.map((group) => {
-      const filteredItems = group.items.filter((item) =>
-        item.recipes?.some((r) => selectedRecipeIds.has(r.id))
-      );
-      return { ...group, items: filteredItems };
-    }).filter((group) => group.items.length > 0);
-
-    const totalItems = filteredGroups.reduce((sum, group) => sum + group.items.length, 0);
-
-    return {
-      ...groceryList,
-      groups: filteredGroups,
-      items: filteredGroups.flatMap((g) => g.items),
-      totalItems,
-    };
-  };
+  const {
+    groceryList,
+    setGroceryList,
+    checkedItems,
+    setCheckedItems,
+    savedListState,
+    setSavedListState,
+    loadingGrocery,
+    savingGrocery,
+    hydrateCachedGroceryList,
+    generateGroceryList,
+    saveCurrentGroceryList,
+    clearGroceryList,
+    loadSavedIntoView,
+    toggleGroceryItem,
+    getDisplayedGroceryList,
+  } = useGroceryList({ isOnline, selectedSlots, plansByDateAndType });
 
   const displayedGroceryList = getDisplayedGroceryList();
 
-  // Load meal plans - defined as regular function, not useCallback (called infrequently)
-  const loadPlans = async ({ showLoader = true } = {}) => {
-    if (showLoader) setLoading((l) => ({ ...l, plans: true }));
-    try {
-      const response = await getMealPlansCached(() => plannerApi.getPlan());
-      const nextPlans = response?.data?.plans || [];
-      setPlannedMeals(nextPlans);
-      syncPlannerLocalNotifications(nextPlans).catch(() => {});
-    } catch (err) {
-      console.error('Failed to load meal plans', err);
-      setPlannedMeals([]);
-    } finally {
-      if (showLoader) setLoading((l) => ({ ...l, plans: false }));
-    }
-  };
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
+  const todayPhKeyForEffect = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nowMs);
+  useEffect(() => {
+    setCurrentDate((prev) => {
+      const prevKey = dateKey(prev);
+      return prevKey < todayPhKeyForEffect ? new Date() : prev;
+    });
+  }, [todayPhKeyForEffect]);
 
-
-  const hydrateCachedGroceryList = async () => {
-    const cached = await offlineCache.groceryList.get('latest');
-    if (cached?.data?.groceryList) {
-      setGroceryList(cached.data.groceryList);
-    }
-  };
-
-
-
-  // Load saved lists - regular async function
-  const loadSavedLists = async () => {
-    if (!isOnline) return;
-    setLoading((l) => ({ ...l, saved: true }));
-    try {
-      const response = await plannerApi.listSavedGroceryLists();
-      setSavedLists(response?.data?.saved || []);
-    } catch (err) {
-      const isNetworkErr = !err?.response && (err?.message === 'Network Error' || err?.code === 'ERR_NETWORK');
-      if (!isNetworkErr) console.warn('Failed to load saved grocery lists', err?.message || err);
-    } finally {
-      setLoading((l) => ({ ...l, saved: false }));
-    }
-  };
-
-
-
-  // Initial data load - run once on mount
   useEffect(() => {
     loadPlans();
     hydrateCachedGroceryList();
     loadSavedLists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const startDate = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
+  const endDate = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 0 }) : currentDate;
+  const todayPhKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(nowMs);
+  const allDays = eachDayOfInterval({ start: startDate, end: endDate });
+  const weekDays = view === 'week' ? allDays.filter((d) => dateKey(d) >= todayPhKey) : allDays;
+
+  const getUpcomingMeal = () => plannedMeals
+    .filter((plan) => plan.reminder_enabled && getPlanWindowStatus(plan, nowMs) !== 'ended')
+    .sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime())[0] || null;
 
 
 
@@ -418,104 +294,6 @@ export default function MealPlannerScreen({ navigation, route }) {
 
 
 
-  const saveCurrentGroceryList = async () => {
-
-    if (!displayedGroceryList || !displayedGroceryList.items?.length) {
-
-      Alert.alert('Nothing to save', 'Generate a grocery list first.');
-
-      return;
-
-    }
-
-    if (!isOnline) {
-
-      Alert.alert('You are offline', OFFLINE_MESSAGE);
-
-      return;
-
-    }
-
-    setLoading((l) => ({ ...l, savingGrocery: true }));
-
-    try {
-
-      const defaultName = `Grocery list - ${format(new Date(), 'MMM d, yyyy')}`;
-
-      const response = await plannerApi.saveGroceryList({
-
-        name: defaultName,
-
-        grocery_list: displayedGroceryList,
-
-      });
-
-      const saved = response?.data?.saved;
-
-      if (saved) {
-
-        setSavedLists((current) => [saved, ...current]);
-
-        setSavedListState((s) => ({ ...s, currentId: saved.id }));
-
-        Alert.alert('Saved to My Saves', saved.name);
-
-      }
-
-    } catch (err) {
-
-      Alert.alert('Save failed', err?.message || 'Please try again.');
-
-    } finally {
-
-      setLoading((l) => ({ ...l, savingGrocery: false }));
-
-    }
-
-  };
-
-// ... (rest of the code remains the same)
-
-  const loadSavedIntoView = (saved) => {
-
-    setGroceryList(saved.grocery_list);
-
-    setCheckedItems({});
-
-    setSavedListState((s) => ({ ...s, currentId: saved.id }));
-
-  };
-
-// ... (rest of the code remains the same)
-  const clearGroceryList = async () => {
-
-    if (savedListState.currentId) {
-
-      if (!isOnline) {
-
-        Alert.alert('You are offline', OFFLINE_MESSAGE);
-
-        return;
-
-      }
-
-      try {
-        await plannerApi.deleteSavedGroceryList(savedListState.currentId);
-        setSavedLists((current) => current.filter((item) => item.id !== savedListState.currentId));
-        setSavedListState((s) => ({ ...s, expandedId: s.expandedId === savedListState.currentId ? null : s.expandedId }));
-      } catch (err) {
-        Alert.alert('Delete failed', err?.message || 'Please try again.');
-        return;
-      }
-    }
-
-    setGroceryList(null);
-    setCheckedItems({});
-    setSavedListState((s) => ({ ...s, currentId: null }));
-
-    await offlineCache.groceryList.delete('latest');
-
-  };
 
 
 
@@ -525,81 +303,14 @@ export default function MealPlannerScreen({ navigation, route }) {
 
 
 
-  // Static shadow styles - computed directly
+  // Static shadow styles
   const cardShadow = isDark
     ? { shadowOpacity: 0, elevation: 0 }
     : { shadowColor: '#1c1917', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 };
 
-
-
   const softShadow = isDark
     ? { shadowOpacity: 0, elevation: 0 }
     : { shadowColor: '#1c1917', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 };
-
-
-
-  // Generate grocery list - regular async function (not useCallback)
-  const generateGroceryList = async () => {
-    if (selectedSlots.size === 0) {
-      Alert.alert('Select meals first', 'Tap a Breakfast, Lunch, or Dinner slot to select it before generating.');
-      return;
-    }
-    if (!isOnline) {
-      try {
-        const response = await getGroceryListCached(() => plannerApi.getGroceryList());
-        setGroceryList(response?.data?.groceryList || null);
-        setSavedListState((s) => ({ ...s, currentId: null }));
-      } catch {
-        Alert.alert('You are offline', 'Generate a grocery list once online before viewing it offline.');
-      }
-      return;
-    }
-    setLoading((l) => ({ ...l, grocery: true }));
-    try {
-      const response = await getGroceryListCached(() => plannerApi.getGroceryList());
-      setGroceryList(response?.data?.groceryList || null);
-      setSavedListState((s) => ({ ...s, currentId: null }));
-      setCheckedItems({});
-    } catch (err) {
-      Alert.alert('Grocery list failed', err?.message || 'Please try again.');
-    } finally {
-      setLoading((l) => ({ ...l, grocery: false }));
-    }
-  };
-  // Update plan - regular async function
-  const updatePlan = async (plan, data) => {
-    if (!isOnline) {
-      Alert.alert('You are offline', OFFLINE_MESSAGE);
-      return;
-    }
-    try {
-      const res = await plannerApi.updateMeal(plan.id, data);
-      const updated = res?.plan || res;
-      setPlannedMeals((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setModalState((s) => ({ ...s, editing: null }));
-    } catch (err) {
-      Alert.alert('Update failed', err?.message || 'Please try again.');
-    }
-  };
-
-  const removePlan = async (plan) => {
-    if (!isOnline) {
-      Alert.alert('You are offline', OFFLINE_MESSAGE);
-      return;
-    }
-    try {
-      await plannerApi.deleteMeal(plan.id);
-      setPlannedMeals((current) => current.filter((item) => item.id !== plan.id));
-      await offlineCache.mealPlans.delete(plan.id);
-    } catch (err) {
-      Alert.alert('Remove failed', err?.message || 'Please try again.');
-    }
-  };
-
-
-
-  // Toggle handlers - no useCallback needed (setState is stable)
-  const toggleGroceryItem = (id) => setCheckedItems((current) => ({ ...current, [id]: !current[id] }));
 
   const toggleSlot = (slotKey) => {
     setSelectedSlots((current) => {
@@ -615,7 +326,13 @@ export default function MealPlannerScreen({ navigation, route }) {
 
   // Navigation helpers - no useCallback needed (navigation is stable)
   const onViewRecipe = (id) => navigation.navigate('RecipeDetail', { id });
-  const onAddRecipe = () => navigation.navigate('Recipes');
+  const onAddRecipe = (slotId, day) => {
+    setRecommendationsSheet({ visible: true, mealType: slotId, day });
+  };
+  const onBrowseAllRecipes = () => {
+    setRecommendationsSheet({ visible: false, mealType: null, day: null });
+    navigation.navigate('Recipes');
+  };
 
   // Render slot - regular function (not useCallback)
   const renderSlot = (day, slot, isSelected, softBorder) => {
@@ -639,14 +356,15 @@ export default function MealPlannerScreen({ navigation, route }) {
         softBorder={softBorder}
         colors={colors}
         isDark={isDark}
-        plansLoading={loading.plans}
+        plansLoading={loadingPlans}
         day={day}
         nowMs={nowMs}
         onToggle={toggleSlot}
         onView={onViewRecipe}
         onEdit={(plan) => setModalState((s) => ({ ...s, editing: plan }))}
         onMore={(slot) => setModalState((s) => ({ ...s, slot }))}
-        onAdd={onAddRecipe}
+        onRemove={removePlan}
+        onAdd={() => onAddRecipe(slot.id, day)}
       />
     );
   };
@@ -839,7 +557,7 @@ export default function MealPlannerScreen({ navigation, route }) {
 
                   <Text style={st.exportBtnText}>
 
-                    {loading.grocery ? 'Generating' : groceryList ? 'Regenerate' : 'Generate'}
+                    {loadingGrocery ? 'Generating' : groceryList ? 'Regenerate' : 'Generate'}
 
                   </Text>
 
@@ -851,9 +569,9 @@ export default function MealPlannerScreen({ navigation, route }) {
 
                   <TouchableOpacity
 
-                    onPress={saveCurrentGroceryList}
+                    onPress={() => saveCurrentGroceryList(displayedGroceryList, setSavedLists)}
 
-                    disabled={loading.savingGrocery}
+                    disabled={savingGrocery}
 
                     activeOpacity={0.85}
 
@@ -861,7 +579,7 @@ export default function MealPlannerScreen({ navigation, route }) {
 
                   >
 
-                    <Text style={st.exportBtnText}>{loading.savingGrocery ? 'Saving' : 'Save'}</Text>
+                    <Text style={st.exportBtnText}>{savingGrocery ? 'Saving' : 'Save'}</Text>
 
                     <Ionicons name="bookmark" size={14} color="#fff" />
 
@@ -873,7 +591,7 @@ export default function MealPlannerScreen({ navigation, route }) {
 
                   <TouchableOpacity
 
-                    onPress={clearGroceryList}
+                    onPress={() => clearGroceryList(setSavedLists)}
 
                     activeOpacity={0.85}
 
@@ -1209,7 +927,7 @@ export default function MealPlannerScreen({ navigation, route }) {
 
 
 
-            {loading.saved ? (
+            {loadingSaved ? (
 
               <View style={st.savesEmptyBox}>
 
@@ -1310,7 +1028,7 @@ export default function MealPlannerScreen({ navigation, route }) {
                             name="trash-outline"
                             size={14}
                             color="#ef4444"
-                            onPress={() => confirmRemoveSavedList(saved)}
+                            onPress={() => confirmRemoveSavedList(saved, { savedListState, setSavedListState, setGroceryList, setCheckedItems })}
                             style={[st.savedActionBtn, { backgroundColor: qtyChipBg }]}
                           />
                         </View>
@@ -1409,9 +1127,24 @@ export default function MealPlannerScreen({ navigation, route }) {
           softBorder={softBorder}
           isOnline={isOnline}
           onClose={() => setModalState((s) => ({ ...s, editing: null }))}
-          onSave={(data) => updatePlan(modalState.editing, data)}
+          onSave={(data) => updatePlan(modalState.editing, data, () => setModalState((s) => ({ ...s, editing: null })))}
         />
       ) : null}
+
+      {/* Recipe Recommendations Sheet */}
+      <RecipeRecommendationsSheet
+        visible={recommendationsSheet.visible}
+        mealType={recommendationsSheet.mealType}
+        date={recommendationsSheet.day}
+        onClose={() => setRecommendationsSheet({ visible: false, mealType: null, day: null })}
+        onSelectRecipe={(recipe) => {
+          setRecommendationsSheet({ visible: false, mealType: null, day: null });
+          // Navigate to AddToPlanner equivalent - just navigate to RecipeDetail for now
+          // The user can add from there
+          navigation.navigate('RecipeDetail', { id: recipe.id });
+        }}
+        onBrowseAll={onBrowseAllRecipes}
+      />
 
       {/* Floating chat FAB — matches web AIChatWidget */}
 
@@ -1425,339 +1158,6 @@ export default function MealPlannerScreen({ navigation, route }) {
 
 
 
-const MealSlotCard = React.memo(function MealSlotCard({
-  slotKey, slot, meal, slotMeals, windowLabel, hasCustomTime,
-  extraCount, isSelected, softBorder,
-  colors, isDark, plansLoading, day, nowMs,
-  onToggle, onView, onEdit, onRemove, onMore, onAdd,
-}) {
-  const isActiveSlot = meal ? getPlanWindowStatus(meal, nowMs) === 'active' : false;
-  const countdownText = meal ? getCountdownText(meal, nowMs) : '';
-  if (meal) {
-    return (
-      <Pressable
-        onPress={() => onToggle(slotKey)}
-        style={({ pressed }) => [
-          st.mealCardFilled,
-          {
-            backgroundColor: isSelected
-              ? `${colors.primary}14`
-              : isDark ? 'rgba(249,115,22,0.06)' : 'rgba(249,115,22,0.04)',
-            borderColor: isSelected ? colors.primary : isDark ? 'rgba(249,115,22,0.25)' : 'rgba(249,115,22,0.28)',
-            borderWidth: isSelected ? 2 : 1,
-            borderStyle: 'solid',
-            opacity: pressed ? 0.88 : 1,
-          },
-        ]}
-      >
-        <View style={st.mealCardTopRow}>
-          <View style={[st.slotDot, { backgroundColor: slot.color }]} />
-          <View style={st.slotActions}>
-            <TouchableOpacity
-              onPress={() => onView(meal.recipe?.id || meal.recipe_id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={st.removeMealBtn}
-            >
-              <Ionicons name="eye-outline" size={14} color={colors.textSubtle} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onEdit(meal)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={st.removeMealBtn}
-            >
-              <Ionicons name="create-outline" size={14} color={colors.textSubtle} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onRemove(meal)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={st.removeMealBtn}
-            >
-              <Ionicons name="trash-outline" size={14} color={colors.textSubtle} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={st.mealCardBody}>
-          <Text style={[st.slotLabel, { color: colors.textSubtle }]}>
-            {slot.label.toUpperCase()}
-          </Text>
-          <Text style={[st.slotTimeLabel, { color: isActiveSlot ? colors.primary : colors.textSubtle }]} numberOfLines={2}>
-            {windowLabel.toUpperCase()}{hasCustomTime ? ' · CUSTOM' : ''}
-          </Text>
-          <Text style={[st.recipeName, { color: colors.text }]} numberOfLines={1}>
-            {meal.recipe?.title || 'Planned recipe'}
-          </Text>
-          <Text style={[st.slotCountdown, { color: isActiveSlot ? colors.primary : colors.textMuted }]} numberOfLines={2}>
-            {countdownText}
-          </Text>
-          {extraCount > 0 && (
-            <TouchableOpacity
-              onPress={() => onMore({ slotKey, slotLabel: slot.label, day, meals: slotMeals })}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={[st.extraCountText, { color: colors.primary }]}>
-                +{extraCount} more
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={() => onToggle(slotKey)}
-      style={({ pressed }) => [
-        st.mealCardEmpty,
-        {
-          borderColor: isSelected ? colors.primary : softBorder,
-          borderWidth: isSelected ? 2 : 1,
-          borderStyle: isSelected ? 'solid' : 'dashed',
-          backgroundColor: isSelected ? `${colors.primary}10` : 'transparent',
-          opacity: pressed ? 0.9 : 1,
-        },
-      ]}
-    >
-      <View style={st.mealCardTopRow}>
-        <View style={[st.slotDot, { backgroundColor: slot.color }]} />
-        <TouchableOpacity
-          onPress={onAdd}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={st.removeMealBtn}
-        >
-          <Ionicons name="add" size={15} color={colors.textSubtle} />
-        </TouchableOpacity>
-      </View>
-      <View style={st.mealCardBody}>
-        <Text style={[st.slotLabel, { color: colors.textSubtle }]}>
-          {slot.label.toUpperCase()}
-        </Text>
-        <Text style={[st.slotTimeLabel, { color: colors.textSubtle }]} numberOfLines={2}>
-          {windowLabel.toUpperCase()}
-        </Text>
-        <Text style={[st.recipeName, { color: colors.text }]} numberOfLines={1}>
-          Add Recipe
-        </Text>
-        <Text style={[st.slotCountdown, { color: colors.textMuted }]} numberOfLines={2}>
-          {plansLoading ? 'Loading planner' : 'No recipe planned'}
-        </Text>
-      </View>
-    </Pressable>
-  );
-});
-
-function buildDateList() {
-  const today = new Date();
-  const dates = [];
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    dates.push(format(d, 'yyyy-MM-dd'));
-  }
-  return dates;
-}
-
-function EditPlanModal({ plan, colors, isDark, softBorder, isOnline, onClose, onSave }) {
-  const dateList = buildDateList();
-  const [plannedDate, setPlannedDate] = useState(plan.planned_date);
-  const [mealType, setMealType] = useState(plan.meal_type);
-  const [reminderEnabled, setReminderEnabled] = useState(!!plan.reminder_enabled);
-  const [customTimeEnabled, setCustomTimeEnabled] = useState(!!plan.custom_time_enabled);
-  const [startTime, setStartTime] = useState(plan.start_time || '18:00');
-  const [endTime, setEndTime] = useState(plan.end_time || '20:00');
-  const [saving, setSaving] = useState(false);
-
-  const bg = isDark ? '#1c1917' : '#ffffff';
-  const headerBg = isDark ? '#1c1917' : '#ffffff';
-  const sectionBg = isDark ? '#292524' : '#fff7ed';
-  const inputBg = isDark ? '#292524' : '#ffffff';
-  const textColor = colors.text;
-  const mutedColor = colors.textMuted;
-  const primaryColor = colors.primary;
-
-  const handleSave = async () => {
-    if (!isOnline) {
-      Alert.alert('You are offline', 'Cannot update while offline.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await onSave({
-        planned_date: plannedDate,
-        meal_type: mealType,
-        reminder_enabled: reminderEnabled,
-        custom_time_enabled: customTimeEnabled,
-        start_time: startTime,
-        end_time: endTime,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={em.overlay}>
-        <View style={[em.card, { backgroundColor: bg }]}>
-          {/* Header */}
-          <View style={[em.header, { borderBottomColor: softBorder, backgroundColor: headerBg }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[em.kicker, { color: primaryColor }]}>EDIT MEAL</Text>
-              <Text style={[em.title, { color: textColor }]} numberOfLines={2}>
-                {plan.recipe?.title || 'Planned recipe'}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={em.closeBtn}>
-              <Ionicons name="close" size={22} color={mutedColor} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={em.body}>
-            {/* Date picker */}
-            <Text style={[em.label, { color: mutedColor }]}>DATE</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={em.dateScroll} contentContainerStyle={{ gap: 8 }}>
-              {dateList.map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  onPress={() => setPlannedDate(d)}
-                  style={[
-                    em.dateChip,
-                    { borderColor: plannedDate === d ? primaryColor : softBorder, backgroundColor: plannedDate === d ? primaryColor : inputBg },
-                  ]}
-                >
-                  <Text style={[em.dateChipTop, { color: plannedDate === d ? '#fff' : mutedColor }]}>
-                    {format(new Date(d + 'T00:00:00'), 'EEE').toUpperCase()}
-                  </Text>
-                  <Text style={[em.dateChipNum, { color: plannedDate === d ? '#fff' : textColor }]}>
-                    {format(new Date(d + 'T00:00:00'), 'd')}
-                  </Text>
-                  <Text style={[em.dateChipMonth, { color: plannedDate === d ? '#fff' : mutedColor }]}>
-                    {format(new Date(d + 'T00:00:00'), 'MMM').toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Meal type */}
-            <Text style={[em.label, { color: mutedColor, marginTop: 16 }]}>MEAL TYPE</Text>
-            <View style={em.mealTypeRow}>
-              {mealSlots.map((slot) => (
-                <TouchableOpacity
-                  key={slot.id}
-                  onPress={() => setMealType(slot.id)}
-                  style={[
-                    em.mealTypeBtn,
-                    { borderColor: mealType === slot.id ? primaryColor : softBorder, backgroundColor: mealType === slot.id ? primaryColor : inputBg },
-                  ]}
-                >
-                  <Text style={[em.mealTypeBtnText, { color: mealType === slot.id ? '#fff' : textColor }]}>
-                    {slot.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Toggles + time */}
-            <View style={[em.section, { backgroundColor: sectionBg, borderColor: softBorder }]}>
-              <View style={em.toggleRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[em.toggleLabel, { color: textColor }]}>Meal reminder</Text>
-                  <Text style={[em.toggleDesc, { color: mutedColor }]}>Notify when the cooking window starts.</Text>
-                </View>
-                <Switch
-                  value={reminderEnabled}
-                  onValueChange={setReminderEnabled}
-                  trackColor={{ false: isDark ? '#44403c' : '#d6d3d1', true: primaryColor }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-              <View style={[em.divider, { backgroundColor: softBorder }]} />
-              <View style={em.toggleRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[em.toggleLabel, { color: textColor }]}>Custom time</Text>
-                  <Text style={[em.toggleDesc, { color: mutedColor }]}>Override the default {mealType} window.</Text>
-                </View>
-                <Switch
-                  value={customTimeEnabled}
-                  onValueChange={setCustomTimeEnabled}
-                  trackColor={{ false: isDark ? '#44403c' : '#d6d3d1', true: primaryColor }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-              <View style={em.timeRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[em.label, { color: mutedColor }]}>START</Text>
-                  <TextInput
-                    value={startTime}
-                    onChangeText={setStartTime}
-                    placeholder="18:00"
-                    placeholderTextColor={mutedColor}
-                    editable={customTimeEnabled}
-                    style={[em.timeInput, { borderColor: softBorder, backgroundColor: inputBg, color: customTimeEnabled ? textColor : mutedColor, opacity: customTimeEnabled ? 1 : 0.5 }]}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[em.label, { color: mutedColor }]}>END</Text>
-                  <TextInput
-                    value={endTime}
-                    onChangeText={setEndTime}
-                    placeholder="20:00"
-                    placeholderTextColor={mutedColor}
-                    editable={customTimeEnabled}
-                    style={[em.timeInput, { borderColor: softBorder, backgroundColor: inputBg, color: customTimeEnabled ? textColor : mutedColor, opacity: customTimeEnabled ? 1 : 0.5 }]}
-                  />
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-
-          {/* Footer */}
-          <View style={[em.footer, { borderTopColor: softBorder, backgroundColor: isDark ? '#1c1917' : '#fff7ed' }]}>
-            <TouchableOpacity onPress={onClose} style={[em.footerBtn, { borderColor: softBorder, backgroundColor: inputBg }]}>
-              <Text style={[em.footerBtnText, { color: textColor }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={saving || !isOnline}
-              style={[em.footerBtn, { backgroundColor: primaryColor, borderColor: primaryColor, opacity: saving || !isOnline ? 0.6 : 1 }]}
-            >
-              <Text style={[em.footerBtnText, { color: '#fff' }]}>{saving ? 'Saving...' : 'Save Changes'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-const em = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 24 },
-  card: { borderRadius: 32, overflow: 'hidden', maxHeight: '85%', shadowColor: '#1c1917', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: -4 }, elevation: 6 },
-  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 18, borderBottomWidth: 1, gap: 12 },
-  closeBtn: { paddingTop: 2 },
-  kicker: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 2, marginBottom: 2 },
-  title: { fontFamily: 'Geist_800ExtraBold', fontSize: 17, letterSpacing: -0.3, lineHeight: 22 },
-  body: { paddingHorizontal: 20, paddingVertical: 16, gap: 0 },
-  label: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 2, marginBottom: 8 },
-  dateScroll: { marginBottom: 4 },
-  dateChip: { width: 52, paddingVertical: 10, borderRadius: 16, borderWidth: 1, alignItems: 'center', gap: 2 },
-  dateChipTop: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
-  dateChipNum: { fontFamily: 'Geist_800ExtraBold', fontSize: 20, lineHeight: 24 },
-  dateChipMonth: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
-  mealTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  mealTypeBtn: { flex: 1, height: 44, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  mealTypeBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 0.5 },
-  section: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 12 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggleLabel: { fontFamily: 'Geist_700Bold', fontSize: 13 },
-  toggleDesc: { fontFamily: 'Geist_500Medium', fontSize: 11, marginTop: 1 },
-  divider: { height: 1 },
-  timeRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  timeInput: { height: 44, borderRadius: 14, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Geist_700Bold', fontSize: 14 },
-  footer: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1 },
-  footerBtn: { flex: 1, height: 48, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  footerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14 },
-});
 
 const st = StyleSheet.create({
 

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '@/components/ui/button';
-import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat } from 'lucide-react';
+import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { DashboardSkeleton } from '@/components/SkeletonScreen';
@@ -44,7 +44,10 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { openChat } = useAIChat();
   const isInitialLoading = useInitialContentLoading();
-  const [featuredRecipe, setFeaturedRecipe] = useState<ApiRecipe | null>(null);
+  const [featuredRecipes, setFeaturedRecipes] = useState<ApiRecipe[]>([]);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [carouselVisible, setCarouselVisible] = useState(true);
+  const carouselTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recentRecipes, setRecentRecipes] = useState<ApiRecipe[]>([]);
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
   const [mealPlansLoading, setMealPlansLoading] = useState(true);
@@ -54,7 +57,7 @@ export default function Dashboard() {
     getRecipesCached<{ recipes: ApiRecipe[] }>(() =>
       api.get<{ recipes: ApiRecipe[] }>('/api/recipes/featured'),
     )
-      .then(data => { if (data.recipes?.length) setFeaturedRecipe(data.recipes[0]); })
+      .then(data => { if (data.recipes?.length) setFeaturedRecipes(data.recipes.slice(0, 5)); })
       .catch(() => {});
     getRecipesCached<{ recipes: ApiRecipe[] }>(() =>
       api.get<{ recipes: ApiRecipe[] }>('/api/recipes/recent'),
@@ -100,6 +103,34 @@ export default function Dashboard() {
   }, [mealPlans, todayKey]);
   const todayPlanCount = todayMealRows.reduce((count, row) => count + row.plans.length, 0);
 
+  const featuredRecipe = featuredRecipes[carouselIndex] ?? null;
+
+  const goToSlide = useCallback((idx: number) => {
+    setCarouselVisible(false);
+    setTimeout(() => {
+      setCarouselIndex(idx);
+      setCarouselVisible(true);
+    }, 350);
+  }, []);
+
+  const goNext = useCallback(() => {
+    if (featuredRecipes.length < 2) return;
+    goToSlide((carouselIndex + 1) % featuredRecipes.length);
+  }, [carouselIndex, featuredRecipes.length, goToSlide]);
+
+  const goPrev = useCallback(() => {
+    if (featuredRecipes.length < 2) return;
+    goToSlide((carouselIndex - 1 + featuredRecipes.length) % featuredRecipes.length);
+  }, [carouselIndex, featuredRecipes.length, goToSlide]);
+
+  useEffect(() => {
+    if (featuredRecipes.length < 2) return;
+    carouselTimerRef.current = setInterval(goNext, 4500);
+    return () => {
+      if (carouselTimerRef.current) clearInterval(carouselTimerRef.current);
+    };
+  }, [featuredRecipes.length, goNext]);
+
   const openTodayPlanner = (params: Record<string, string> = {}) => {
     const search = new URLSearchParams({
       date: todayKey,
@@ -132,12 +163,13 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="h-full w-full pb-12 pt-6 animate-fade-up">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <h1 className="sr-only text-stone-900">CookMate — Home</h1>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
 
           {/* Left Column (Quick Start & Recent) */}
-          <div className="lg:col-span-3 space-y-8">
+          <div className="lg:col-span-3 flex flex-col gap-8">
             <section>
-              <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-4 dark:text-stone-400">Quick Start</h3>
+              <h3 className="text-xs font-bold text-stone-600 uppercase tracking-widest mb-4 dark:text-stone-400">Quick Start</h3>
               <div className="space-y-3">
                 <button
                   onClick={() => navigate('/recipes')}
@@ -156,9 +188,9 @@ export default function Dashboard() {
               </div>
             </section>
 
-            <section>
+            <section className="flex-1 flex flex-col">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest dark:text-stone-400">Recent Recipes</h3>
+                <h3 className="text-[10px] font-bold text-stone-600 uppercase tracking-widest dark:text-stone-400">Recent Recipes</h3>
                 <button
                   type="button"
                   onClick={() => navigate('/recipes')}
@@ -167,7 +199,7 @@ export default function Dashboard() {
                   View all recipes
                 </button>
               </div>
-              <div className="space-y-6">
+              <div className="space-y-6 flex-1">
                 {recentRecipes.length === 0 && (
                   <p className="text-xs text-stone-400 dark:text-stone-500">No recipes yet.</p>
                 )}
@@ -189,52 +221,119 @@ export default function Dashboard() {
           </div>
 
           {/* Center Column (Featured & Articles) */}
-          <div className="lg:col-span-6 space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="group relative aspect-square w-full overflow-hidden rounded-[2.5rem] shadow-2xl shadow-orange-950/10 md:aspect-[4/3]"
-            >
-              {featuredRecipe?.image_url ? (
-                <img src={featuredRecipe.image_url} alt={featuredRecipe.title} className="absolute inset-0 w-full h-full object-cover" />
-              ) : (
+          <div className="lg:col-span-6 flex flex-col gap-6">
+            {/* Featured Recipe Carousel */}
+            <div className="group relative aspect-square w-full overflow-hidden rounded-[2.5rem] shadow-2xl shadow-orange-950/10 md:aspect-[4/3]">
+              {/* Background images — crossfade via opacity */}
+              {featuredRecipes.length > 0 ? featuredRecipes.map((recipe, i) => (
+                <div
+                  key={recipe.id}
+                  className="absolute inset-0 transition-opacity duration-700 ease-in-out"
+                  style={{ opacity: i === carouselIndex ? 1 : 0, zIndex: i === carouselIndex ? 1 : 0 }}
+                >
+                  {recipe.image_url ? (
+                    <img
+                      src={recipe.image_url}
+                      alt={recipe.title}
+                      className="absolute inset-0 w-full h-full object-cover scale-105 group-hover:scale-110 transition-transform duration-[6000ms]"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-orange-400 to-orange-600" />
+                  )}
+                </div>
+              )) : (
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-400 to-orange-600" />
               )}
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-950/60 via-stone-950/35 to-orange-700/35 transition-opacity group-hover:opacity-95" />
-              <div className="absolute inset-0 p-8 sm:p-12 flex flex-col justify-center items-center text-center">
-                <span className="mb-6 rounded-full bg-white/95 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-orange-700 shadow-lg shadow-orange-950/10 backdrop-blur">
-                  Featured Tonight
-                </span>
-                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-none tracking-tight mb-4 drop-shadow-md">
-                  {featuredRecipe?.title || 'Philippine Recipes'}
-                </h2>
-                <p className="text-white/90 text-lg sm:text-xl font-medium mb-8 max-w-sm drop-shadow">
-                  {featuredRecipe?.description?.slice(0, 80) || 'Discover authentic Filipino dishes from our curated recipe collection.'}
-                  {featuredRecipe?.total_time_minutes ? ` ${featuredRecipe.total_time_minutes} min total.` : ''}
-                </p>
-                <Button
-                  onClick={() => navigate(`/recipe/${featuredRecipe?.id || 1}`)}
-                  className="rounded-full bg-white px-8 py-6 text-lg font-bold text-orange-700 hover:bg-orange-50"
-                >
-                  View Step-by-Step
-                </Button>
-              </div>
-            </motion.div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-orange-50/70 p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-white dark:border-stone-700 dark:bg-stone-800/70 dark:hover:bg-stone-800">
-                <h4 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Seasonal<br />Ingredients</h4>
-                <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400">
+              {/* Dark gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-stone-950/30 to-transparent" style={{ zIndex: 2 }} />
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-950/30 to-transparent" style={{ zIndex: 2 }} />
+
+              {/* Text content — separate animation from image */}
+              <div
+                className="absolute inset-0 flex flex-col justify-end items-center text-center pb-10 px-8 sm:px-12"
+                style={{ zIndex: 3 }}
+              >
+                <div
+                  className="transition-all duration-500 ease-out"
+                  style={{
+                    opacity: carouselVisible ? 1 : 0,
+                    transform: carouselVisible ? 'translateY(0)' : 'translateY(12px)',
+                  }}
+                >
+                  <span className="mb-5 inline-block rounded-full bg-white/95 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-orange-700 shadow-lg backdrop-blur">
+                    Featured Tonight
+                  </span>
+                  <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-none tracking-tight mb-4 drop-shadow-lg">
+                    {featuredRecipe?.title || 'Philippine Recipes'}
+                  </h2>
+                  <p className="text-white/70 text-base sm:text-lg font-medium mb-7 max-w-sm drop-shadow mx-auto">
+                    {featuredRecipe?.description?.slice(0, 90) || 'Discover authentic Filipino dishes from our curated recipe collection.'}
+                    {featuredRecipe?.total_time_minutes ? ` · ${featuredRecipe.total_time_minutes} min` : ''}
+                  </p>
+                  <Button
+                    onClick={() => navigate(`/recipe/${featuredRecipe?.id || 1}`)}
+                    className="rounded-full bg-orange-600 px-8 py-5 text-base font-bold text-white hover:bg-orange-500 shadow-xl shadow-orange-900/40 ring-2 ring-white/20"
+                  >
+                    Let's Cook
+                  </Button>
+                </div>
+              </div>
+
+              {/* Prev / Next arrows */}
+              {featuredRecipes.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); goPrev(); }}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/30 p-1.5 text-white/80 hover:bg-black/50 hover:text-white transition-colors"
+                    style={{ zIndex: 4 }}
+                    aria-label="Previous recipe"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); goNext(); }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/30 p-1.5 text-white/80 hover:bg-black/50 hover:text-white transition-colors"
+                    style={{ zIndex: 4 }}
+                    aria-label="Next recipe"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </>
+              )}
+
+              {/* Dot indicators */}
+              {featuredRecipes.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 4 }}>
+                  {featuredRecipes.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={(e) => { e.stopPropagation(); if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); goToSlide(i); }}
+                      className={`rounded-full transition-all duration-300 ${
+                        i === carouselIndex
+                          ? 'bg-white w-5 h-2'
+                          : 'bg-white/40 w-2 h-2 hover:bg-white/70'
+                      }`}
+                      aria-label={`Go to recipe ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-1">
+              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col">
+                <h3 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Seasonal<br />Ingredients</h3>
+                <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400 flex-1">
                   Explore what's fresh this month: Artichokes, Asparagus, and ramps are back.
                 </p>
                 <span className="font-bold text-[10px] uppercase tracking-widest text-stone-900 flex items-center gap-2 group-hover:text-orange-600 transition-colors underline decoration-2 underline-offset-4 dark:text-stone-200 dark:group-hover:text-orange-400">
                   Read Guide
                 </span>
               </div>
-              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70">
-                <h4 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Cooking Skills</h4>
-                <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400">
+              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col">
+                <h3 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Cooking Skills</h3>
+                <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400 flex-1">
                   Master the 'Julienne' cut with our new 2-minute video tutorial.
                 </p>
                 <span className="font-bold text-[10px] uppercase tracking-widest text-stone-900 flex items-center gap-2 group-hover:text-orange-600 transition-colors underline decoration-2 underline-offset-4 dark:text-stone-200 dark:group-hover:text-orange-400">
@@ -245,10 +344,10 @@ export default function Dashboard() {
           </div>
 
           {/* Right Column (Planner & AI & Stats) */}
-          <div className="lg:col-span-3 space-y-6">
-            <section className="rounded-3xl border border-orange-100 bg-white p-6 shadow-lg shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
+          <div className="lg:col-span-3 flex flex-col gap-6">
+            <section className="rounded-3xl border border-orange-100 bg-white p-6 shadow-lg shadow-orange-100/50 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none flex-1 flex flex-col">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest dark:text-stone-400">Today's Meal Plan</h3>
+                <h3 className="text-[10px] font-bold text-stone-600 uppercase tracking-widest dark:text-stone-400">Today's Meal Plan</h3>
                 <button
                   type="button"
                   onClick={() => openTodayPlanner()}
@@ -303,7 +402,7 @@ export default function Dashboard() {
               </Button>
             </section>
 
-            <section className="rounded-3xl orange-gradient p-8 text-white shadow-xl shadow-orange-500/20">
+            <section className="rounded-3xl orange-gradient p-8 text-white shadow-xl shadow-orange-500/20 flex-1 flex flex-col">
               <div className="flex flex-col items-center gap-4 mb-6">
                 <div className="rounded-full bg-[#1c1917] p-3">
                   <ChefHat size={20} className="text-orange-500" />
@@ -319,20 +418,6 @@ export default function Dashboard() {
               <Button onClick={openChat} className="w-full rounded-full bg-[#1c1917] py-6 text-[10px] font-bold uppercase tracking-widest text-[#ea580c] hover:bg-stone-800 border-0">
                 Start Conversation
               </Button>
-            </section>
-
-            <section className="flex flex-col rounded-3xl bg-[#b5afa8] p-6 text-center border border-white/10 shadow-lg">
-              <p className="text-[10px] font-extrabold text-white/90 uppercase tracking-widest mb-4 text-left">Kitchen Stats</p>
-              <div className="flex divide-x divide-stone-500/30">
-                <div className="flex-1 px-2 flex flex-col items-center justify-center">
-                  <h4 className="text-3xl font-extrabold text-[#ea580c]">12</h4>
-                  <p className="text-[9px] font-extrabold text-white/90 uppercase tracking-wider mt-1">Recipes Made</p>
-                </div>
-                <div className="flex-1 px-2 flex flex-col items-center justify-center">
-                  <h4 className="text-3xl font-extrabold text-[#ea580c]">4.8</h4>
-                  <p className="text-[9px] font-extrabold text-white/90 uppercase tracking-wider mt-1">Avg Rating</p>
-                </div>
-              </div>
             </section>
           </div>
 

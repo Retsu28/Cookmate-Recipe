@@ -45,8 +45,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setIsLoading(false);
       });
 
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        authService.me().then((fresh) => {
+          if (fresh) setUser(fresh);
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

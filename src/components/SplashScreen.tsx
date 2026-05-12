@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChefHat, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone } from 'lucide-react';
+import { UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone } from 'lucide-react';
 
 const FOOD_ICONS = [UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone];
 
@@ -32,6 +32,25 @@ function buildFloaters(count = 12): FloaterData[] {
   return items;
 }
 
+// Read saved appearance from localStorage (runs immediately)
+function getSavedAppearance() {
+  if (typeof window === 'undefined') return { theme: 'system', fontSize: 'medium' };
+  
+  const savedTheme = localStorage.getItem('cookmate:theme');
+  const savedFontSize = localStorage.getItem('cookmate:fontSize');
+  
+  const isValidTheme = (v: string | null) => v === 'light' || v === 'dark' || v === 'system';
+  const isValidFontSize = (v: string | null) => v === 'small' || v === 'medium' || v === 'large';
+  
+  // Check system preference for theme
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  
+  return {
+    theme: isValidTheme(savedTheme) ? savedTheme : systemTheme,
+    fontSize: isValidFontSize(savedFontSize) ? savedFontSize : 'medium',
+  };
+}
+
 interface SplashScreenProps {
   onFinished: () => void;
   minimumDuration?: number;
@@ -47,7 +66,25 @@ export default function SplashScreen({
 }: SplashScreenProps) {
   const [visible, setVisible] = useState(true);
   const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const appearance = useMemo(() => getSavedAppearance(), []);
   const floaters = useMemo(() => buildFloaters(), []);
+
+  // Apply theme and font size to document immediately
+  useEffect(() => {
+    // Apply font size
+    document.documentElement.dataset.fontSize = appearance.fontSize;
+    document.documentElement.setAttribute('data-font-size', appearance.fontSize);
+    
+    // Apply theme (for Tailwind dark: classes to work)
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    if (appearance.theme === 'system') {
+      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(systemDark ? 'dark' : 'light');
+    } else {
+      root.classList.add(appearance.theme);
+    }
+  }, [appearance.theme, appearance.fontSize]);
 
   useEffect(() => {
     const timer = setTimeout(() => setMinimumElapsed(true), minimumDuration);
@@ -94,32 +131,39 @@ export default function SplashScreen({
               initial={{ opacity: 0, scale: 0.5, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.1 }}
-              className="w-20 h-20 bg-orange-500 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-orange-500/30 mb-6"
+              className="w-20 h-20 flex items-center justify-center mb-6"
             >
-              <motion.div
+              <motion.img
+                src="/logo.png"
+                alt="CookMate"
+                className="w-20 h-20 object-contain drop-shadow-lg"
                 animate={{ rotate: [0, -8, 8, -4, 4, 0] }}
                 transition={{ duration: 1.8, delay: 0.6, repeat: Infinity, repeatDelay: 3 }}
-              >
-                <ChefHat className="w-10 h-10" />
-              </motion.div>
+              />
             </motion.div>
 
-            {/* Brand name */}
+            {/* Brand name - scales with font size preference */}
             <motion.h1
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
-              className="text-4xl font-extrabold text-stone-900 dark:text-stone-50 tracking-tight mb-2"
+              className={`font-extrabold text-stone-900 dark:text-stone-50 tracking-tight mb-2 ${
+                appearance.fontSize === 'small' ? 'text-3xl' : 
+                appearance.fontSize === 'large' ? 'text-5xl' : 'text-4xl'
+              }`}
             >
               CookMate
             </motion.h1>
 
-            {/* Tagline */}
+            {/* Tagline - scales with font size preference */}
             <motion.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.4 }}
-              className="text-stone-500 dark:text-stone-300 text-sm font-medium"
+              className={`text-stone-500 dark:text-stone-300 font-medium ${
+                appearance.fontSize === 'small' ? 'text-xs' : 
+                appearance.fontSize === 'large' ? 'text-base' : 'text-sm'
+              }`}
             >
               {message}
             </motion.p>

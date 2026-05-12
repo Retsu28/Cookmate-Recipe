@@ -81,6 +81,8 @@ export const recipeApi = {
   search: (query) => api.get('/api/recipes', { params: { search: query, published: 'true' } }),
   byCategory: (category, limit = 24) =>
     api.get('/api/recipes', { params: { category, published: 'true', limit } }),
+  getRecommendedForMeal: (mealType, limit = 8) =>
+    api.get('/api/recipes/recommended-for-meal', { params: { meal_type: mealType, limit } }),
 };
 
 export const mlApi = {
@@ -118,6 +120,9 @@ export const shoppingApi = {
 
 export const notificationApi = {
   getNotifications: (userId) => api.get(`/api/notifications/${userId}`),
+  markAsRead: (notificationId) => api.patch(`/api/notifications/${notificationId}/read`),
+  markAllAsRead: () => api.patch('/api/notifications/read-all'),
+  deleteNotification: (notificationId) => api.delete(`/api/notifications/${notificationId}`),
 };
 
 export const profileApi = {
@@ -127,6 +132,11 @@ export const profileApi = {
 
 export const inventoryApi = {
   getInventory: (userId) => api.get(`/api/inventory/${userId}`),
+};
+
+export const settingsApi = {
+  getSettings: (userId, key) => api.get(`/api/settings/${userId}/${key}`),
+  saveSettings: (userId, key, value) => api.put(`/api/settings/${userId}/${key}`, { value }),
 };
 
 export default api;

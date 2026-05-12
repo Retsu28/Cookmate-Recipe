@@ -50,7 +50,7 @@ export function HomeSection({
             {title}
           </h2>
           {description ? (
-            <p className="mt-1 max-w-xl text-sm text-stone-500 dark:text-stone-400">{description}</p>
+            <p className="mt-1 max-w-xl text-sm text-stone-600 dark:text-stone-400">{description}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">

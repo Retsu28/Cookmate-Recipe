@@ -78,6 +78,7 @@ export default function AccountSettings() {
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
@@ -247,12 +248,20 @@ export default function AccountSettings() {
         setAvatarUrl(profile.avatar_url || avatarUrl);
       }
       if (avatarFile) {
-        const { avatar_url } = await profileService.uploadAvatar(user.id, avatarFile);
-        setAvatarUrl(avatar_url);
-        resetAvatarSelection();
+        setUploadingAvatar(true);
+        try {
+          const { avatar_url } = await profileService.uploadAvatar(user.id, avatarFile);
+          setAvatarUrl(avatar_url);
+          resetAvatarSelection();
+        } finally {
+          setUploadingAvatar(false);
+        }
       }
       try {
-        await refreshUser();
+        const fresh = await refreshUser();
+        if (fresh?.avatar_url !== undefined) {
+          setAvatarUrl(fresh.avatar_url);
+        }
       } catch {
         // Ignored
       }
@@ -290,9 +299,18 @@ export default function AccountSettings() {
           ) : (
             <span className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl">{profileInitial}</span>
           )}
-          <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100">
-            <Camera size={28} />
-          </span>
+          {uploadingAvatar ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <svg className="h-10 w-10 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            </span>
+          ) : (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition-all group-hover:bg-black/35 group-hover:opacity-100">
+              <Camera size={28} />
+            </span>
+          )}
         </button>
         <div className="w-full min-w-0 flex-1">
           <h2 className="break-words text-xl font-extrabold text-stone-900 dark:text-stone-100 sm:text-3xl">{form.fullName || 'CookMate Chef'}</h2>
@@ -414,7 +432,11 @@ export default function AccountSettings() {
             Discard Changes
           </Button>
           <Button type="submit" disabled={loading || saving || !hasChanges} className="h-12 rounded-2xl px-8 text-xs font-bold uppercase tracking-widest">
-            {saving ? <Loader2 className="animate-spin" size={16} /> : 'Save Settings'}
+            {uploadingAvatar ? (
+              <><Loader2 className="animate-spin" size={16} /> Uploading photo…</>
+            ) : saving ? (
+              <><Loader2 className="animate-spin" size={16} /> Saving…</>
+            ) : 'Save Settings'}
           </Button>
         </div>
       </div>

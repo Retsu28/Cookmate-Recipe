@@ -26,14 +26,14 @@ export default function AdminLayout() {
             <motion.button
               type="button"
               aria-label="Close admin navigation"
-              className="fixed inset-0 z-40 bg-stone-950/30 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-[60] bg-stone-950/40 backdrop-blur-sm lg:hidden cursor-pointer"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setMobileMenuOpen(false)}
             />
             <motion.aside
-              className="fixed inset-y-0 left-0 z-50 w-72 border-r border-stone-200 shadow-2xl lg:hidden"
+              className="fixed inset-y-0 left-0 z-[70] w-72 border-r border-stone-200 bg-stone-50 shadow-2xl lg:hidden"
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}

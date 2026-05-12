@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View, LayoutAnimation } from 'react-native';
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, View, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
@@ -221,8 +221,8 @@ export default function AuthVisualPanel({
 
         {/* Center content */}
         <View style={styles.content}>
-          <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
-            <Ionicons name="restaurant" size={22} color="#fff" />
+          <View style={styles.logoBox}>
+            <Image source={require('../../assets/logo.png')} style={styles.logoImg} resizeMode="contain" />
           </View>
           <Text style={[styles.heading, { color: colors.text }]}>
             {heading}
@@ -298,10 +298,13 @@ const styles = StyleSheet.create({
   logoBox: {
     width: 44,
     height: 44,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+  },
+  logoImg: {
+    width: 44,
+    height: 44,
   },
   heading: {
     fontFamily: 'Geist_800ExtraBold',

@@ -32,6 +32,7 @@
     "expo-dev-client": "~55.0.32",
     "expo-device": "~55.0.16",
     "expo-font": "~55.0.6",
+    "expo-image-picker": "~55.0.20",
     "expo-notifications": "~55.0.22",
     "expo-secure-store": "~55.0.13",
     "expo-splash-screen": "~55.0.19",
@@ -40,10 +41,9 @@
     "expo-system-ui": "~55.0.17",
     "expo-video": "~55.0.15",
     "expo-web-browser": "~55.0.15",
-    "google-auth-library": "^9.15.1",
+    "google-auth-library": "^10.6.2",
     "luxon": "^3.7.2",
-    "nativewind": "^2.0.11",
-    "nodemailer": "^8.0.7",
+    "nativewind": "^4.2.3",
     "react": "19.2.0",
     "react-native": "0.83.6",
     "react-native-gesture-handler": "~2.30.0",
@@ -56,7 +56,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "babel-preset-expo": "^55.0.17",
-    "tailwindcss": "3.3.2"
+    "tailwindcss": "^3.4.19"
   },
   "private": true,
   "expo": {

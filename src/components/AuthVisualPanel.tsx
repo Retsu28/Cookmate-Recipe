@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useTheme } from 'next-themes';
-import { ChefHat, ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone, X } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone, X } from 'lucide-react';
 
 // ── floating icon data ──────────────────────────────────────────────
 const ICONS = [UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone];
@@ -166,9 +166,9 @@ export function AuthVisualPanel({
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.5 }}
-                className="w-20 h-20 bg-orange-500 rounded-3xl flex items-center justify-center text-white shadow-lg shadow-orange-500/30 mb-8"
+                className="w-20 h-20 flex items-center justify-center mb-8"
               >
-                <ChefHat className="w-10 h-10" />
+                <img src="/logo.png" alt="CookMate" className="w-20 h-20 object-contain drop-shadow-lg" />
               </motion.div>
               <motion.h2
                 initial={{ opacity: 0, y: 12 }}

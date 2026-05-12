@@ -55,9 +55,9 @@ export function HomeRecipeCard({ recipe, width = 'md' }: HomeRecipeCardProps) {
         ) : null}
       </div>
       <div className="px-1">
-        <h4 className="line-clamp-2 text-sm font-bold leading-snug text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
+        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
           {recipe.title}
-        </h4>
+        </h3>
         <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
           {meta}
         </p>

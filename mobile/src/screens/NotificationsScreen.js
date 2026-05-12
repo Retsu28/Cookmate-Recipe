@@ -9,20 +9,50 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import NotificationCard from '../components/NotificationCard';
 import { useAppTheme } from '../context/ThemeContext';
 import { NotificationsContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
-import { plannerApi } from '../api/api';
+import { plannerApi, notificationApi } from '../api/api';
 import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '../notifications/plannerNotifications';
+import { useAuth } from '../context/AuthContext';
+
+const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
+
+async function getReadPlannerIds() {
+  try {
+    const stored = await AsyncStorage.getItem(READ_PLANNER_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveReadPlannerIds(ids) {
+  try {
+    await AsyncStorage.setItem(READ_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export default function NotificationsScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
-  const [notifications, setNotifications] = useState([]);
+  const { user } = useAuth();
+  const [plannerNotifications, setPlannerNotifications] = useState([]);
+  const [dbNotifications, setDbNotifications] = useState([]);
   const [filter, setFilter] = useState('All');
+  const [readPlannerIds, setReadPlannerIds] = useState([]);
   const isInitialLoading = useInitialContentLoading();
 
-  const filters = ['All', 'Reminders', 'Shopping'];
+  // Load stored read IDs on mount
+  useEffect(() => {
+    getReadPlannerIds().then(setReadPlannerIds);
+  }, []);
+
+  const notifications = [...dbNotifications, ...plannerNotifications];
+  const filters = ['All', 'Reminders', 'Shopping', 'Recipes'];
   const selectedType = filter.replace(/s$/, '');
   const filteredNotifications = filter === 'All'
     ? notifications
@@ -34,66 +64,138 @@ export default function NotificationsScreen({ navigation }) {
     let cancelled = false;
     async function load() {
       try {
-        const [upcomingRes, groceryRes] = await Promise.all([
+        // Load both planner notifications and DB notifications
+        const [upcomingRes, groceryRes, dbNotifsRes, storedReadIds] = await Promise.all([
           plannerApi.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
           plannerApi.getGroceryList().catch(() => null),
+          user?.id ? notificationApi.getNotifications(user.id).catch(() => null) : Promise.resolve(null),
+          getReadPlannerIds(),
         ]);
         if (cancelled) return;
         const plans = upcomingRes?.data?.plans || [];
         const groceryList = groceryRes?.data?.groceryList;
-        const nextNotifications = [];
+        const dbNotifs = dbNotifsRes?.data?.notifications || [];
+
+        const nextPlannerNotifications = [];
+        const nextDbNotifications = [];
+
+        // Convert DB notifications
+        dbNotifs.forEach((notif) => {
+          const isRecipe = notif.type?.toLowerCase() === 'recipe';
+          nextDbNotifications.push({
+            id: notif.id + 100000, // Offset to avoid ID collision
+            dbId: notif.id,
+            type: isRecipe ? 'Recipes' : 'System',
+            title: notif.title,
+            message: notif.message,
+            time: new Date(notif.created_at).toLocaleDateString(),
+            read: notif.is_read,
+            icon: isRecipe ? 'sparkles' : 'notifications',
+            iconColor: isRecipe ? '#22c55e' : (colors.primary || '#f97316'),
+            actionPath: isRecipe ? 'AllRecipes' : 'Home',
+            source: 'db',
+          });
+        });
 
         plans.forEach((plan) => {
           const status = getPlanWindowStatus(plan);
-          nextNotifications.push({
+          const isRead = storedReadIds.includes(plan.id);
+          nextPlannerNotifications.push({
             id: plan.id,
             type: 'Reminder',
             title: `${plan.meal_type_label} · ${formatPlanWindow(plan)}`,
             message: `${getCountdownText(plan)} · ${plan.recipe?.title || 'Planned meal'}`,
             time: status === 'active' ? 'Active now' : 'Upcoming',
-            read: false,
+            read: isRead,
             icon: 'time',
             iconColor: colors.primary || '#f97316',
             actionPath: plan.recipe?.id ? 'RecipeDetail' : 'Planner',
             recipeId: plan.recipe?.id || plan.recipe_id,
+            source: 'planner',
           });
         });
 
         if (groceryList && groceryList.totalItems > 0) {
-          nextNotifications.push({
-            id: -1,
+          const groceryId = -1;
+          const isGroceryRead = storedReadIds.includes(groceryId);
+          nextPlannerNotifications.push({
+            id: groceryId,
             type: 'Shopping',
             title: 'Grocery list ready',
             message: `${groceryList.totalItems} items from your meal planner.`,
             time: 'Now',
-            read: false,
+            read: isGroceryRead,
             icon: 'cart',
             iconColor: colors.primary || '#f97316',
             actionPath: 'Planner',
+            source: 'planner',
           });
         }
 
-        setNotifications(nextNotifications);
+        setPlannerNotifications(nextPlannerNotifications);
+        setDbNotifications(nextDbNotifications);
       } catch {
-        setNotifications([]);
+        setPlannerNotifications([]);
+        setDbNotifications([]);
       }
     }
     load();
     return () => { cancelled = true; };
-  }, [colors.primary]);
+  }, [colors.primary, user?.id]);
 
-  const markAllRead = () => {
-    setNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
+  const markAllRead = async () => {
+    // Update local state
+    const allPlannerIds = plannerNotifications.map(n => n.id);
+    setPlannerNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
+    setDbNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
+
+    // Persist all planner notification IDs to AsyncStorage
+    const newReadIds = [...new Set([...readPlannerIds, ...allPlannerIds])];
+    setReadPlannerIds(newReadIds);
+    await saveReadPlannerIds(newReadIds);
+
+    // Call API to persist for DB notifications
+    try {
+      await notificationApi.markAllAsRead();
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
   };
 
-  const clearAll = () => setNotifications([]);
+  const clearAll = () => {
+    setPlannerNotifications([]);
+    setDbNotifications([]);
+  };
 
-  const markRead = (id) => {
-    setNotifications((curr) => curr.map((n) => n.id === id ? { ...n, read: true } : n));
+  const markRead = async (id) => {
+    const notif = notifications.find((n) => n.id === id);
+    if (!notif) return;
+
+    if (notif.source === 'db') {
+      // Update local state for DB notification
+      setDbNotifications((curr) => curr.map((n) => n.id === id ? { ...n, read: true } : n));
+      // Call API to persist
+      try {
+        await notificationApi.markAsRead(notif.dbId);
+      } catch (err) {
+        console.error('Failed to mark as read:', err);
+      }
+    } else {
+      // Update local state for planner notifications
+      setPlannerNotifications((curr) => curr.map((n) => n.id === id ? { ...n, read: true } : n));
+      // Persist to AsyncStorage
+      const newReadIds = [...readPlannerIds, id];
+      setReadPlannerIds(newReadIds);
+      await saveReadPlannerIds(newReadIds);
+    }
   };
 
   const openNotification = (notification) => {
     markRead(notification.id);
+    if (notification.source === 'db' && notification.actionPath) {
+      navigation.navigate(notification.actionPath);
+      return;
+    }
     if (notification.recipeId) {
       navigation.navigate('RecipeDetail', { id: notification.recipeId });
       return;

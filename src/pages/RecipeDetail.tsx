@@ -222,7 +222,7 @@ export default function RecipeDetail() {
               >
                 <CalendarPlus size={20} /> Add to meal planner
               </Button>
-              <Button variant="outline" className="w-14 h-14 rounded-full border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 shrink-0 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400">
+              <Button variant="outline" aria-label="Save to favourites" className="w-14 h-14 rounded-full border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 shrink-0 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400">
                 <Heart size={24} />
               </Button>
             </div>
@@ -394,7 +394,7 @@ function GuidedCooking({ mode, step, setStep, onExit }: any) {
       {/* Header */}
       <div className="p-6 flex items-center justify-between border-b border-white/10">
         <div className="flex items-center gap-4">
-          <button onClick={onExit} className="p-3 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-white">
+          <button onClick={onExit} aria-label="Exit cooking mode" className="p-3 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-white">
             <X size={24} />
           </button>
           <div className="hidden sm:block">

@@ -2,6 +2,94 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 const { verifyAuthToken, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
+const { sendMail } = require('../config/mailer');
+
+/**
+ * Notify all users via email about a new recipe (single BCC email)
+ * Also creates in-app notifications for each user
+ * Excludes the admin who uploaded the recipe
+ */
+async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null, excludeUserId = null) {
+  console.log(`[notifyUsersAboutNewRecipe] Starting notification for recipe: ${recipeTitle}, excludeUserId: ${excludeUserId}`);
+  try {
+    // Get all users with their email addresses (excluding the admin who uploaded)
+    const usersResult = await pool.query(
+      `SELECT id, email, full_name FROM users WHERE (role = 'user' OR role = 'admin') AND ($1::int IS NULL OR id != $1)`,
+      [excludeUserId]
+    );
+
+    console.log(`[notifyUsersAboutNewRecipe] Found ${usersResult.rows.length} users to notify`);
+
+    if (usersResult.rows.length === 0) {
+      console.log('[notifyUsersAboutNewRecipe] No users to notify, skipping');
+      return;
+    }
+
+    const appUrl = process.env.APP_URL || 'https://cookmate.app';
+    const recipeUrl = `${appUrl}/recipe/${recipeId}`;
+
+    // Create email content
+    const subject = `New Recipe Added: ${recipeTitle}`;
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f97316;">New Recipe Available!</h2>
+        <p>Hi there,</p>
+        <p>We're excited to share a new recipe with you: <strong>${recipeTitle}</strong></p>
+        ${imageUrl ? `<img src="${imageUrl}" alt="${recipeTitle}" style="max-width: 100%; border-radius: 8px; margin: 16px 0;" />` : ''}
+        <p>Click the link below to check it out:</p>
+        <a href="${recipeUrl}" style="display: inline-block; background-color: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">View Recipe</a>
+        <p style="margin-top: 24px; color: #666; font-size: 12px;">You're receiving this because you're a CookMate user.</p>
+      </div>
+    `;
+
+    const textContent = `New Recipe Available!\n\nHi there,\n\nWe're excited to share a new recipe with you: ${recipeTitle}\n\nCheck it out at: ${recipeUrl}\n\nYou're receiving this because you're a CookMate user.`;
+
+    // Send ONE email with all users in BCC (single summary email)
+    const bccEmails = usersResult.rows.map(u => u.email).filter(Boolean);
+    console.log(`[notifyUsersAboutNewRecipe] Sending email to ${bccEmails.length} recipients via BCC`);
+    
+    const emailPromise = bccEmails.length > 0
+      ? sendMail({
+          to: process.env.SMTP_FROM || 'noreply@cookmate.app',
+          bcc: bccEmails.join(','),
+          subject,
+          html: htmlContent,
+          text: textContent,
+        }).then(info => {
+          console.log(`[notifyUsersAboutNewRecipe] Email sent successfully:`, info?.messageId || 'no messageId');
+          return info;
+        }).catch(err => {
+          console.error(`[newRecipeNotify] Failed to send summary email:`, err.message);
+        })
+      : Promise.resolve();
+
+    // Create in-app notifications for each user
+    console.log(`[notifyUsersAboutNewRecipe] Creating in-app notifications for ${usersResult.rows.length} users`);
+    const notificationPromises = usersResult.rows.map(user =>
+      pool.query(
+        `INSERT INTO notifications (user_id, title, message, type, is_read)
+         VALUES ($1, $2, $3, 'Recipe', FALSE)`,
+        [
+          user.id,
+          `New Recipe: ${recipeTitle}`,
+          `A new recipe "${recipeTitle}" has been added. Check it out!`
+        ]
+      ).then(() => {
+        console.log(`[notifyUsersAboutNewRecipe] In-app notification created for user ${user.id}`);
+      }).catch(err => {
+        console.error(`[newRecipeNotify] Failed to create notification for user ${user.id}:`, err.message);
+      })
+    );
+
+    // Execute all promises (don't block on failures)
+    await Promise.allSettled([emailPromise, ...notificationPromises]);
+
+    console.log(`[notifyUsersAboutNewRecipe] Completed. Notified ${usersResult.rows.length} users about new recipe: ${recipeTitle}`);
+  } catch (err) {
+    console.error('[newRecipeNotify] Error notifying users:', err);
+    // Don't throw - notification failures shouldn't block recipe creation
+  }
+}
 
 function getOptionalUserId(req) {
   if (req.userId) return req.userId;
@@ -419,7 +507,13 @@ exports.createRecipe = async (req, res) => {
       await syncRecipeIngredients(result.rows[0].id, ingredients);
     }
 
-    res.status(201).json({ recipe: result.rows[0] });
+    const createdRecipe = result.rows[0];
+
+    res.status(201).json({ recipe: createdRecipe });
+
+    // Notify users about the new recipe (fire and forget), exclude the admin who uploaded
+    console.log(`[createRecipe] Recipe created, starting notification. req.userId: ${req.userId}`);
+    notifyUsersAboutNewRecipe(createdRecipe.title, createdRecipe.id, createdRecipe.image_url, req.userId);
   } catch (err) {
     console.error('[recipes/createRecipe]', err);
     if (err.code === '23505') {
@@ -520,13 +614,38 @@ exports.deleteRecipe = async (req, res) => {
 exports.toggleFeatured = async (req, res) => {
   try {
     const { id } = req.params;
+    const MAX_FEATURED = 8;
+
+    // Check current recipe state
+    const current = await pool.query(
+      'SELECT is_featured FROM recipes WHERE id = $1',
+      [id]
+    );
+    if (current.rowCount === 0) {
+      return res.status(404).json({ error: 'Recipe not found.' });
+    }
+
+    const isCurrentlyFeatured = current.rows[0].is_featured;
+
+    // Only check limit when trying to feature (not when unfeaturing)
+    if (!isCurrentlyFeatured) {
+      const countResult = await pool.query(
+        'SELECT COUNT(*) FROM recipes WHERE is_featured = true'
+      );
+      const featuredCount = parseInt(countResult.rows[0].count, 10);
+
+      if (featuredCount >= MAX_FEATURED) {
+        return res.status(400).json({
+          error: 'Maximum 8 featured recipes allowed. Unfeature another recipe first.'
+        });
+      }
+    }
+
     const result = await pool.query(
       `UPDATE recipes SET is_featured = NOT is_featured, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING id, title, is_featured`,
       [id]
     );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Recipe not found.' });
-    }
+
     res.json({ recipe: result.rows[0] });
   } catch (err) {
     console.error('[recipes/toggleFeatured]', err);
@@ -631,6 +750,7 @@ exports.importCsv = async (req, res) => {
     });
 
     let inserted = 0, updated = 0, skipped = 0;
+    const insertedRecipes = []; // Track newly inserted recipes for notifications
     const client = await pool.connect();
 
     try {
@@ -673,7 +793,7 @@ exports.importCsv = async (req, res) => {
               tags = EXCLUDED.tags,
               normalized_ingredients = EXCLUDED.normalized_ingredients,
               updated_at = CURRENT_TIMESTAMP
-           RETURNING (xmax = 0) AS was_inserted`,
+           RETURNING id, title, image_url, (xmax = 0) AS was_inserted`,
           [
             (row.recipe_id || '').trim() || null,
             title,
@@ -691,8 +811,16 @@ exports.importCsv = async (req, res) => {
           ]
         );
 
-        if (result.rows[0].was_inserted) inserted++;
-        else updated++;
+        if (result.rows[0].was_inserted) {
+          inserted++;
+          insertedRecipes.push({
+            id: result.rows[0].id,
+            title: result.rows[0].title,
+            image_url: result.rows[0].image_url
+          });
+        } else {
+          updated++;
+        }
       }
 
       await client.query('COMMIT');
@@ -704,8 +832,118 @@ exports.importCsv = async (req, res) => {
     }
 
     res.json({ message: 'CSV import completed.', inserted, updated, skipped, total: rows.length });
+
+    // Notify users about new recipes if any were inserted, exclude the admin who uploaded
+    if (inserted > 0 && insertedRecipes.length > 0) {
+      notifyUsersAboutNewRecipesBatch(inserted, insertedRecipes, req.userId);
+    }
   } catch (err) {
     console.error('[recipes/importCsv]', err);
     res.status(500).json({ error: 'Failed to import CSV.' });
+  }
+};
+
+/**
+ * Notify all users via email about batch of new recipes from CSV import (single BCC email)
+ * Also creates in-app notifications for each user
+ * Excludes the admin who uploaded the recipes
+ */
+async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, excludeUserId = null) {
+  try {
+    // Get all users with their email addresses (excluding the admin who uploaded)
+    const usersResult = await pool.query(
+      `SELECT id, email, full_name FROM users WHERE (role = 'user' OR role = 'admin') AND ($1::int IS NULL OR id != $1)`,
+      [excludeUserId]
+    );
+
+    if (usersResult.rows.length === 0) return;
+
+    const appUrl = process.env.APP_URL || 'https://cookmate.app';
+    const recipesUrl = `${appUrl}/recipes`;
+
+    // Sample recipe titles (limit to first 3)
+    const sampleTitles = insertedRecipes.slice(0, 3).map(r => r.title).join(', ');
+    const hasMore = insertedRecipes.length > 3;
+    const titlePreview = hasMore ? `${sampleTitles} and ${insertedRecipes.length - 3} more` : sampleTitles;
+
+    // Create email content
+    const subject = `${insertedCount} New Recipe${insertedCount > 1 ? 's' : ''} Added to CookMate!`;
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f97316;">New Recipes Available!</h2>
+        <p>Hi there,</p>
+        <p>We're excited to share <strong>${insertedCount} new recipe${insertedCount > 1 ? 's' : ''}</strong> with you:</p>
+        <p style="font-style: italic; color: #666; padding: 12px; background: #f5f5f4; border-radius: 8px;">${titlePreview}</p>
+        <p>Click the link below to explore all the new recipes:</p>
+        <a href="${recipesUrl}" style="display: inline-block; background-color: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">View All Recipes</a>
+        <p style="margin-top: 24px; color: #666; font-size: 12px;">You're receiving this because you're a CookMate user.</p>
+      </div>
+    `;
+
+    const textContent = `New Recipes Available!\n\nHi there,\n\nWe're excited to share ${insertedCount} new recipe${insertedCount > 1 ? 's' : ''} with you:\n\n${titlePreview}\n\nExplore all the new recipes at: ${recipesUrl}\n\nYou're receiving this because you're a CookMate user.`;
+
+    // Send ONE email with all users in BCC (single summary email)
+    const bccEmails = usersResult.rows.map(u => u.email).filter(Boolean);
+    const emailPromise = bccEmails.length > 0
+      ? sendMail({
+          to: process.env.SMTP_FROM || 'noreply@cookmate.app',
+          bcc: bccEmails.join(','),
+          subject,
+          html: htmlContent,
+          text: textContent,
+        }).catch(err => {
+          console.error(`[newRecipesBatchNotify] Failed to send summary email:`, err.message);
+        })
+      : Promise.resolve();
+
+    // Create in-app notifications for each user
+    const notificationPromises = usersResult.rows.map(user =>
+      pool.query(
+        `INSERT INTO notifications (user_id, title, message, type, is_read)
+         VALUES ($1, $2, $3, 'Recipe', FALSE)`,
+        [
+          user.id,
+          `${insertedCount} New Recipe${insertedCount > 1 ? 's' : ''} Added`,
+          `We've added ${insertedCount} new recipe${insertedCount > 1 ? 's' : ''} including ${titlePreview}. Check them out!`
+        ]
+      ).catch(err => {
+        console.error(`[newRecipesBatchNotify] Failed to create notification for user ${user.id}:`, err.message);
+      })
+    );
+
+    // Execute all promises (don't block on failures)
+    await Promise.allSettled([emailPromise, ...notificationPromises]);
+
+    console.log(`[newRecipesBatchNotify] Notified ${usersResult.rows.length} users about ${insertedCount} new recipes`);
+  } catch (err) {
+    console.error('[newRecipesBatchNotify] Error notifying users:', err);
+    // Don't throw - notification failures shouldn't block import
+  }
+}
+
+// ─── GET /api/recipes/recommended-for-meal ──────────────────────────────────
+// Returns randomized high-rated recipes for a specific meal type (breakfast/lunch/dinner).
+// Query params:
+//   ?meal_type=breakfast|lunch|dinner (required)
+//   ?limit=<n>                        (default 8, max 20)
+exports.getRecommendedForMeal = async (req, res) => {
+  try {
+    const mealType = String(req.query.meal_type || '').toLowerCase().trim();
+    const limit = Math.min(parseInt(req.query.limit) || 8, 20);
+
+    if (!['breakfast', 'lunch', 'dinner'].includes(mealType)) {
+      return res.status(400).json({ error: 'meal_type must be breakfast, lunch, or dinner' });
+    }
+
+    // Get random recipes from all published recipes
+    const result = await pool.query(
+      `SELECT r.id, r.title, r.description, r.category, r.image_url, r.total_time_minutes, r.difficulty, r.servings, r.calories, COALESCE(rv.review_count, 0)::int AS review_count, COALESCE(rv.avg_rating, 0)::float AS avg_rating FROM recipes r LEFT JOIN (SELECT recipe_id, COUNT(*)::int AS review_count, AVG(rating)::float AS avg_rating FROM reviews GROUP BY recipe_id) rv ON rv.recipe_id = r.id WHERE r.is_published = true ORDER BY RANDOM() LIMIT $1`,
+      [limit]
+    );
+
+    res.json({ recipes: result.rows, meal_type: mealType, total: result.rows.length });
+  } catch (err) {
+    console.error('[recipes/getRecommendedForMeal]', err);
+    res.status(500).json({ error: 'Failed to fetch recommended recipes.' });
   }
 };

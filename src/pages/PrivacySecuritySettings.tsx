@@ -11,7 +11,6 @@ import {
   LockKeyhole,
   ShieldCheck,
   Sparkles,
-  UserRoundCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,14 +32,12 @@ const sectionVariants = {
 type PrivacyPreferences = {
   personalizedSuggestions: boolean;
   cookingActivityInsights: boolean;
-  profileVisibility: boolean;
   usageDiagnostics: boolean;
 };
 
 const defaultPrivacyPreferences: PrivacyPreferences = {
   personalizedSuggestions: true,
   cookingActivityInsights: true,
-  profileVisibility: false,
   usageDiagnostics: false,
 };
 
@@ -61,12 +58,6 @@ const dataRows: Array<{
     title: 'Cooking activity insights',
     description: 'Use meal plans and recipe views to improve your CookMate dashboard.',
     icon: BarChart3,
-  },
-  {
-    id: 'profileVisibility',
-    title: 'Public profile discovery',
-    description: 'Allow other CookMate users to find your cooking profile.',
-    icon: UserRoundCheck,
   },
   {
     id: 'usageDiagnostics',

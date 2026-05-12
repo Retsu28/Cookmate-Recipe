@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChefHat, Search, Camera, User, Menu, X, ShoppingBag } from 'lucide-react';
+import { Search, Camera, User, Menu, X, ShoppingBag } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function Navbar() {
@@ -20,9 +20,7 @@ export function Navbar() {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="rounded-xl orange-gradient p-2 text-white shadow-sm shadow-orange-500/20">
-              <ChefHat className="w-6 h-6" />
-            </div>
+            <img src="/logo.png" alt="CookMate" className="w-10 h-10 rounded-xl shadow-sm shadow-orange-500/20" />
             <span className="font-bold text-xl text-stone-900 tracking-tight">CookMate</span>
           </Link>
 
@@ -49,12 +47,12 @@ export function Navbar() {
           {/* User & Mobile Toggle */}
           <div className="flex items-center gap-4">
             <Link to="/profile" className="hidden md:flex">
-              <Button variant="ghost" size="icon" className="rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100">
+              <Button variant="ghost" size="icon" aria-label="Profile" className="rounded-full bg-orange-50 text-orange-600 hover:bg-orange-100">
                 <User className="w-5 h-5" />
               </Button>
             </Link>
             <div className="md:hidden">
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)} className="text-stone-600">
+              <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)} aria-label={isOpen ? 'Close menu' : 'Open menu'} className="text-stone-600">
                 {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </Button>
             </div>

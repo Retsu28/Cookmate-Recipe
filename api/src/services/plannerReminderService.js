@@ -27,35 +27,28 @@ function toIsoInstant(value, timezone) {
   return parsed.isValid ? parsed.toUTC().toISO({ suppressMilliseconds: false }) : null;
 }
 
+const MEAL_TYPE_EMOJI = {
+  breakfast: '\ud83c\udf05',
+  lunch: '\ud83c\udf71',
+  dinner: '\ud83c\udf7d\ufe0f',
+};
+
+const MEAL_TYPE_ACTION = {
+  breakfast: 'Good morning, time to cook!',
+  lunch: 'Lunch break! Start cooking now.',
+  dinner: 'Dinner time! Fire up the stove.',
+};
+
 function buildReminderText(plan) {
   const mealType = String(plan.meal_type || '').toLowerCase();
-  const mealLabel = MEAL_TYPE_LABELS[mealType] || 'Meal';
   const recipeTitle = sanitizeText(plan.recipe_title, 'your planned meal');
-
-  if (mealType === 'breakfast') {
-    return {
-      title: "It's breakfast time!",
-      body: `Time to cook ${recipeTitle}.`,
-    };
-  }
-
-  if (mealType === 'lunch') {
-    return {
-      title: 'Lunch reminder',
-      body: `${recipeTitle} is scheduled now.`,
-    };
-  }
-
-  if (mealType === 'dinner') {
-    return {
-      title: 'Dinner is ready to cook!',
-      body: `${recipeTitle} is on your planner now.`,
-    };
-  }
-
+  const emoji = MEAL_TYPE_EMOJI[mealType] || '\ud83c\udf74';
+  const timeWindow = formatWindowLabel(plan.start_time, plan.end_time);
+  const action = MEAL_TYPE_ACTION[mealType] || 'Time to start cooking!';
+  const body = timeWindow ? `${action}\n${timeWindow}` : action;
   return {
-    title: `${mealLabel} reminder`,
-    body: `${recipeTitle} is scheduled now.`,
+    title: `${emoji} ${recipeTitle}`,
+    body,
   };
 }
 

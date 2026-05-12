@@ -69,7 +69,7 @@ export default function App() {
   const [splashDone, setSplashDone] = useState(false);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem={true}>
       {!splashDone && <SplashScreen onFinished={() => setSplashDone(true)} />}
       <AuthProvider>
         <PostLoginSplash />

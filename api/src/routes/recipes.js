@@ -11,6 +11,7 @@ router.get('/recent', recipeController.getRecent);
 router.get('/categories', recipeController.getCategories);
 router.get('/home-sections', recipeController.getHomeSections);
 router.get('/recently-viewed', recipeController.getRecentlyViewed);
+router.get('/recommended-for-meal', recipeController.getRecommendedForMeal);
 router.get('/stats', requireAdmin, recipeController.getStats);
 
 // Admin routes

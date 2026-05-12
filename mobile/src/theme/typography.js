@@ -7,7 +7,8 @@ export const fontFamily = {
   extrabold: 'Geist_800ExtraBold',
 };
 
-export const fontSize = {
+// Base font sizes (medium scale)
+export const baseFontSize = {
   xs: 10,
   sm: 12,
   base: 14,
@@ -18,4 +19,26 @@ export const fontSize = {
   '3xl': 30,
 };
 
-export default { fontFamily, fontSize };
+// Font size multipliers for different preferences
+export const fontSizeMultipliers = {
+  small: 0.85,
+  medium: 1,
+  large: 1.15,
+};
+
+// Function to get dynamic font sizes based on preference
+export const getDynamicFontSizes = (sizePreference = 'medium') => {
+  const multiplier = fontSizeMultipliers[sizePreference] || 1;
+  const dynamicSizes = {};
+  
+  Object.keys(baseFontSize).forEach(key => {
+    dynamicSizes[key] = Math.round(baseFontSize[key] * multiplier);
+  });
+  
+  return dynamicSizes;
+};
+
+// Legacy export for backward compatibility
+export const fontSize = baseFontSize;
+
+export default { fontFamily, fontSize: baseFontSize, getDynamicFontSizes, fontSizeMultipliers };

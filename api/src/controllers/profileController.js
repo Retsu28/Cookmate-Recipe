@@ -7,7 +7,7 @@ const { AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
 const BCRYPT_ROUNDS = 10;
-const AVATAR_UPLOAD_DIR = path.resolve(__dirname, '..', '..', '..', 'uploads', 'avatars');
+const AVATAR_UPLOAD_DIR = path.resolve(__dirname, '..', '..', 'uploads', 'avatars');
 const AVATAR_PUBLIC_PREFIX = '/uploads/avatars/';
 const AVATAR_EXT_BY_MIME = {
   'image/jpeg': '.jpg',

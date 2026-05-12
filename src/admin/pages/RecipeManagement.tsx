@@ -64,12 +64,19 @@ export default function RecipeManagement() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set('limit', '200');
+      params.set('limit', '50');
       if (search) params.set('search', search);
       if (catFilter) params.set('category', catFilter);
       if (diffFilter) params.set('difficulty', diffFilter);
       const data = await api.get<{ recipes: DbRecipe[]; total: number }>(`/api/recipes?${params}`);
-      setRecipes(data.recipes);
+      // Sort: featured first, then by created_at (newest first)
+      const sortedRecipes = data.recipes.sort((a, b) => {
+        if (a.is_featured === b.is_featured) {
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        }
+        return a.is_featured ? -1 : 1;
+      });
+      setRecipes(sortedRecipes);
       setTotal(data.total);
     } catch (err: any) {
       toast.error(err.message || 'Failed to load recipes');
@@ -173,6 +180,17 @@ export default function RecipeManagement() {
   }, [fetchRecipes]);
 
   const handleToggleFeatured = useCallback(async (id: number) => {
+    // Check if already at featured limit (8 max)
+    const featuredCount = recipes.filter(r => r.is_featured).length;
+    const recipe = recipes.find(r => r.id === id);
+    const isCurrentlyFeatured = recipe?.is_featured ?? false;
+    
+    // Only check limit when trying to feature (not when unfeaturing)
+    if (!isCurrentlyFeatured && featuredCount >= 8) {
+      toast.error('Maximum 8 featured recipes allowed. Unfeature another recipe first.');
+      return;
+    }
+    
     try {
       const data = await api.patch<{ recipe: { is_featured: boolean } }>(`/api/recipes/${id}/featured`);
       toast.success(data.recipe.is_featured ? 'Marked as featured.' : 'Removed from featured.');
@@ -180,7 +198,7 @@ export default function RecipeManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to toggle featured.');
     }
-  }, [fetchRecipes]);
+  }, [recipes, fetchRecipes]);
 
   const handleTogglePublished = useCallback(async (id: number) => {
     try {
@@ -214,12 +232,17 @@ export default function RecipeManagement() {
       render: (recipe) => (
         <div className="flex items-center gap-3">
           {recipe.image_url ? (
-            <img src={recipe.image_url} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
+            <img 
+              src={recipe.image_url} 
+              alt="" 
+              loading="lazy"
+              className="h-10 w-10 rounded-lg object-cover shrink-0" 
+            />
           ) : (
             <div className="h-10 w-10 rounded-lg bg-orange-50 shrink-0" />
           )}
           <div className="cursor-pointer hover:underline" onClick={() => openEdit(recipe)}>
-            <p className="font-extrabold text-stone-900 transition-colors hover:text-orange-600">{recipe.title}</p>
+            <p className="font-extrabold text-stone-900 hover:text-orange-600">{recipe.title}</p>
             <p className="text-xs font-medium text-stone-400">#{recipe.id} &middot; {recipe.region_or_origin || 'No region'}</p>
           </div>
         </div>
@@ -246,11 +269,11 @@ export default function RecipeManagement() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-full text-orange-600 hover:bg-orange-50"
+            className={recipe.is_featured ? "rounded-full bg-amber-100 text-amber-500 hover:bg-amber-200" : "rounded-full text-stone-400 hover:bg-orange-50 hover:text-orange-600"}
             aria-label={`Toggle featured for ${recipe.title}`}
             onClick={() => handleToggleFeatured(recipe.id)}
           >
-            <Star size={14} />
+            <Star size={14} fill={recipe.is_featured ? "currentColor" : "none"} />
           </Button>
           <Button
             variant="ghost"
@@ -259,7 +282,7 @@ export default function RecipeManagement() {
             aria-label={`Toggle published for ${recipe.title}`}
             onClick={() => handleTogglePublished(recipe.id)}
           >
-            {recipe.is_published ? <EyeOff size={14} /> : <Eye size={14} />}
+            {recipe.is_published ? <Eye size={14} /> : <EyeOff size={14} />}
           </Button>
           <Button
             variant="ghost"
@@ -273,7 +296,7 @@ export default function RecipeManagement() {
         </div>
       ),
     },
-  ], [handleDelete, handleToggleFeatured, handleTogglePublished]);
+  ], []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderForm = useCallback(() => (
     <RecipeForm

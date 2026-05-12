@@ -41,3 +41,4 @@ firebase-adminsdk*.json
 .firebase.ts
 # User uploads
 uploads/
+api/uploads/

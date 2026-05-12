@@ -1,3 +1,4 @@
+import './global.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +13,7 @@ import {
   Geist_700Bold,
   Geist_800ExtraBold,
 } from '@expo-google-fonts/geist';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -196,6 +198,7 @@ export default function App() {
     Geist_600SemiBold,
     Geist_700Bold,
     Geist_800ExtraBold,
+    ...Ionicons.font,
   });
 
   return (

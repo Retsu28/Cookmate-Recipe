@@ -88,7 +88,7 @@ export function CategoryChip({ category, count, imageUrl }: CategoryChipProps) {
           {category}
         </span>
         {typeof count === 'number' ? (
-          <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500 dark:text-stone-500">
             {count} {count === 1 ? 'recipe' : 'recipes'}
           </span>
         ) : null}

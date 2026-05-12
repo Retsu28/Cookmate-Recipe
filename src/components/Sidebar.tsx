@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, Camera, User, Bell, UtensilsCrossed } from 'lucide-react';
+import { Home, Search, Calendar, Camera, User, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -17,9 +17,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-white border-r border-stone-200 flex flex-col h-full">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white">
-          <UtensilsCrossed size={24} />
-        </div>
+        <img src="/logo.png" alt="CookMate" className="w-10 h-10" />
         <h1 className="text-xl font-bold tracking-tight text-stone-900">CookMate</h1>
       </div>
 

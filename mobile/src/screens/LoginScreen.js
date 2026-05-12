@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Animated,
   Pressable,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -106,9 +107,7 @@ export default function LoginScreen({ navigation }) {
 
             <Animated.View style={[styles.card, cardStyle]}>
               <View style={styles.brand}>
-                <View style={styles.logo}>
-                  <Ionicons name="restaurant" size={26} color="#fff" />
-                </View>
+                <Image source={require('../../assets/logo.png')} style={styles.logo} />
                 <Text style={styles.title}>Welcome back</Text>
                 <Text style={styles.subtitle}>Sign in to keep cooking with CookMate.</Text>
               </View>

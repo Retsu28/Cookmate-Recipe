@@ -1,0 +1,107 @@
+const MAX_AI_CAMERA_QUEUE_SIZE = 50;
+const CONFIGURED_ACTIVE = Number(process.env.GEMINI_IMAGE_ANALYSIS_ACTIVE_LIMIT || 1);
+const MAX_AI_CAMERA_ACTIVE_REQUESTS = Number.isFinite(CONFIGURED_ACTIVE)
+  ? Math.max(1, Math.min(CONFIGURED_ACTIVE, MAX_AI_CAMERA_QUEUE_SIZE))
+  : 1;
+
+const AI_CAMERA_QUEUE_WARNING =
+  'AI Camera is busy. Your image is queued and will be analyzed automatically.';
+const AI_CAMERA_BUSY_WARNING =
+  'Image analysis is currently busy. Many users are analyzing images right now. Please wait and try again shortly.';
+const AI_CAMERA_QUEUE_FULL = `Queue is full (${MAX_AI_CAMERA_QUEUE_SIZE}/${MAX_AI_CAMERA_QUEUE_SIZE}). Please wait until a slot becomes available.`;
+const BG_REMOVAL_QUEUE_WARNING = 'AI Camera background removal is busy. Your image is queued.';
+
+const aiCameraQueue = [];
+let aiCameraActiveRequests = 0;
+let bgRemovalQueue = Promise.resolve();
+let bgRemovalQueueSize = 0;
+
+function getAiCameraQueueSnapshot() {
+  const queueCount = aiCameraActiveRequests + aiCameraQueue.length;
+  return {
+    queueCount,
+    queueLimit: MAX_AI_CAMERA_QUEUE_SIZE,
+    queueLabel: `Queue: ${queueCount}/${MAX_AI_CAMERA_QUEUE_SIZE}`,
+    activeCount: aiCameraActiveRequests,
+    waitingCount: aiCameraQueue.length,
+  };
+}
+
+function buildQueueFullError() {
+  const snapshot = getAiCameraQueueSnapshot();
+  const err = new Error(AI_CAMERA_BUSY_WARNING);
+  err.code = 'AI_IMAGE_ANALYSIS_QUEUE_FULL';
+  err.status = 429;
+  err.queueCount = snapshot.queueCount;
+  err.queueLimit = snapshot.queueLimit;
+  err.queueLabel = `Queue: ${snapshot.queueLimit}/${snapshot.queueLimit}`;
+  err.queueFullMessage = AI_CAMERA_QUEUE_FULL;
+  return err;
+}
+
+function enqueueAiCameraAnalysis(task) {
+  const startNextQueuedAnalysis = () => {
+    if (aiCameraActiveRequests >= MAX_AI_CAMERA_ACTIVE_REQUESTS) return;
+    const next = aiCameraQueue.shift();
+    if (next) next();
+  };
+
+  return new Promise((resolve, reject) => {
+    const currentQueueCount = aiCameraActiveRequests + aiCameraQueue.length;
+    if (currentQueueCount >= MAX_AI_CAMERA_QUEUE_SIZE) {
+      reject(buildQueueFullError());
+      return;
+    }
+
+    const queuePosition = currentQueueCount + 1;
+    const queueInfo = {
+      queuePosition,
+      queueCount: queuePosition,
+      queueLimit: MAX_AI_CAMERA_QUEUE_SIZE,
+      queueLabel: `Queue: ${queuePosition}/${MAX_AI_CAMERA_QUEUE_SIZE}`,
+      queued: aiCameraActiveRequests >= MAX_AI_CAMERA_ACTIVE_REQUESTS,
+      queueWarning: queuePosition > 1 ? AI_CAMERA_QUEUE_WARNING : null,
+    };
+
+    const run = () => {
+      aiCameraActiveRequests += 1;
+      Promise.resolve()
+        .then(() => task(queueInfo))
+        .then(resolve, reject)
+        .finally(() => {
+          aiCameraActiveRequests = Math.max(0, aiCameraActiveRequests - 1);
+          startNextQueuedAnalysis();
+        });
+    };
+
+    if (aiCameraActiveRequests < MAX_AI_CAMERA_ACTIVE_REQUESTS) {
+      run();
+      return;
+    }
+    aiCameraQueue.push(run);
+  });
+}
+
+function enqueueBackgroundRemoval(task) {
+  const queuePosition = bgRemovalQueueSize;
+  bgRemovalQueueSize += 1;
+
+  const run = bgRemovalQueue
+    .catch(() => {})
+    .then(() => task({ queuePosition }));
+
+  bgRemovalQueue = run
+    .finally(() => { bgRemovalQueueSize = Math.max(0, bgRemovalQueueSize - 1); })
+    .catch(() => {});
+
+  return run;
+}
+
+module.exports = {
+  enqueueAiCameraAnalysis,
+  enqueueBackgroundRemoval,
+  getAiCameraQueueSnapshot,
+  AI_CAMERA_QUEUE_WARNING,
+  AI_CAMERA_BUSY_WARNING,
+  BG_REMOVAL_QUEUE_WARNING,
+};

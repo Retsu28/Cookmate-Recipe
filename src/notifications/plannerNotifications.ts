@@ -116,18 +116,26 @@ async function markFired(plan: MealPlan, channel: string) {
   }).catch(() => {});
 }
 
+const MEAL_TYPE_EMOJI: Record<string, string> = {
+  breakfast: '🌅',
+  lunch: '🍱',
+  dinner: '🍽️',
+};
+
+const MEAL_TYPE_ACTION: Record<string, string> = {
+  breakfast: 'Good morning, time to cook!',
+  lunch: 'Lunch break! Start cooking now.',
+  dinner: 'Dinner time! Fire up the stove.',
+};
+
 function notificationCopy(plan: MealPlan) {
   const recipeTitle = plan.recipe?.title || 'your planned meal';
-  if (plan.meal_type === 'breakfast') {
-    return { title: "It's breakfast time!", body: `Time to cook ${recipeTitle}.` };
-  }
-  if (plan.meal_type === 'lunch') {
-    return { title: 'Lunch reminder', body: `${recipeTitle} is scheduled now.` };
-  }
-  if (plan.meal_type === 'dinner') {
-    return { title: 'Dinner is ready to cook!', body: `${recipeTitle} is on your planner now.` };
-  }
-  return { title: `${plan.meal_type_label} reminder`, body: `${recipeTitle} is scheduled now.` };
+  const mealType = plan.meal_type || '';
+  const emoji = MEAL_TYPE_EMOJI[mealType] || '🍴';
+  const action = MEAL_TYPE_ACTION[mealType] || 'Time to start cooking!';
+  const timeWindow = formatPlanWindow(plan);
+  const body = timeWindow ? `${action}\n${timeWindow}` : action;
+  return { title: `${emoji} ${recipeTitle}`, body };
 }
 
 function reminderNotificationData(plan: MealPlan, dedupeKey: string) {
@@ -144,10 +152,12 @@ function showInAppMealReminder(plan: MealPlan, dedupeKey: string) {
   if (typeof window === 'undefined') return false;
 
   const copy = notificationCopy(plan);
+  const timeWindow = formatPlanWindow(plan);
+  const action = MEAL_TYPE_ACTION[plan.meal_type || ''] || 'Time to start cooking!';
   const data = reminderNotificationData(plan, dedupeKey);
   toast(copy.title, {
     id: dedupeKey,
-    description: copy.body,
+    description: timeWindow ? `${action} · ${timeWindow}` : action,
     duration: 12_000,
     action: {
       label: 'Open',

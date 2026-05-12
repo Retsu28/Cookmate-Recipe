@@ -29,6 +29,16 @@ const aiAnalyzeLimiter = rateLimit({
   },
 });
 
+const removeBgLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute window
+  max: 3,              // max 3 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many background removal requests. Please wait a moment before trying again.',
+  },
+});
+
 router.post('/recommend', mlController.recommendByIngredients);
 router.post('/recommend/by-ingredients', mlController.recommendByIngredients);
 
@@ -48,7 +58,7 @@ router.post('/camera/analyze', aiCameraLimiter, mlController.analyzeImage);
 router.post('/analyze-ingredients', aiAnalyzeLimiter, mlController.analyzeIngredients);
 
 // AI Camera — background removal endpoint (for mobile)
-router.post('/camera/remove-bg', mlController.removeBackground);
+router.post('/camera/remove-bg', removeBgLimiter, mlController.removeBackground);
 
 // Legacy GET stub (backwards compat)
 router.get('/camera', mlController.camera);

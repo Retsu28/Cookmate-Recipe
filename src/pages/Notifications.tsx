@@ -4,13 +4,15 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import {
-  Bell, Clock, ShoppingBag, Check, Trash2, MoreVertical
+  Bell, Clock, ShoppingBag, Check, Trash2, MoreVertical, Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { NotificationsPageSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { mealPlannerService, type MealPlan, type GroceryList } from '@/services/mealPlannerService';
+import { notificationService, type Notification } from '@/services/notificationService';
+import { useAuth } from "@/context/AuthContext";
 import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '@/notifications/plannerNotifications';
 
 type PlannerNotification = {
@@ -20,17 +22,57 @@ type PlannerNotification = {
   message: string;
   time: string;
   read: boolean;
-  icon: typeof Clock | typeof ShoppingBag;
+  icon: typeof Clock | typeof ShoppingBag | typeof Sparkles;
   color: string;
   actionPath: string;
+  source: 'planner';
 };
+
+type DbNotificationDisplay = {
+  id: number;
+  type: 'Recipe' | 'System';
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  icon: typeof Sparkles | typeof Bell;
+  color: string;
+  actionPath: string;
+  source: 'db';
+  dbId: number;
+};
+
+type CombinedNotification = PlannerNotification | DbNotificationDisplay;
+
+const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
+
+function getReadPlannerIds(): number[] {
+  try {
+    const stored = localStorage.getItem(READ_PLANNER_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveReadPlannerIds(ids: number[]) {
+  try {
+    localStorage.setItem(READ_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<PlannerNotification[]>([]);
+  const { user } = useAuth();
+  const [plannerNotifications, setPlannerNotifications] = useState<PlannerNotification[]>([]);
+  const [dbNotifications, setDbNotifications] = useState<DbNotificationDisplay[]>([]);
   const [filter, setFilter] = useState('all');
   const isInitialLoading = useInitialContentLoading();
+  const [readPlannerIds, setReadPlannerIds] = useState<number[]>(getReadPlannerIds());
 
+  const notifications: CombinedNotification[] = [...dbNotifications, ...plannerNotifications];
   const unreadCount = notifications.filter(n => !n.read).length;
   const normalizeType = (value: string) => value.toLowerCase().replace(/s$/, '');
 
@@ -42,63 +84,152 @@ export default function NotificationsPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [upcomingRes, groceryRes] = await Promise.all([
+        // Load both planner notifications and DB notifications
+        const [upcomingRes, groceryRes, dbNotifsRes] = await Promise.all([
           mealPlannerService.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
           mealPlannerService.getGroceryList().catch(() => null),
+          user?.id ? notificationService.getNotifications(user.id).catch(() => []) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         const plans = (upcomingRes as { plans?: MealPlan[] } | null)?.plans || [];
         const groceryList = (groceryRes as { groceryList?: GroceryList } | null)?.groceryList;
-        const nextNotifications: PlannerNotification[] = [];
+        const dbNotifs: Notification[] = dbNotifsRes || [];
+
+        const nextPlannerNotifications: PlannerNotification[] = [];
+        const nextDbNotifications: DbNotificationDisplay[] = [];
+
+        // Get stored read IDs for planner notifications
+        const storedReadIds = getReadPlannerIds();
+
+        // Convert DB notifications
+        dbNotifs.forEach((notif: Notification) => {
+          const isRecipe = notif.type?.toLowerCase() === 'recipe';
+          nextDbNotifications.push({
+            id: notif.id + 100000, // Offset to avoid ID collision with planner notifications
+            dbId: notif.id,
+            type: isRecipe ? 'Recipe' : 'System',
+            title: notif.title,
+            message: notif.message,
+            time: new Date(notif.created_at).toLocaleDateString(),
+            read: notif.is_read,
+            icon: isRecipe ? Sparkles : Bell,
+            color: isRecipe
+              ? 'text-green-600 bg-green-100/60 dark:text-green-400 dark:bg-green-500/20'
+              : 'text-blue-500 bg-blue-100/60 dark:text-blue-400 dark:bg-blue-500/20',
+            actionPath: isRecipe ? '/recipes' : '/',
+            source: 'db',
+          });
+        });
 
         plans.forEach((plan: MealPlan) => {
           const status = getPlanWindowStatus(plan);
-          nextNotifications.push({
+          const isRead = storedReadIds.includes(plan.id);
+          nextPlannerNotifications.push({
             id: plan.id,
             type: 'Reminder',
             title: `${plan.meal_type_label} · ${formatPlanWindow(plan)}`,
             message: `${getCountdownText(plan)} · ${plan.recipe?.title || 'Planned meal'}`,
             time: status === 'active' ? 'Active now' : 'Upcoming',
-            read: false,
+            read: isRead,
             icon: Clock,
             color: 'text-orange-500 bg-orange-100/60 dark:text-orange-400 dark:bg-orange-500/20',
             actionPath: plan.recipe?.id ? `/recipe/${plan.recipe.id}` : '/planner',
+            source: 'planner',
           });
         });
 
         if (groceryList && groceryList.totalItems > 0) {
-          nextNotifications.push({
-            id: -1,
+          const groceryId = -1;
+          const isGroceryRead = storedReadIds.includes(groceryId);
+          nextPlannerNotifications.push({
+            id: groceryId,
             type: 'Shopping',
             title: 'Grocery list ready',
             message: `${groceryList.totalItems} items from your meal planner.`,
             time: 'Now',
-            read: false,
+            read: isGroceryRead,
             icon: ShoppingBag,
             color: 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20',
             actionPath: '/planner',
+            source: 'planner',
           });
         }
 
-        setNotifications(nextNotifications);
+        setPlannerNotifications(nextPlannerNotifications);
+        setDbNotifications(nextDbNotifications);
       } catch {
-        setNotifications([]);
+        setPlannerNotifications([]);
+        setDbNotifications([]);
       }
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.id]);
 
-  const markAllRead = () => {
-    setNotifications(current => current.map(n => ({ ...n, read: true })));
+  const markAllRead = async () => {
+    // Update local state for planner notifications
+    const allPlannerIds = plannerNotifications.map(n => n.id);
+    setPlannerNotifications(current => current.map(n => ({ ...n, read: true })));
+    setDbNotifications(current => current.map(n => ({ ...n, read: true })));
+
+    // Persist all planner notification IDs to localStorage
+    const newReadIds = [...new Set([...readPlannerIds, ...allPlannerIds])];
+    setReadPlannerIds(newReadIds);
+    saveReadPlannerIds(newReadIds);
+
+    // Call API to mark all DB notifications as read
+    try {
+      await notificationService.markAllAsRead();
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
   };
 
-  const markRead = (id: number) => {
-    setNotifications(current => current.map(n => n.id === id ? { ...n, read: true } : n));
+  const markRead = async (id: number) => {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif) return;
+
+    if (notif.source === 'db') {
+      // Update local state for DB notification
+      setDbNotifications(current => current.map(n => n.id === id ? { ...n, read: true } : n));
+      // Call API to persist
+      try {
+        await notificationService.markAsRead(notif.dbId);
+      } catch (err) {
+        console.error('Failed to mark as read:', err);
+      }
+    } else {
+      // Update local state for planner notifications
+      setPlannerNotifications(current => current.map(n => n.id === id ? { ...n, read: true } : n));
+      // Persist to localStorage
+      const newReadIds = [...readPlannerIds, id];
+      setReadPlannerIds(newReadIds);
+      saveReadPlannerIds(newReadIds);
+    }
   };
 
-  const deleteNotification = (id: number) => {
-    setNotifications(current => current.filter(n => n.id !== id));
+  const deleteNotification = async (id: number) => {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif) return;
+
+    if (notif.source === 'db') {
+      // Remove from local state
+      setDbNotifications(current => current.filter(n => n.id !== id));
+      // Call API to persist delete
+      try {
+        await notificationService.deleteNotification(notif.dbId);
+      } catch (err) {
+        console.error('Failed to delete notification:', err);
+      }
+    } else {
+      // Just update local state for planner notifications
+      setPlannerNotifications(current => current.filter(n => n.id !== id));
+    }
+  };
+
+  const clearAll = () => {
+    setPlannerNotifications([]);
+    setDbNotifications([]);
   };
 
   const openNotification = (id: number) => {
@@ -138,7 +269,7 @@ export default function NotificationsPage() {
             </Button>
             <Button
               variant="ghost"
-              onClick={() => setNotifications([])}
+              onClick={clearAll}
               className="rounded-full bg-orange-50 font-bold text-orange-600 gap-2 hover:bg-orange-100 hover:text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 dark:hover:text-orange-300"
             >
               <Trash2 size={16} /> Clear all
@@ -148,7 +279,7 @@ export default function NotificationsPage() {
 
         <Tabs defaultValue="all" onValueChange={setFilter} className="space-y-8">
           <TabsList className="bg-white p-1.5 rounded-full border border-stone-100 shadow-sm w-full overflow-x-auto justify-start sm:justify-center scrollbar-hide flex dark:bg-stone-800/50 dark:border-stone-700 dark:shadow-none">
-            {['All', 'Reminders', 'Shopping'].map((t) => (
+            {['All', 'Reminders', 'Shopping', 'Recipes'].map((t) => (
               <TabsTrigger key={t} value={t.toLowerCase()} className="rounded-full px-6 py-2.5 transition-all whitespace-nowrap data-active:bg-orange-500 data-active:text-white dark:text-stone-300 data-active:dark:bg-orange-600">
                 {t}
               </TabsTrigger>
@@ -216,6 +347,7 @@ export default function NotificationsPage() {
                 <div className="flex flex-row sm:flex-col justify-end sm:justify-between items-center sm:items-end gap-4 sm:gap-0 border-t sm:border-t-0 border-stone-100 pt-4 sm:pt-0 dark:border-stone-700">
                   <button
                     onClick={(event) => event.stopPropagation()}
+                    aria-label="More options"
                     className="p-2 text-stone-300 hover:text-stone-600 rounded-full hover:bg-stone-100 transition-colors dark:text-stone-600 dark:hover:text-stone-400 dark:hover:bg-stone-700"
                   >
                     <MoreVertical size={20} />
@@ -225,6 +357,7 @@ export default function NotificationsPage() {
                       event.stopPropagation();
                       deleteNotification(n.id);
                     }}
+                    aria-label="Delete notification"
                     className="rounded-full p-2 text-stone-300 transition-all hover:bg-orange-50 hover:text-orange-500 sm:opacity-0 group-hover:opacity-100 dark:text-stone-600 dark:hover:bg-orange-900/30 dark:hover:text-orange-400"
                   >
                     <Trash2 size={20} />

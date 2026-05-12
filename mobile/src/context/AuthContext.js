@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useRef, useContext } from 'react';
+import { AppState } from 'react-native';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext();
@@ -9,6 +10,8 @@ export const AuthProvider = ({ children }) => {
   const [showPostLoginSplash, setShowPostLoginSplash] = useState(false);
   const [showLogoutSplash, setShowLogoutSplash] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -33,6 +36,18 @@ export const AuthProvider = ({ children }) => {
     };
 
     loadSession();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if (nextState === 'active' && prev !== 'active') {
+        authService.me().then((fresh) => {
+          if (fresh) setUser(fresh);
+        }).catch(() => {});
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   const login = async (nextUser) => {

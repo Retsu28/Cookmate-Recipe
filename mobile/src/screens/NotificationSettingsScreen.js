@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Switch,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppTheme } from '../context/ThemeContext';
 import { NotificationSettingsContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
+import { settingsApi } from '../api/api';
+import { useAuth } from '../context/AuthContext';
 
 const STORAGE_KEY = 'cookmate.notificationSettings';
 
@@ -103,6 +106,7 @@ function ToggleRow({ title, description, checked, icon, onChange, colors }) {
 
 export default function NotificationSettingsScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
+  const { user } = useAuth();
   const [preferences, setPreferences] = useState(defaultNotificationPreferences);
   const [loading, setLoading] = useState(true);
   const isInitialLoading = useInitialContentLoading();
@@ -110,9 +114,37 @@ export default function NotificationSettingsScreen({ navigation }) {
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        // 1. Load from AsyncStorage first (immediate)
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        let localPreferences = defaultNotificationPreferences;
         if (stored) {
-          setPreferences({ ...defaultNotificationPreferences, ...JSON.parse(stored) });
+          localPreferences = { ...defaultNotificationPreferences, ...JSON.parse(stored) };
+          setPreferences(localPreferences);
+        }
+
+        // 2. Sync with API if logged in
+        if (user?.id) {
+          try {
+            const { data } = await settingsApi.getSettings(user.id, 'notifications');
+            if (data?.value) {
+              const apiPreferences = data.value;
+              
+              // Map API format to local format
+              const mappedPreferences = {
+                pushAlerts: typeof apiPreferences.pushNotifications === 'boolean' ? apiPreferences.pushNotifications : localPreferences.pushAlerts,
+                emailAlerts: typeof apiPreferences.emailNotifications === 'boolean' ? apiPreferences.emailNotifications : localPreferences.emailAlerts,
+                mealReminders: localPreferences.mealReminders, // Keep local default
+                ingredientExpiry: localPreferences.ingredientExpiry, // Keep local default
+                recommendations: typeof apiPreferences.newRecipeAlerts === 'boolean' ? apiPreferences.newRecipeAlerts : localPreferences.recommendations,
+              };
+              
+              setPreferences(mappedPreferences);
+              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(mappedPreferences));
+            }
+          } catch (apiError) {
+            console.warn('Failed to sync with API, using local settings:', apiError);
+            // Keep local preferences if API fails
+          }
         }
       } catch (e) {
         console.error('Failed to load notification settings', e);
@@ -121,7 +153,7 @@ export default function NotificationSettingsScreen({ navigation }) {
       }
     };
     loadSettings();
-  }, []);
+  }, [user?.id]);
 
   const togglePreference = (id) => {
     setPreferences((current) => ({ ...current, [id]: !current[id] }));
@@ -129,10 +161,31 @@ export default function NotificationSettingsScreen({ navigation }) {
 
   const savePreferences = async () => {
     try {
+      // Always save to AsyncStorage first (for immediate persistence)
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+      
+      // Sync with API if logged in
+      if (user?.id) {
+        try {
+          // Map local format to API format
+          const apiPayload = {
+            pushNotifications: preferences.pushAlerts,
+            emailNotifications: preferences.emailAlerts,
+            newRecipeAlerts: preferences.recommendations, // Map local to API format
+            weeklyDigest: false, // Default value since this screen doesn't have weekly digest
+          };
+          
+          await settingsApi.saveSettings(user.id, 'notifications', apiPayload);
+        } catch (apiError) {
+          console.warn('Failed to sync with API, but local save succeeded:', apiError);
+          // Continue with navigation even if API sync fails
+        }
+      }
+      
       navigation.goBack();
     } catch (e) {
       console.error('Failed to save notification settings', e);
+      Alert.alert('Error', 'Failed to save notification settings.');
     }
   };
 

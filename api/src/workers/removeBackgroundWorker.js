@@ -1,6 +1,10 @@
 const BG_REMOVAL_INPUT_MAX_EDGE = Number(process.env.BG_REMOVAL_INPUT_MAX_EDGE || 768);
 const BG_REMOVAL_INPUT_QUALITY = Number(process.env.BG_REMOVAL_INPUT_QUALITY || 82);
 
+// ── HF API config ─────────────────────────────────────────────────────────
+const HF_API_URL = 'https://api-inference.huggingface.co/models/briaai/RMBG-1.4';
+const HF_API_TIMEOUT_MS = Number(process.env.HF_API_TIMEOUT_MS || 60000);
+
 async function resizeInputForBackgroundRemoval(inputBuffer) {
   const Jimp = require('jimp-compact');
   const source = await Jimp.read(inputBuffer);
@@ -56,6 +60,59 @@ async function addWhiteOutlineToPng(pngBuffer, thickness = 6) {
   return outlined.getBufferAsync(Jimp.MIME_PNG);
 }
 
+// ── Strategy 1: Hugging Face Inference API ────────────────────────────────
+async function removeBackgroundViaHF(inputBuffer, mimeType) {
+  const hfToken = process.env.HF_API_TOKEN;
+  if (!hfToken || hfToken.trim() === '') {
+    throw new Error('HF_API_TOKEN not set.');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), HF_API_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(HF_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${hfToken.trim()}`,
+        'Content-Type': mimeType || 'image/jpeg',
+        'Accept': 'image/png',
+      },
+      body: inputBuffer,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.status === 503) {
+    const body = await response.json().catch(() => ({}));
+    const waitSec = body?.estimated_time ? Math.ceil(body.estimated_time) : 30;
+    throw new Error(`HF model loading, retry after ${waitSec}s.`);
+  }
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => response.statusText);
+    throw new Error(`HF API error ${response.status}: ${errText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// ── Strategy 2: @imgly/background-removal-node (local fallback) ──────────
+async function removeBackgroundViaImgly(inputBuffer, mimeType) {
+  const { removeBackground } = await import('@imgly/background-removal-node');
+  const blob = new Blob([inputBuffer], { type: mimeType || 'image/jpeg' });
+  const resultBlob = await removeBackground(blob, {
+    model: process.env.BG_REMOVAL_MODEL || 'small',
+    output: { format: 'image/png', quality: 1, type: 'foreground' },
+  });
+  const arrayBuffer = await resultBlob.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
 process.once('message', async (payload) => {
   try {
     const { base64Data, mimeType } = payload || {};
@@ -63,8 +120,9 @@ process.once('message', async (payload) => {
       throw new Error('No image data received by background removal worker.');
     }
 
-    const { removeBackground } = await import('@imgly/background-removal-node');
     const inputBuffer = Buffer.from(base64Data, 'base64');
+
+    // Resize input (jimp-compact) — shared for both strategies
     let optimizedInput = { buffer: inputBuffer, mimeType: mimeType || 'image/jpeg' };
     try {
       optimizedInput = await resizeInputForBackgroundRemoval(inputBuffer);
@@ -72,14 +130,21 @@ process.once('message', async (payload) => {
       console.warn('[remove-bg worker] Input resize skipped:', resizeErr.message);
     }
 
-    const blob = new Blob([optimizedInput.buffer], { type: optimizedInput.mimeType });
-    const resultBlob = await removeBackground(blob, {
-      model: process.env.BG_REMOVAL_MODEL || 'small',
-      output: { format: 'image/png', quality: 1, type: 'foreground' },
-    });
-    const arrayBuffer = await resultBlob.arrayBuffer();
-    let resultBuffer = Buffer.from(arrayBuffer);
+    // ── Hybrid: try HF first, fallback to @imgly ──────────────────────────
+    let resultBuffer;
+    let strategyUsed = 'hf';
+    try {
+      console.log('[remove-bg worker] Trying Hugging Face API...');
+      resultBuffer = await removeBackgroundViaHF(optimizedInput.buffer, optimizedInput.mimeType);
+      console.log('[remove-bg worker] HF API succeeded.');
+    } catch (hfErr) {
+      console.warn('[remove-bg worker] HF API failed, falling back to local @imgly:', hfErr.message);
+      strategyUsed = 'imgly';
+      resultBuffer = await removeBackgroundViaImgly(optimizedInput.buffer, optimizedInput.mimeType);
+      console.log('[remove-bg worker] @imgly local succeeded.');
+    }
 
+    // White outline (jimp-compact) — same for both strategies
     try {
       resultBuffer = await addWhiteOutlineToPng(resultBuffer, 6);
     } catch (outlineErr) {
@@ -90,6 +155,7 @@ process.once('message', async (payload) => {
       type: 'remove-bg-result',
       ok: true,
       cutout: `data:image/png;base64,${resultBuffer.toString('base64')}`,
+      strategyUsed,
     });
     process.exit(0);
   } catch (err) {

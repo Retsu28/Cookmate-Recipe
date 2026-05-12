@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
@@ -121,12 +121,12 @@ export default function Login() {
                     transition={{ delay: 0.05, duration: 0.4 }}
                     className="flex flex-col items-center text-center mb-8"
                   >
-                    <motion.div
+                    <motion.img
+                      src="/logo.png"
+                      alt="CookMate"
                       whileHover={{ rotate: [0, -6, 6, 0], transition: { duration: 0.5 } }}
-                      className="w-14 h-14 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-sm mb-4"
-                    >
-                      <ChefHat className="w-7 h-7" />
-                    </motion.div>
+                      className="w-14 h-14 mb-4"
+                    />
                     <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Welcome back</h1>
                     <p className="text-stone-500 text-sm mt-1">Sign in to keep cooking with CookMate.</p>
                   </motion.div>

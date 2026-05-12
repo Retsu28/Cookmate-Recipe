@@ -53,7 +53,12 @@ async function startServer() {
   );
   app.use(express.json({ limit: '15mb' }));
   app.use(cookieParser());
-  app.use('/uploads', express.static(path.resolve(__dirname, '..', '..', '..', 'uploads')));
+  app.use('/uploads', express.static(path.resolve(__dirname, '..', 'uploads')));
+
+  // ─── Health check ───
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  });
 
   // ─── API Routes ───
   app.use('/api/settings', settingsRouter);
@@ -75,6 +80,21 @@ async function startServer() {
     }
     startMealReminderWorker();
   });
+
+  const shutdown = (signal) => {
+    console.log(`\n[server] ${signal} received — shutting down gracefully...`);
+    server.close(() => {
+      console.log('[server] HTTP server closed.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('[server] Forced shutdown after timeout.');
+      process.exit(1);
+    }, 10_000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 startServer();

@@ -22,6 +22,8 @@ const rows: Array<{
   title: string;
   description: string;
   icon: LucideIcon;
+  disabled?: boolean;
+  badge?: string;
 }> = [
   {
     id: 'isProfilePublic',
@@ -34,6 +36,8 @@ const rows: Array<{
     title: 'Show kitchen inventory',
     description: 'Allow others to see your kitchen inventory if your profile is public.',
     icon: PackageOpen,
+    disabled: true,
+    badge: 'Coming Soon',
   },
 ];
 
@@ -43,32 +47,44 @@ type ToggleRowProps = {
   checked: boolean;
   icon: LucideIcon;
   onChange: () => void;
+  disabled?: boolean;
+  badge?: string;
 };
 
-function ToggleRow({ title, description, checked, icon: Icon, onChange }: ToggleRowProps) {
+function ToggleRow({ title, description, checked, icon: Icon, onChange, disabled, badge }: ToggleRowProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={onChange}
+      onClick={() => !disabled && onChange()}
+      disabled={disabled}
       className={`flex w-full items-start justify-between gap-4 rounded-2xl border p-4 text-left transition-all ${
-        checked
-          ? 'border-orange-200 bg-orange-50/70 dark:border-orange-500/30 dark:bg-orange-950/20'
-          : 'border-stone-200 bg-white hover:border-orange-200 dark:border-stone-700 dark:bg-stone-800/50 dark:hover:border-orange-500/40'
+        disabled
+          ? 'cursor-not-allowed opacity-60 border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800/30'
+          : checked
+            ? 'border-orange-200 bg-orange-50/70 dark:border-orange-500/30 dark:bg-orange-950/20'
+            : 'border-stone-200 bg-white hover:border-orange-200 dark:border-stone-700 dark:bg-stone-800/50 dark:hover:border-orange-500/40'
       }`}
     >
       <span className="flex min-w-0 items-start gap-3">
-        <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${checked ? 'bg-orange-100 text-orange-600' : 'bg-stone-100 text-stone-500'}`}>
+        <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${disabled ? 'bg-stone-100 text-stone-400' : checked ? 'bg-orange-100 text-orange-600' : 'bg-stone-100 text-stone-500'}`}>
           <Icon className="size-5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-base font-extrabold text-stone-900 dark:text-stone-100">{title}</span>
+          <span className="flex items-center gap-2">
+            <span className="block text-base font-extrabold text-stone-900 dark:text-stone-100">{title}</span>
+            {badge && (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
+                {badge}
+              </span>
+            )}
+          </span>
           <span className="mt-1 block text-sm font-medium leading-relaxed text-stone-500 dark:text-stone-400">{description}</span>
         </span>
       </span>
-      <span className={`mt-1 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors ${checked ? 'bg-orange-500' : 'bg-stone-200 dark:bg-stone-700'}`}>
-        <span className={`size-5 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
+      <span className={`mt-1 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors ${disabled ? 'bg-stone-200 dark:bg-stone-700' : checked ? 'bg-orange-500' : 'bg-stone-200 dark:bg-stone-700'}`}>
+        <span className={`size-5 rounded-full bg-white shadow-sm transition-transform ${checked && !disabled ? 'translate-x-5' : 'translate-x-0'}`} />
       </span>
     </button>
   );
@@ -186,7 +202,16 @@ export default function PrivacySettings() {
 
         <div className="grid gap-3">
           {rows.map((row) => (
-            <ToggleRow key={row.id} title={row.title} description={row.description} icon={row.icon} checked={preferences[row.id]} onChange={() => togglePreference(row.id)} />
+            <ToggleRow
+              key={row.id}
+              title={row.title}
+              description={row.description}
+              icon={row.icon}
+              checked={preferences[row.id]}
+              onChange={() => togglePreference(row.id)}
+              disabled={row.disabled}
+              badge={row.badge}
+            />
           ))}
         </div>
 

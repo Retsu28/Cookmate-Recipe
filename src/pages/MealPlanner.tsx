@@ -45,6 +45,8 @@ import {
   type MealType,
   type SavedGroceryList,
 } from '@/services/mealPlannerService';
+import RecipeRecommendationsDrawer from '@/components/meal-planner/RecipeRecommendationsDrawer';
+import AddToPlannerModal from '@/components/meal-planner/AddToPlannerModal';
 
 const mealSlots: Array<{ id: MealType; label: string; color: string }> = [
   { id: 'breakfast', label: 'Breakfast', color: 'bg-orange-300' },
@@ -134,6 +136,8 @@ export default function MealPlanner() {
     selectedSlotsFromFocus(initialFocusedDate, initialMealType, initialSelectMode),
   );
   const [slotModal, setSlotModal] = useState<{ plans: MealPlan[]; slotLabel: string; date: Date } | null>(null);
+  const [recommendationsDrawer, setRecommendationsDrawer] = useState<{ open: boolean; mealType: MealType | null; date: Date | null }>({ open: false, mealType: null, date: null });
+  const [addToPlannerRecipe, setAddToPlannerRecipe] = useState<{ id: number; title: string; image_url: string | null; category: string | null } | null>(null);
 
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -673,14 +677,17 @@ export default function MealPlanner() {
                           >
                             <div className="mb-2 flex items-center justify-between gap-1">
                               <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
-                              <Link
-                                to="/recipes"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRecommendationsDrawer({ open: true, mealType: slot.id, date: day });
+                                }}
                                 className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                                 aria-label={`Add ${slot.label} recipe`}
                               >
                                 <Plus size={13} />
-                              </Link>
+                              </button>
                             </div>
 
                             <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
@@ -688,7 +695,7 @@ export default function MealPlanner() {
                               {windowLabel}{hasCustomTime ? ' · CUSTOM' : ''}
                             </p>
                             <p className={cn(
-                              'mt-0.5 text-[9px] font-extrabold uppercase tracking-widest',
+                              'mt-0.5 text-[9px] font-extrabold uppercase tracking-wide truncate',
                               isActiveSlot ? 'text-orange-500 dark:text-orange-400' : 'text-stone-300 dark:text-stone-600',
                             )}>
                               {statusLabel}
@@ -710,11 +717,11 @@ export default function MealPlanner() {
                                     onKeyDown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); navigate(`/recipe/${plan.recipe.id}`); } }}
                                     className="flex flex-1 flex-col cursor-pointer"
                                   >
-                                    <p className="line-clamp-2 text-[14px] font-extrabold leading-snug text-stone-900 dark:text-white">
+                                    <p className="line-clamp-2 text-[13px] font-extrabold leading-snug text-stone-900 dark:text-white">
                                       {plan.recipe.title}
                                     </p>
                                     <p className={cn(
-                                      'mt-1 text-[10px] font-bold uppercase tracking-widest',
+                                      'mt-1 text-[9px] font-bold uppercase tracking-wide truncate',
                                       getPlanWindowStatus(plan, now) === 'active' ? 'text-orange-600 dark:text-orange-300' : 'text-stone-400 dark:text-stone-500',
                                     )}>
                                       {getCountdownText(plan, now)}
@@ -751,7 +758,7 @@ export default function MealPlanner() {
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setSlotModal({ plans: slotPlans, slotLabel: slot.label, date: day }); }}
-                                    className="text-[10px] font-extrabold text-orange-600 hover:underline dark:text-orange-300"
+                                    className="text-left text-[10px] font-extrabold text-orange-600 hover:underline dark:text-orange-300"
                                   >
                                     +{slotPlans.length - 1} more
                                   </button>
@@ -791,14 +798,17 @@ export default function MealPlanner() {
                       >
                         <div className="mb-2 flex items-center justify-between gap-1">
                           <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
-                          <Link
-                            to="/recipes"
-                            onClick={(e) => e.stopPropagation()}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRecommendationsDrawer({ open: true, mealType: slot.id, date: currentDate });
+                            }}
                             className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
                             aria-label={`Add ${slot.label} recipe`}
                           >
                             <Plus size={13} />
-                          </Link>
+                          </button>
                         </div>
 
                         <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
@@ -1167,14 +1177,14 @@ export default function MealPlanner() {
 
         {slotModal ? (
           <div
-            className="fixed inset-0 z-[90] flex items-end justify-center bg-stone-950/45 p-3 backdrop-blur-sm sm:items-center"
+            className="absolute inset-0 z-[90] flex items-start justify-center bg-stone-950/45 p-3 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setSlotModal(null);
             }}
           >
-            <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 dark:border-stone-700 dark:bg-stone-900">
+            <div className="sticky top-4 w-full max-w-lg overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 sm:top-8 dark:border-stone-700 dark:bg-stone-900">
               <div className="flex items-start justify-between gap-4 border-b border-orange-100 p-5 dark:border-stone-700">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">
@@ -1252,6 +1262,38 @@ export default function MealPlanner() {
             </div>
           </div>
         ) : null}
+
+        {/* Recipe Recommendations Drawer */}
+        <RecipeRecommendationsDrawer
+          open={recommendationsDrawer.open}
+          mealType={recommendationsDrawer.mealType}
+          plannedDate={recommendationsDrawer.date ? dayKey(recommendationsDrawer.date) : dayKey(new Date())}
+          onOpenChange={(open) => setRecommendationsDrawer((prev) => ({ ...prev, open }))}
+          scrollTracked
+          onSelectRecipe={(recipe) => {
+            setRecommendationsDrawer((prev) => ({ ...prev, open: false }));
+            setAddToPlannerRecipe({
+              id: recipe.id,
+              title: recipe.title,
+              image_url: recipe.image_url,
+              category: recipe.category,
+            });
+          }}
+        />
+
+        {/* Add to Planner Modal */}
+        <AddToPlannerModal
+          recipe={addToPlannerRecipe}
+          open={!!addToPlannerRecipe}
+          scrollTracked
+          onOpenChange={(open) => {
+            if (!open) setAddToPlannerRecipe(null);
+          }}
+          onPlanned={() => {
+            setAddToPlannerRecipe(null);
+            loadPlans();
+          }}
+        />
       </div>
     </Layout>
   );
@@ -1307,10 +1349,10 @@ function EditPlanModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center overflow-y-auto bg-stone-950/45 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="absolute inset-0 z-[90] flex items-start justify-center bg-stone-950/45 backdrop-blur-sm px-2 sm:px-4">
       <form
         onSubmit={save}
-        className="max-h-[calc(100svh-1rem)] w-full max-w-md overflow-y-auto rounded-[1.5rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 sm:max-h-[calc(100svh-2rem)] sm:rounded-[2rem] dark:border-stone-700 dark:bg-stone-900"
+        className="sticky top-4 w-full max-w-md rounded-[1.5rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 sm:top-8 sm:rounded-[2rem] dark:border-stone-700 dark:bg-stone-900"
       >
         <div className="border-b border-orange-100 p-4 sm:p-5 dark:border-stone-700">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Edit Meal</p>

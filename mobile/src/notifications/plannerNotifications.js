@@ -27,18 +27,26 @@ function buildReminderDedupeKey(plan) {
   return `${plan.id}:${plan.reminder_version || 1}:${plan.scheduled_start_at}`;
 }
 
+const MEAL_TYPE_EMOJI = {
+  breakfast: '\ud83c\udf05',
+  lunch: '\ud83c\udf71',
+  dinner: '\ud83c\udf7d\ufe0f',
+};
+
+const MEAL_TYPE_ACTION = {
+  breakfast: 'Good morning, time to cook!',
+  lunch: 'Lunch break! Start cooking now.',
+  dinner: 'Dinner time! Fire up the stove.',
+};
+
 function notificationCopy(plan) {
   const recipeTitle = plan.recipe?.title || 'your planned meal';
-  if (plan.meal_type === 'breakfast') {
-    return { title: "It's breakfast time!", body: `Time to cook ${recipeTitle}.` };
-  }
-  if (plan.meal_type === 'lunch') {
-    return { title: 'Lunch reminder', body: `${recipeTitle} is scheduled now.` };
-  }
-  if (plan.meal_type === 'dinner') {
-    return { title: 'Dinner is ready to cook!', body: `${recipeTitle} is on your planner now.` };
-  }
-  return { title: `${plan.meal_type_label || 'Meal'} reminder`, body: `${recipeTitle} is scheduled now.` };
+  const mealType = plan.meal_type || '';
+  const emoji = MEAL_TYPE_EMOJI[mealType] || '\ud83c\udf74';
+  const action = MEAL_TYPE_ACTION[mealType] || 'Time to start cooking!';
+  const timeWindow = formatPlanWindow(plan);
+  const body = timeWindow ? `${action}\n${timeWindow}` : action;
+  return { title: `${emoji} ${recipeTitle}`, body };
 }
 
 function parsePlannerInstant(value, zone = 'Asia/Manila') {
@@ -62,7 +70,9 @@ function getNotificationSound() {
 }
 
 function normalizeNow(now, zone) {
-  return now instanceof Date ? DateTime.fromJSDate(now) : parsePlannerInstant(now, zone);
+  if (now instanceof Date) return DateTime.fromJSDate(now);
+  if (typeof now === 'number') return DateTime.fromMillis(now);
+  return parsePlannerInstant(now, zone);
 }
 
 export function getPlanWindowStatus(plan, now = new Date()) {

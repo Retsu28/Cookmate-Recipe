@@ -466,7 +466,7 @@ exports.firebase = async (req, res) => {
 };
 
 const RESET_TOKEN_BYTES = 32;
-const RESET_EXPIRY_SECONDS = 60;
+const RESET_EXPIRY_SECONDS = 3600;
 
 function generateResetToken() {
   return crypto.randomBytes(RESET_TOKEN_BYTES).toString('hex');
@@ -476,7 +476,7 @@ function generateResetToken() {
  * POST /api/auth/forgot-password
  * Body: { email }
  *
- * Generates a secure token (expires in 30 seconds), stores it in the DB,
+ * Generates a secure token (expires in 1 hour), stores it in the DB,
  * and emails a branded reset link. Silently succeeds even if email isn't
  * registered so we don't leak account existence.
  */
@@ -528,7 +528,7 @@ exports.forgotPassword = async (req, res) => {
             <h2 style="color:#f97316;margin:0;font-size:20px;font-weight:800;letter-spacing:-0.02em;">CookMate</h2>
           </div>
           <p style="margin:0 0 12px;font-size:15px;line-height:1.5;">Hello,</p>
-          <p style="margin:0 0 18px;font-size:15px;line-height:1.5;">We received a request to reset your CookMate password. Tap the button below to choose a new one. This link expires in <strong>60 seconds</strong> for security.</p>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.5;">We received a request to reset your CookMate password. Tap the button below to choose a new one. This link expires in <strong>1 hour</strong> for security.</p>
           <a href="${resetLink}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700;font-size:15px;margin:4px 0 18px;">Reset password</a>
           <p style="font-size:13px;color:#78716c;line-height:1.5;margin:0;">If you didn't request this, you can safely ignore this email. Your password won't be changed.</p>
           <hr style="border:none;border-top:1px solid #e7e5e4;margin:24px 0;">
@@ -548,7 +548,7 @@ exports.forgotPassword = async (req, res) => {
  * POST /api/auth/reset-password
  * Body: { token, password }
  *
- * Verifies the token (30-second expiry, single-use), updates the password
+ * Verifies the token (1-hour expiry, single-use), updates the password
  * in Firebase Auth via Admin SDK, marks the token used, and syncs the local
  * PostgreSQL password_hash.
  */

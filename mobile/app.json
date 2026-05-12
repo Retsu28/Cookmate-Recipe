@@ -44,14 +44,19 @@
         {
           "sounds": [
             "./sound/custom_sound.wav"
-          ]
+          ],
+          "icon": "./assets/logo.png",
+          "color": "#f97316",
+          "androidMode": "default",
+          "androidCollapsedTitle": "CookMate Reminders"
         }
       ],
       "@react-native-google-signin/google-signin",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-image-picker"
     ],
     "extra": {
-      "apiBaseUrl": "http://192.168.1.5:5000",
+      "apiBaseUrl": "http://192.168.1.8:5000",
       "firebaseAuthDomain": "https://cookmate-9272d.firebaseapp.com",
       "googleAuthRedirectUri": "https://cookmate-9272d.firebaseapp.com/__/auth/handler",
       "googleWebClientId": "878930590445-q6keo0r1i8kul6l38tlssrv8cq5vvims.apps.googleusercontent.com",

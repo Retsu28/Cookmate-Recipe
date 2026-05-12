@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
-import { View, Text, Animated, StyleSheet, Dimensions, Easing } from 'react-native';
+import { View, Text, Animated, StyleSheet, Dimensions, Easing, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SPLASH_DURATION = 2400;
@@ -51,6 +52,16 @@ export default function SplashScreen({
     new Animated.Value(0.35),
     new Animated.Value(0.35),
   ]).current;
+
+  // Load saved font size for consistent appearance
+  const [savedFontSize, setSavedFontSize] = useState('medium');
+  useEffect(() => {
+    AsyncStorage.getItem('cookmate:fontSize').then((size) => {
+      if (['small', 'medium', 'large'].includes(size)) {
+        setSavedFontSize(size);
+      }
+    });
+  }, []);
 
   const floaterAnims = useRef(
     Array.from({ length: 10 }, () => ({
@@ -208,9 +219,12 @@ export default function SplashScreen({
     outputRange: ['-8deg', '0deg', '8deg'],
   });
 
-  const bgColor = isDark ? colors.background : '#fff7ed';
-  const brandTextColor = isDark ? '#fafaf9' : colors.text;
-  const messageTextColor = isDark ? '#e7e5e4' : colors.textMuted;
+  const bgColor = colors.background;
+  const brandTextColor = colors.text;
+  const messageTextColor = colors.textMuted;
+
+  // Font size scaling based on saved preference
+  const fontScale = savedFontSize === 'small' ? 0.85 : savedFontSize === 'large' ? 1.15 : 1;
 
   return (
     <Animated.View
@@ -237,21 +251,20 @@ export default function SplashScreen({
 
       {/* Center content */}
       <View style={styles.center}>
-        {/* Logo box — matches Login branding */}
+        {/* Full-screen logo */}
         <Animated.View
           style={[
-            styles.logoBox,
+            styles.logoWrap,
             {
-              backgroundColor: colors.primary,
               opacity: fadeIn,
               transform: [{ scale: logoScale }, { rotate: wiggleRotate }],
             },
           ]}
         >
-          <Ionicons name="restaurant" size={40} color="#fff" />
+          <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
         </Animated.View>
 
-        {/* Brand name */}
+        {/* Brand name - scales with saved font size */}
         <Animated.Text
           style={[
             styles.brandText,
@@ -259,15 +272,23 @@ export default function SplashScreen({
               color: brandTextColor,
               opacity: titleFade,
               transform: [{ translateY: titleSlide }],
+              fontSize: Math.round(36 * fontScale),
             },
           ]}
         >
           CookMate
         </Animated.Text>
 
-        {/* Loading message */}
+        {/* Loading message - scales with saved font size */}
         <Animated.Text
-          style={[styles.message, { color: messageTextColor, opacity: msgFade }]}
+          style={[
+            styles.message,
+            {
+              color: messageTextColor,
+              opacity: msgFade,
+              fontSize: Math.round(14 * fontScale),
+            },
+          ]}
         >
           {message}
         </Animated.Text>
@@ -313,18 +334,16 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
   },
-  logoBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
+  logoWrap: {
+    width: 160,
+    height: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#f97316',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
+    marginBottom: 28,
+  },
+  logoImage: {
+    width: 160,
+    height: 160,
   },
   brandText: {
     fontFamily: 'Geist_800ExtraBold',

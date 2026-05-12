@@ -19,13 +19,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { profileApi, apiBaseUrl } from '../api/api';
+import { profileApi, apiBaseUrl, settingsApi } from '../api/api';
 import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { tokenStorage } from '../lib/tokenStorage';
+import { useFontSizes } from '../hooks/useFontSizes';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -54,8 +56,6 @@ const emptyForm = {
   emailNotifications: true,
   recipeAlerts: true,
   weeklyDigest: false,
-  // Privacy settings
-  publicProfile: true,
 };
 
 function normalizeFullName(value) {
@@ -89,13 +89,14 @@ function SectionHeader({ icon, title, caption, colors, compact = false }) {
   );
 }
 
-function FieldLabel({ label, colors }) {
-  return <Text style={[st.label, { color: colors.textSubtle }]}>{label.toUpperCase()}</Text>;
+function FieldLabel({ label, colors, fontSizes }) {
+  return <Text style={[st.label, { color: colors.textSubtle, fontSize: fontSizes.xs }]}>{label.toUpperCase()}</Text>;
 }
 
 export default function ProfileScreen({ navigation }) {
   const { user, refreshUser } = useAuth();
-  const { colors, isDark, toggleTheme } = useAppTheme();
+  const { colors, isDark, toggleTheme, mode, setTheme, fontSize, setFontSize } = useAppTheme();
+  const { fontSizes } = useFontSizes();
   
   const [activeTab, setActiveTab] = useState('account');
   
@@ -113,14 +114,141 @@ export default function ProfileScreen({ navigation }) {
   const [form, setForm] = useState({ ...emptyForm, ...userBaseline });
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [avatarUri, setAvatarUri] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   
+  // Appearance preferences (draft = UI selection, applied = actually saved)
+  const [draftTheme, setDraftTheme] = useState(mode);
+  const [draftFontSize, setDraftFontSize] = useState(fontSize);
+  const [appliedTheme, setAppliedTheme] = useState(mode);
+  const [appliedFontSize, setAppliedFontSize] = useState(fontSize);
+  
+  // Notification preferences (draft = UI selection, applied = actually saved)
+  const [draftNotifications, setDraftNotifications] = useState({
+    pushNotifications: form.pushNotifications,
+    emailNotifications: form.emailNotifications,
+    recipeAlerts: form.recipeAlerts,
+    weeklyDigest: form.weeklyDigest,
+  });
+  const [appliedNotifications, setAppliedNotifications] = useState({
+    pushNotifications: form.pushNotifications,
+    emailNotifications: form.emailNotifications,
+    recipeAlerts: form.recipeAlerts,
+    weeklyDigest: form.weeklyDigest,
+  });
+  
+  // Check for unsaved changes
+  const hasUnsavedAppearance = draftTheme !== appliedTheme || draftFontSize !== appliedFontSize;
+  const hasUnsavedNotifications = 
+    draftNotifications.pushNotifications !== appliedNotifications.pushNotifications ||
+    draftNotifications.emailNotifications !== appliedNotifications.emailNotifications ||
+    draftNotifications.recipeAlerts !== appliedNotifications.recipeAlerts ||
+    draftNotifications.weeklyDigest !== appliedNotifications.weeklyDigest;
+  
   const saveScale = useRef(new Animated.Value(1)).current;
   const isInitialLoading = useInitialContentLoading();
+
+  // Load appearance and notification settings: AsyncStorage first (immediate), then API sync
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        // 1. Load from AsyncStorage first
+        const [savedTheme, savedFontSize, savedNotifications] = await Promise.all([
+          AsyncStorage.getItem('cookmate:theme'),
+          AsyncStorage.getItem('cookmate:fontSize'),
+          AsyncStorage.getItem('cookmate:notifications'),
+        ]);
+        
+        // Set appearance from AsyncStorage first (or use context as fallback)
+        const initialTheme = ['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : mode;
+        const initialFontSize = ['small', 'medium', 'large'].includes(savedFontSize) ? savedFontSize : fontSize;
+        
+        setDraftTheme(initialTheme);
+        setAppliedTheme(initialTheme);
+        setDraftFontSize(initialFontSize);
+        setAppliedFontSize(initialFontSize);
+        
+        // Set notifications from AsyncStorage or default
+        const initialNotifications = savedNotifications ? JSON.parse(savedNotifications) : {
+          pushNotifications: true,
+          emailNotifications: true,
+          recipeAlerts: true,
+          weeklyDigest: false,
+        };
+        setDraftNotifications(initialNotifications);
+        setAppliedNotifications(initialNotifications);
+        
+        // Update form with notification values
+        setForm(prev => ({
+          ...prev,
+          ...initialNotifications,
+        }));
+        
+        // 2. Sync with API if logged in
+        if (user?.id) {
+          const [appearanceData, notificationsData] = await Promise.all([
+            settingsApi.getSettings(user.id, 'appearance'),
+            settingsApi.getSettings(user.id, 'notifications'),
+          ]);
+          
+          // Sync appearance settings — local value wins if already set
+          // (preserves whatever the user toggled on the auth form)
+          if (appearanceData?.data?.value?.theme || appearanceData?.data?.value?.fontSize) {
+            const { theme: apiTheme, fontSize: apiFontSize } = appearanceData.data.value;
+            // Only apply API theme if the user has no locally-stored preference
+            if (['light', 'dark', 'system'].includes(apiTheme) && !savedTheme) {
+              setDraftTheme(apiTheme);
+              setAppliedTheme(apiTheme);
+              await AsyncStorage.setItem('cookmate:theme', apiTheme);
+            }
+            if (['small', 'medium', 'large'].includes(apiFontSize)) {
+              setDraftFontSize(apiFontSize);
+              setAppliedFontSize(apiFontSize);
+              await AsyncStorage.setItem('cookmate:fontSize', apiFontSize);
+            }
+          }
+          
+          // Sync notification settings
+          if (notificationsData?.data?.value) {
+            const apiNotifications = notificationsData.data.value;
+            const normalizedNotifications = {
+              pushNotifications: typeof apiNotifications.pushNotifications === 'boolean' ? apiNotifications.pushNotifications : true,
+              emailNotifications: typeof apiNotifications.emailNotifications === 'boolean' ? apiNotifications.emailNotifications : true,
+              recipeAlerts: typeof apiNotifications.newRecipeAlerts === 'boolean' ? apiNotifications.newRecipeAlerts : true,
+              weeklyDigest: typeof apiNotifications.weeklyDigest === 'boolean' ? apiNotifications.weeklyDigest : false,
+            };
+            
+            setDraftNotifications(normalizedNotifications);
+            setAppliedNotifications(normalizedNotifications);
+            await AsyncStorage.setItem('cookmate:notifications', JSON.stringify(normalizedNotifications));
+            
+            // Update form with API values
+            setForm(prev => ({
+              ...prev,
+              ...normalizedNotifications,
+            }));
+          }
+        }
+      } catch {
+        // Silent fail - AsyncStorage values already applied
+      }
+    };
+    loadSettings();
+  }, [user?.id]);
+
+  // Keep the Profile > Appearance UI in sync with theme changes coming
+  // from elsewhere (e.g. the AuthThemeToggle on the auth forms). Whenever
+  // ThemeContext's `mode` changes, mirror it into both draft and applied
+  // so the selected card visually updates without showing "unsaved changes".
+  useEffect(() => {
+    if (!['light', 'dark', 'system'].includes(mode)) return;
+    setDraftTheme((prev) => (prev === mode ? prev : mode));
+    setAppliedTheme((prev) => (prev === mode ? prev : mode));
+  }, [mode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -159,6 +287,7 @@ export default function ProfileScreen({ navigation }) {
     form.confirmPassword.length > 0 && form.newPassword !== form.confirmPassword;
   const hasChanges = useMemo(
     () =>
+      !!avatarUri ||
       normalizeFullName(form.fullName) !== normalizeFullName(initial.fullName) ||
       normalizeEmail(form.email) !== normalizeEmail(initial.email) ||
       form.bio.trim() !== initial.bio.trim() ||
@@ -166,7 +295,7 @@ export default function ProfileScreen({ navigation }) {
       form.currentPassword.length > 0 ||
       form.newPassword.length > 0 ||
       form.confirmPassword.length > 0,
-    [form, initial]
+    [form, initial, avatarUri]
   );
 
   const displayName = useMemo(() => {
@@ -193,6 +322,11 @@ export default function ProfileScreen({ navigation }) {
   const setField = (key, value) => {
     setSuccess(false);
     setForm((current) => ({ ...current, [key]: value }));
+    
+    // Also update draft notifications if this is a notification setting
+    if (['pushNotifications', 'emailNotifications', 'recipeAlerts', 'weeklyDigest'].includes(key)) {
+      setDraftNotifications(prev => ({ ...prev, [key]: value }));
+    }
   };
 
   const validate = () => {
@@ -218,6 +352,33 @@ export default function ProfileScreen({ navigation }) {
     setAvatarPreview(null);
   };
 
+  const saveNotificationSettings = async () => {
+    if (!user?.id) return;
+    
+    try {
+      // Always save to AsyncStorage first (for immediate persistence)
+      await AsyncStorage.setItem('cookmate:notifications', JSON.stringify(draftNotifications));
+      
+      // Prepare payload for API (match web format)
+      const apiPayload = {
+        pushNotifications: draftNotifications.pushNotifications,
+        emailNotifications: draftNotifications.emailNotifications,
+        newRecipeAlerts: draftNotifications.recipeAlerts, // Map to web format
+        weeklyDigest: draftNotifications.weeklyDigest,
+      };
+      
+      // Save to API
+      await settingsApi.saveSettings(user.id, 'notifications', apiPayload);
+      
+      // Update applied state
+      setAppliedNotifications(draftNotifications);
+      
+      Alert.alert('Notifications Saved', 'Your notification preferences have been saved.');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save notification settings.');
+    }
+  };
+
   const pickAvatar = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -227,7 +388,7 @@ export default function ProfileScreen({ navigation }) {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -289,44 +450,48 @@ export default function ProfileScreen({ navigation }) {
     try {
       // Upload avatar if selected
       if (avatarUri) {
-        const formData = new FormData();
-        const fileName = avatarUri.split('/').pop() || 'avatar.jpg';
-        const fileType = fileName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-        
-        formData.append('avatar', {
-          uri: avatarUri,
-          name: fileName,
-          type: fileType,
-        });
+        setUploadingAvatar(true);
+        try {
+          const formData = new FormData();
+          const fileName = avatarUri.split('/').pop() || 'avatar.jpg';
+          const fileType = fileName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+          
+          formData.append('avatar', {
+            uri: avatarUri,
+            name: fileName,
+            type: fileType,
+          });
 
-        const token = await tokenStorage.getItem('userToken');
-        const uploadResponse = await fetch(`${apiBaseUrl}/api/profile/${user.id}/avatar`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
-          body: formData,
-        });
+          const token = await tokenStorage.getItem('userToken');
+          const uploadResponse = await fetch(`${apiBaseUrl}/api/profile/${user.id}/avatar`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+            body: formData,
+          });
 
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to upload avatar');
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to upload avatar');
+          }
+
+          setAvatarUri(null);
+        } finally {
+          setUploadingAvatar(false);
         }
-
-        setAvatarUri(null);
       }
 
       const { data } = await profileApi.updateProfile(user.id, payload);
       const nextInitial = baselineFromProfile(data.profile);
       setInitial(nextInitial);
       setForm({ ...emptyForm, ...nextInitial });
-      setAvatarPreview(null);
       try {
         await refreshUser?.();
       } catch {
         // The profile save succeeded; the session will refresh on the next app load.
       }
+      setAvatarPreview(null);
       setSuccess(true);
     } catch (err) {
       setError(err?.response?.data?.error || err?.message || 'Unable to update account settings.');
@@ -369,16 +534,31 @@ export default function ProfileScreen({ navigation }) {
                 <View style={[st.avatarOverlay, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
                   <Ionicons name="camera" size={24} color="#fff" />
                 </View>
-                {avatarPreview && (
+                {uploadingAvatar && (
+                  <View style={[st.avatarOverlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
+                {avatarPreview && !uploadingAvatar && (
                   <View style={[st.avatarBadge, { backgroundColor: colors.primary }]}>
                     <Text style={st.avatarBadgeText}>NEW</Text>
                   </View>
                 )}
               </View>
             </TouchableOpacity>
-            <Text style={[st.nameText, { color: colors.text }]}>{displayName}</Text>
-            <Text style={[st.emailText, { color: colors.textMuted }]}>{displayEmail}</Text>
-            {avatarPreview && (
+            <Text style={[st.nameText, { color: colors.text, fontSize: fontSizes.xl }]}>{displayName}</Text>
+            <Text style={[st.emailText, { color: colors.textMuted, fontSize: fontSizes.sm }]}>{displayEmail}</Text>
+            {uploadingAvatar && (
+              <View style={[st.uploadProgressWrap, { backgroundColor: colors.border }]}>
+                <View style={[st.uploadProgressBar, { backgroundColor: colors.primary }]} />
+              </View>
+            )}
+            {uploadingAvatar && (
+              <Text style={[st.avatarHint, { color: colors.primary }]}>
+                Uploading photo…
+              </Text>
+            )}
+            {avatarPreview && !uploadingAvatar && (
               <Text style={[st.avatarHint, { color: colors.textSubtle }]}>
                 Tap avatar to change · Save to upload
               </Text>
@@ -396,12 +576,8 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Tabs - Horizontal scrollable */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[st.tabRow, { borderBottomColor: colors.border, paddingHorizontal: 12 }]}
-          >
+          {/* Tabs - Full width */}
+          <View style={[st.tabRow, { borderBottomColor: colors.border }]}>
             {profileTabs.map((tab) => {
               const isActive = activeTab === tab.id;
               const isDisabled = tab.disabled;
@@ -420,12 +596,15 @@ export default function ProfileScreen({ navigation }) {
                     name={tab.icon}
                     size={18}
                     color={isActive ? colors.primary : isDisabled ? colors.textMuted : colors.textSubtle}
-                    style={{ marginBottom: 6 }}
+                    style={{ marginBottom: 4 }}
                   />
                   <Text
                     style={[
                       st.tabText,
-                      { color: isActive ? colors.primary : isDisabled ? colors.textMuted : colors.textSubtle },
+                      { 
+                        color: isActive ? colors.primary : isDisabled ? colors.textMuted : colors.textSubtle,
+                        fontSize: fontSizes.xs,
+                      },
                     ]}
                     numberOfLines={1}
                   >
@@ -439,7 +618,7 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
 
           <View style={st.body}>
             {activeTab === 'account' && (
@@ -452,7 +631,7 @@ export default function ProfileScreen({ navigation }) {
                     colors={colors}
                   />
 
-                  <FieldLabel label="Username" colors={colors} />
+                  <FieldLabel label="Username" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.fullName}
                     onChangeText={(value) => setField('fullName', value)}
@@ -463,7 +642,7 @@ export default function ProfileScreen({ navigation }) {
                     editable={!profileLoading && !saving}
                   />
 
-                  <FieldLabel label="Bio" colors={colors} />
+                  <FieldLabel label="Bio" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.bio}
                     onChangeText={(value) => setField('bio', value)}
@@ -475,7 +654,7 @@ export default function ProfileScreen({ navigation }) {
                     editable={!profileLoading && !saving}
                   />
 
-                  <FieldLabel label="Cooking skill" colors={colors} />
+                  <FieldLabel label="Cooking skill" colors={colors} fontSizes={fontSizes} />
                   <View style={st.skillGrid}>
                     {skillLevels.map((level) => {
                       const active = form.cookingSkillLevel === level;
@@ -492,7 +671,7 @@ export default function ProfileScreen({ navigation }) {
                             },
                           ]}
                         >
-                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted }]}>
+                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted, fontSize: fontSizes.sm }]}>
                             {level}
                           </Text>
                         </TouchableOpacity>
@@ -508,7 +687,7 @@ export default function ProfileScreen({ navigation }) {
                     caption="Use the address you want for sign-in and account messages."
                     colors={colors}
                   />
-                  <FieldLabel label="Email address" colors={colors} />
+                  <FieldLabel label="Email address" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.email}
                     onChangeText={(value) => setField('email', value)}
@@ -546,7 +725,7 @@ export default function ProfileScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
 
-                  <FieldLabel label="Current password" colors={colors} />
+                  <FieldLabel label="Current password" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.currentPassword}
                     onChangeText={(value) => setField('currentPassword', value)}
@@ -558,7 +737,7 @@ export default function ProfileScreen({ navigation }) {
                     editable={!profileLoading && !saving}
                   />
 
-                  <FieldLabel label="New password" colors={colors} />
+                  <FieldLabel label="New password" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.newPassword}
                     onChangeText={(value) => setField('newPassword', value)}
@@ -570,7 +749,7 @@ export default function ProfileScreen({ navigation }) {
                     editable={!profileLoading && !saving}
                   />
 
-                  <FieldLabel label="Confirm password" colors={colors} />
+                  <FieldLabel label="Confirm password" colors={colors} fontSizes={fontSizes} />
                   <TextInput
                     value={form.confirmPassword}
                     onChangeText={(value) => setField('confirmPassword', value)}
@@ -633,8 +812,16 @@ export default function ProfileScreen({ navigation }) {
                         },
                       ]}
                     >
-                      {saving ? (
-                        <ActivityIndicator size="small" color="#fff" />
+                      {uploadingAvatar ? (
+                        <>
+                          <ActivityIndicator size="small" color="#fff" />
+                          <Text style={st.saveText}>UPLOADING PHOTO…</Text>
+                        </>
+                      ) : saving ? (
+                        <>
+                          <ActivityIndicator size="small" color="#fff" />
+                          <Text style={st.saveText}>SAVING…</Text>
+                        </>
                       ) : (
                         <>
                           <Ionicons name="save-outline" size={18} color="#fff" />
@@ -696,7 +883,7 @@ export default function ProfileScreen({ navigation }) {
                     <View key={item.key} style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
                       <View style={st.settingLeft}>
                         <Ionicons name={item.icon} size={18} color={colors.primary} />
-                        <Text style={[st.settingLabel, { color: colors.text }]}>{item.label}</Text>
+                        <Text style={[st.settingLabel, { color: colors.text, fontSize: fontSizes.sm }]}>{item.label}</Text>
                       </View>
                       <Switch
                         value={form[item.key] || false}
@@ -706,19 +893,38 @@ export default function ProfileScreen({ navigation }) {
                       />
                     </View>
                   ))}
+
+                  {/* Unsaved Changes Warning */}
+                  {hasUnsavedNotifications && (
+                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="alert-circle" size={16} color={colors.primary} />
+                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                        You have unsaved notification changes
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Save Notifications Button */}
+                  <TouchableOpacity
+                    onPress={saveNotificationSettings}
+                    activeOpacity={0.9}
+                    style={{
+                      marginTop: hasUnsavedNotifications ? 8 : 16,
+                      backgroundColor: colors.primary,
+                      paddingVertical: 12,
+                      paddingHorizontal: 20,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                      opacity: hasUnsavedNotifications ? 1 : 0.9,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+                      {hasUnsavedNotifications ? 'SAVE NOTIFICATIONS • UNSAVED' : 'SAVE NOTIFICATIONS'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  onPress={() => {}}
-                  style={[st.settingsCard, { borderColor: colors.border, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                >
-                  <View style={st.settingLeft}>
-                    <Ionicons name="open-outline" size={18} color={colors.primary} />
-                    <Text style={[st.settingLabel, { color: colors.text }]}>Open system notification settings</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
-                </TouchableOpacity>
-              </View>
+                              </View>
             )}
 
             {/* Appearance Tab */}
@@ -732,30 +938,18 @@ export default function ProfileScreen({ navigation }) {
                     colors={colors}
                   />
 
-                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
-                    <View style={st.settingLeft}>
-                      <Ionicons name="moon-outline" size={18} color={colors.primary} />
-                      <Text style={[st.settingLabel, { color: colors.text }]}>Dark Mode</Text>
-                    </View>
-                    <Switch
-                      value={isDark}
-                      onValueChange={() => toggleTheme()}
-                      trackColor={{ false: colors.border, true: colors.primary }}
-                      thumbColor={colors.surface}
-                    />
-                  </View>
-
-                  <FieldLabel label="Theme" colors={colors} />
+                  <FieldLabel label="Theme" colors={colors} fontSizes={fontSizes} />
                   <View style={st.skillGrid}>
-                    {['System', 'Light', 'Dark'].map((theme) => {
-                      const active = (theme === 'Dark' && isDark) || (theme === 'Light' && !isDark) || theme === 'System';
+                    {[
+                      { id: 'system', label: 'System' },
+                      { id: 'light', label: 'Light' },
+                      { id: 'dark', label: 'Dark' },
+                    ].map((theme) => {
+                      const active = draftTheme === theme.id;
                       return (
                         <TouchableOpacity
-                          key={theme}
-                          onPress={() => {
-                            if (theme === 'Dark') toggleTheme();
-                            else if (theme === 'Light' && isDark) toggleTheme();
-                          }}
+                          key={theme.id}
+                          onPress={() => setDraftTheme(theme.id)}
                           style={[
                             st.skillBtn,
                             {
@@ -764,13 +958,96 @@ export default function ProfileScreen({ navigation }) {
                             },
                           ]}
                         >
-                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted }]}>
-                            {theme}
+                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted, fontSize: fontSizes.sm }]}>
+                            {theme.label}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
+
+                  <FieldLabel label="Font Size" colors={colors} fontSizes={fontSizes} />
+                  <View style={st.skillGrid}>
+                    {[
+                      { id: 'small', label: 'Small' },
+                      { id: 'medium', label: 'Medium' },
+                      { id: 'large', label: 'Large' },
+                    ].map((size) => {
+                      const active = draftFontSize === size.id;
+                      return (
+                        <TouchableOpacity
+                          key={size.id}
+                          onPress={() => setDraftFontSize(size.id)}
+                          style={[
+                            st.skillBtn,
+                            {
+                              backgroundColor: active ? colors.text : colors.surface,
+                              borderColor: active ? colors.text : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted, fontSize: fontSizes.sm }]}>
+                            {size.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Unsaved Changes Warning */}
+                  {hasUnsavedAppearance && (
+                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="alert-circle" size={16} color={colors.primary} />
+                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                        You have unsaved changes
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Save Appearance Button */}
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        // Always save to AsyncStorage first (for immediate persistence)
+                        await AsyncStorage.setItem('cookmate:theme', draftTheme);
+                        await AsyncStorage.setItem('cookmate:fontSize', draftFontSize);
+                        
+                        // Apply the theme and font size globally
+                        await setTheme(draftTheme);
+                        await setFontSize(draftFontSize);
+                        
+                        // Update applied state
+                        setAppliedTheme(draftTheme);
+                        setAppliedFontSize(draftFontSize);
+                        
+                        // If user is logged in, also save to API for cross-device sync
+                        if (user?.id) {
+                          await settingsApi.saveSettings(user.id, 'appearance', {
+                            theme: draftTheme,
+                            fontSize: draftFontSize,
+                          });
+                        }
+                        
+                        Alert.alert('Appearance Saved', 'Your appearance settings have been saved.');
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to save appearance settings.');
+                      }
+                    }}
+                    activeOpacity={0.9}
+                    style={{
+                      marginTop: hasUnsavedAppearance ? 8 : 16,
+                      backgroundColor: colors.primary,
+                      paddingVertical: 12,
+                      paddingHorizontal: 20,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                      opacity: hasUnsavedAppearance ? 1 : 0.9,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+                      {hasUnsavedAppearance ? 'SAVE APPEARANCE • UNSAVED' : 'SAVE APPEARANCE'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -786,19 +1063,26 @@ export default function ProfileScreen({ navigation }) {
                     colors={colors}
                   />
 
-                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
+                  
+                  {/* Kitchen Inventory - Coming Soon */}
+                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0, opacity: 0.5 }]}>
                     <View style={st.settingLeft}>
-                      <Ionicons name="eye-outline" size={18} color={colors.primary} />
+                      <Ionicons name="cube-outline" size={18} color={colors.textMuted} />
                       <View>
-                        <Text style={[st.settingLabel, { color: colors.text }]}>Public profile</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={[st.settingLabel, { color: colors.textMuted }]}>Show kitchen inventory</Text>
+                          <View style={[st.badge, { backgroundColor: colors.primarySoft }]}>
+                            <Text style={[st.badgeText, { color: colors.primary }]}>Coming Soon</Text>
+                          </View>
+                        </View>
                         <Text style={[st.settingValue, { color: colors.textSubtle, fontSize: 11 }]}>
-                          Allow others to see your profile
+                          Allow others to see your kitchen inventory
                         </Text>
                       </View>
                     </View>
                     <Switch
-                      value={form.publicProfile !== false}
-                      onValueChange={(value) => setField('publicProfile', value)}
+                      value={false}
+                      disabled={true}
                       trackColor={{ false: colors.border, true: colors.primary }}
                       thumbColor={colors.surface}
                     />
@@ -917,6 +1201,18 @@ const st = StyleSheet.create({
     marginTop: 4, 
     marginBottom: 4,
   },
+  uploadProgressWrap: {
+    width: 120,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  uploadProgressBar: {
+    width: '65%',
+    height: '100%',
+    borderRadius: 2,
+  },
   nameText: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, letterSpacing: -0.3 },
   emailText: { fontFamily: 'Geist_400Regular', fontSize: 13, marginTop: 2 },
   statsRow: { flexDirection: 'row', width: '100%', marginTop: 20, paddingTop: 18, borderTopWidth: 1 },
@@ -926,7 +1222,7 @@ const st = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 18, paddingHorizontal: 24 },
   // Tabs
   tabRow: { flexDirection: 'row', borderBottomWidth: 1 },
-  tabItem: { alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, minWidth: 70 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 4 },
   tabText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 0.5 },
   // Body
   body: { padding: 16, gap: 24 },

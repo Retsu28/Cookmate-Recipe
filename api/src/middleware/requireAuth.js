@@ -1,6 +1,24 @@
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/db');
 
+const USER_CACHE_TTL_MS = 30_000;
+const userCache = new Map();
+
+function getCachedUser(userId) {
+  const entry = userCache.get(userId);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { userCache.delete(userId); return null; }
+  return entry.user;
+}
+
+function setCachedUser(userId, user) {
+  userCache.set(userId, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+  if (userCache.size > 2000) {
+    const now = Date.now();
+    for (const [k, v] of userCache) { if (now > v.expiresAt) userCache.delete(k); }
+  }
+}
+
 const AUTH_COOKIE_NAME = 'cookmate.auth.token';
 
 function getJwtSecret() {
@@ -36,25 +54,29 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
 
-    let userResult;
-    try {
-      userResult = await pool.query(
-        'SELECT id, role, deleted_at FROM users WHERE id = $1 LIMIT 1',
-        [userId]
-      );
-    } catch (err) {
-      if (err?.code !== '42703') throw err;
-      userResult = await pool.query(
-        'SELECT id, role, NULL AS deleted_at FROM users WHERE id = $1 LIMIT 1',
-        [userId]
-      );
-    }
+    let user = getCachedUser(userId);
+    if (!user) {
+      let userResult;
+      try {
+        userResult = await pool.query(
+          'SELECT id, role, deleted_at FROM users WHERE id = $1 LIMIT 1',
+          [userId]
+        );
+      } catch (err) {
+        if (err?.code !== '42703') throw err;
+        userResult = await pool.query(
+          'SELECT id, role, NULL AS deleted_at FROM users WHERE id = $1 LIMIT 1',
+          [userId]
+        );
+      }
 
-    if (userResult.rowCount === 0) {
-      return res.status(401).json({ error: 'Invalid or expired token.' });
-    }
+      if (userResult.rowCount === 0) {
+        return res.status(401).json({ error: 'Invalid or expired token.' });
+      }
 
-    const user = userResult.rows[0];
+      user = userResult.rows[0];
+      setCachedUser(userId, user);
+    }
     // Shared auth guard: every authenticated route must reject soft-deleted accounts.
     if (user.deleted_at !== null) {
       return res.status(401).json({ error: 'Account deleted' });

@@ -41,7 +41,7 @@ export default function AppShell() {
     location.pathname === '/reset-password';
 
   const routeContent = (
-    <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : isAuthPath ? null : <AuthPageSkeleton />}>
+    <Suspense fallback={shouldUsePersistentLayout ? <ContentSkeleton /> : <AuthPageSkeleton />}>
       <Outlet />
     </Suspense>
   );

@@ -1,54 +1,12 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
-/**
- * Maps common recipe categories to an Ionicons glyph. Falls back to
- * "restaurant" so unrecognised categories still render.
- */
-const CATEGORY_ICONS = {
-  soup: 'cafe',
-  noodle: 'restaurant',
-  noodles: 'restaurant',
-  pasta: 'restaurant',
-  rice: 'restaurant',
-  appetizer: 'fast-food',
-  appetizers: 'fast-food',
-  snack: 'ice-cream',
-  snacks: 'ice-cream',
-  dessert: 'ice-cream',
-  desserts: 'ice-cream',
-  drink: 'wine',
-  drinks: 'wine',
-  beverage: 'wine',
-  vegetable: 'leaf',
-  vegetables: 'leaf',
-  salad: 'leaf',
-  salads: 'leaf',
-  beef: 'flame',
-  pork: 'flame',
-  chicken: 'flame',
-  poultry: 'flame',
-  seafood: 'fish',
-  fish: 'fish',
-  main: 'restaurant',
-  'main dish': 'restaurant',
-  'main dishes': 'restaurant',
-};
+const FALLBACK_ICON = 'restaurant';
 
-function pickIcon(category) {
-  const key = (category || '').trim().toLowerCase();
-  if (CATEGORY_ICONS[key]) return CATEGORY_ICONS[key];
-  for (const k of Object.keys(CATEGORY_ICONS)) {
-    if (key.includes(k)) return CATEGORY_ICONS[k];
-  }
-  return 'restaurant';
-}
-
-export default function CategoryChip({ category, count, onPress }) {
+export default function CategoryChip({ category, count, imageUrl, onPress }) {
   const { colors, isDark } = useAppTheme();
-  const icon = pickIcon(category);
 
   return (
     <TouchableOpacity
@@ -59,8 +17,12 @@ export default function CategoryChip({ category, count, onPress }) {
         { backgroundColor: colors.surface, borderColor: colors.border, shadowColor: colors.brandShadow },
       ]}
     >
-      <View style={[st.iconBox, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft }]}>
-        <Ionicons name={icon} size={18} color={colors.primary} />
+      <View style={[st.iconBox, { backgroundColor: isDark ? colors.surfaceAlt : colors.primarySoft, overflow: 'hidden' }]}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={st.image} resizeMode="cover" />
+        ) : (
+          <Ionicons name={FALLBACK_ICON} size={18} color={colors.primary} />
+        )}
       </View>
       <View style={st.body}>
         <Text style={[st.title, { color: colors.text }]} numberOfLines={1}>
@@ -94,6 +56,7 @@ const st = StyleSheet.create({
     width: 36, height: 36, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
   },
+  image: { width: 36, height: 36, borderRadius: 12 },
   body: { gap: 2, paddingRight: 4 },
   title: { fontFamily: 'Geist_700Bold', fontSize: 13 },
   count: { fontFamily: 'Geist_700Bold', fontSize: 8, letterSpacing: 1.5 },

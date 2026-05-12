@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, BookOpen,
-  Bell, Menu, ShieldCheck, UtensilsCrossed, X
+  Bell, Menu, ShieldCheck, X
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { motion, AnimatePresence } from 'motion/react';
@@ -86,9 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="relative z-20 hidden w-64 shrink-0 flex-col border-r border-orange-100 bg-white/90 shadow-xl shadow-orange-100/30 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90 dark:shadow-black/20 md:flex">
         <div className="p-8">
           <Link to="/" className="group flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl orange-gradient text-white shadow-lg shadow-orange-500/25 transition-transform group-hover:scale-105">
-              <UtensilsCrossed size={22} />
-            </div>
+            <img src="/logo.png" alt="CookMate" className="h-11 w-11 transition-transform group-hover:scale-105" />
             <span className="flex flex-col">
               <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
               <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
@@ -98,7 +96,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
           {navLinks.map((link) => {
-            const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search'));
+            const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search')) || (link.path === '/profile' && (location.pathname === '/settings' || location.pathname.startsWith('/settings')));
             const Icon = link.icon;
             return (
               <Link
@@ -148,9 +146,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-orange-100 bg-white shadow-2xl dark:border-stone-800 dark:bg-stone-900 md:hidden"
           >
             <div className="flex items-center justify-between p-6">
-              <Link to="/" className="flex flex-col" onClick={() => setMobileMenuOpen(false)}>
-                <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+              <Link to="/" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
+                <img src="/logo.png" alt="CookMate" className="h-10 w-10" />
+                <div className="flex flex-col">
+                  <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
+                  <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+                </div>
               </Link>
               <button onClick={() => setMobileMenuOpen(false)} className="rounded-full bg-orange-50 p-2 text-orange-600 transition-colors hover:bg-orange-100 dark:bg-stone-800 dark:hover:bg-stone-700">
                 <X size={20} />
@@ -158,7 +159,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
               {navLinks.map((link) => {
-                const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search'));
+                const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search')) || (link.path === '/profile' && (location.pathname === '/settings' || location.pathname.startsWith('/settings')));
                 const Icon = link.icon;
                 return (
                   <Link
@@ -243,16 +244,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-              className="mx-auto w-full max-w-7xl px-4 pb-28 sm:px-8 md:pb-12"
+              className="relative min-h-full w-full"
             >
-              {children}
+              <div className="mx-auto w-full max-w-7xl px-4 pb-28 sm:px-8 md:pb-12">
+                {children}
+              </div>
             </motion.div>
           </AnimatePresence>
         </main>
 
         <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-6 rounded-[1.5rem] border border-orange-100 bg-white/95 p-1.5 shadow-2xl shadow-orange-950/10 backdrop-blur dark:border-stone-800 dark:bg-stone-900/95 dark:shadow-black/20 md:hidden">
           {bottomNavLinks.map((link) => {
-            const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search'));
+            const isActive = location.pathname === link.path || (link.path === '/search' && location.pathname.startsWith('/search')) || (link.path === '/profile' && (location.pathname === '/settings' || location.pathname.startsWith('/settings')));
             const Icon = link.icon;
 
             return (

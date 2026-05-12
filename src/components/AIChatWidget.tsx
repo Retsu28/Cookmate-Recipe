@@ -60,6 +60,7 @@ export function AIChatWidget() {
               </div>
               <button 
                 onClick={closeChat}
+                aria-label="Close chat"
                 className="p-1 hover:bg-white/10 rounded-lg transition-colors"
               >
                 <X size={20} />
@@ -99,6 +100,7 @@ export function AIChatWidget() {
               <Button 
                 onClick={handleSend}
                 disabled={isReplying}
+                aria-label="Send message"
                 className="rounded-xl px-3"
               >
                 <Send size={18} />
@@ -110,6 +112,7 @@ export function AIChatWidget() {
 
       <button
         onClick={toggleChat}
+        aria-label={isOpen ? 'Close AI chat' : 'Open AI chat'}
         className="group relative flex h-14 w-14 items-center justify-center rounded-full orange-gradient text-white shadow-xl shadow-orange-500/30 transition-transform hover:scale-110 active:scale-95"
       >
         <MessageSquare size={24} className={isOpen ? 'hidden' : 'block'} />

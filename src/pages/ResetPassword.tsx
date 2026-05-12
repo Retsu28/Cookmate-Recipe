@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { ChefHat, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { authService } from '@/services/authService';
@@ -97,9 +97,7 @@ export default function ResetPassword() {
             <Card className={authCardClass}>
               <CardContent className="p-8">
                 <div className="flex flex-col items-center text-center mb-8">
-                  <div className="w-14 h-14 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-sm mb-4">
-                    <ChefHat className="w-7 h-7" />
-                  </div>
+                  <img src="/logo.png" alt="CookMate" className="w-14 h-14 mb-4" />
                   <h1 className="text-2xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight">
                     Reset your password
                   </h1>
@@ -153,6 +151,7 @@ export default function ResetPassword() {
                           <button
                             type="button"
                             onClick={() => setShowPassword((s) => !s)}
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
                             className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-stone-400 hover:text-stone-700 rounded-lg"
                           >
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
