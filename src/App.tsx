@@ -32,6 +32,7 @@ const AICamera = lazy(() => import('./pages/AICamera'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
+const MLAnalytics = lazy(() => import('./admin/pages/MLAnalytics'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
 const IngredientManagement = lazy(() => import('./admin/pages/IngredientManagement'));
 const UserManagement = lazy(() => import('./admin/pages/UserManagement'));
@@ -90,6 +91,7 @@ export default function App() {
                 <Route path="notifications" element={<NotificationManagement />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="system-status" element={<SystemStatus />} />
+                <Route path="ml-analytics" element={<MLAnalytics />} />
               </Route>
             </Route>
 

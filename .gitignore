@@ -42,3 +42,10 @@ firebase-adminsdk*.json
 # User uploads
 uploads/
 api/uploads/
+
+# ML service
+ml_service/artifacts/
+ml_service/venv/
+ml_service/__pycache__/
+ml_service/models/__pycache__/
+ml_service/routers/__pycache__/

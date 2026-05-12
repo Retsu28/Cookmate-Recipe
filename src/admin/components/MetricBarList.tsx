@@ -15,10 +15,10 @@ export function MetricBarList({ items }: MetricBarListProps) {
         return (
           <div key={item.id}>
             <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-sm font-bold text-stone-800">{item.label}</span>
-              <span className="text-xs font-semibold text-stone-400">{item.detail}</span>
+              <span className="text-sm font-bold text-stone-900">{item.label}</span>
+              <span className="text-xs font-semibold text-stone-600">{item.detail}</span>
             </div>
-            <div className="h-3 overflow-hidden rounded-full bg-stone-100">
+            <div className="h-3 overflow-hidden rounded-full bg-stone-200">
               <div className="h-full rounded-full bg-orange-500" style={{ width }} />
             </div>
           </div>

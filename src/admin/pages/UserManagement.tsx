@@ -8,6 +8,15 @@ import { AdminTable, type AdminTableColumn } from '../components/AdminTable';
 import { StatusBadge, statusToneFromLabel } from '../components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import api from '@/services/api';
+import type { StatusTone } from '../data/adminMockData';
+
+type ChurnRisk = 'High' | 'Medium' | 'Low';
+
+function churnTone(risk: ChurnRisk): StatusTone {
+  if (risk === 'High') return 'danger';
+  if (risk === 'Medium') return 'warning';
+  return 'success';
+}
 
 export interface AdminUser {
   id: string;
@@ -24,6 +33,17 @@ export interface AdminUser {
 export default function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [churnMap, setChurnMap] = useState<Record<string, ChurnRisk>>({});
+
+  useEffect(() => {
+    api.get<{ users: { user_id: number; risk: ChurnRisk }[] }>('/api/ml-analytics/churn-risk')
+      .then((data) => {
+        const map: Record<string, ChurnRisk> = {};
+        (data.users || []).forEach((u) => { map[String(u.user_id)] = u.risk; });
+        setChurnMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   const columns: AdminTableColumn<AdminUser>[] = useMemo(() => [
     {
@@ -48,6 +68,14 @@ export default function UserManagement() {
     { header: 'Last active', render: (user) => user.lastActive },
     { header: 'Status', render: (user) => <StatusBadge tone={statusToneFromLabel(user.status)}>{user.status}</StatusBadge> },
     {
+      header: 'Churn Risk',
+      render: (user) => {
+        const risk = churnMap[user.id] as ChurnRisk | undefined;
+        if (!risk) return <span className="text-xs text-stone-400">—</span>;
+        return <StatusBadge tone={churnTone(risk)}>{risk}</StatusBadge>;
+      },
+    },
+    {
       header: 'Actions',
       render: (user) => (
         <div className="flex items-center gap-2">
@@ -63,7 +91,7 @@ export default function UserManagement() {
         </div>
       ),
     },
-  ], []);
+  ], [churnMap]);
 
   const fetchUsers = useCallback(async () => {
     try {

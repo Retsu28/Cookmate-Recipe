@@ -8,7 +8,9 @@ const shoppingListRoutes = require('./shoppingList');
 const notificationRoutes = require('./notifications');
 const profileRoutes = require('./profile');
 const inventoryRoutes = require('./inventory');
+const chatRoutes = require('./chat');
 const mlRoutes = require('./ml');
+const mlAnalyticsRoutes = require('./mlAnalytics');
 const adminRoutes = require('./admin');
 
 const router = Router();
@@ -27,7 +29,9 @@ router.use('/shopping-list', shoppingListRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/profile', profileRoutes);
 router.use('/inventory', inventoryRoutes);
+router.use('/chat', chatRoutes);
 router.use('/ml', mlRoutes);
+router.use('/ml-analytics', mlAnalyticsRoutes);
 router.use('/admin', adminRoutes);
 
 module.exports = router;

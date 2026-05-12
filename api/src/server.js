@@ -44,6 +44,9 @@ async function startServer() {
 
   const app = express();
 
+  // Trust the first proxy hop (Nginx / AWS ALB) so req.ip is the real client IP
+  app.set('trust proxy', 1);
+
   // ─── Global Middleware ───
   app.use(
     cors({

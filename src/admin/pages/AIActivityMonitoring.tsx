@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  ArrowRight,
   Camera,
   ChefHat,
   Eye,
@@ -96,6 +98,8 @@ export default function AIActivityMonitoring() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [gapCount, setGapCount] = useState<number | null>(null);
+  const [gapBannerDismissed, setGapBannerDismissed] = useState(false);
 
   const fetchActivity = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -118,6 +122,12 @@ export default function AIActivityMonitoring() {
   useEffect(() => {
     fetchActivity();
   }, [fetchActivity]);
+
+  useEffect(() => {
+    api.get<{ total_gaps: number; insufficient_data?: boolean }>('/api/ml-analytics/ingredient-gaps')
+      .then((data) => { if (!data.insufficient_data) setGapCount(data.total_gaps ?? 0); })
+      .catch(() => {});
+  }, []);
 
   const filteredSaves = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -350,6 +360,25 @@ export default function AIActivityMonitoring() {
           </Button>
         }
       />
+
+      {gapCount !== null && gapCount > 0 && !gapBannerDismissed && (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4">
+          <AlertTriangle size={18} className="shrink-0 text-orange-600" />
+          <p className="flex-1 text-sm font-bold text-orange-800">
+            {gapCount} scanned ingredient{gapCount > 1 ? 's' : ''} have no matching recipe in the database.
+          </p>
+          <a href="/admin/ml-analytics" className="flex items-center gap-1 rounded-full bg-orange-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-orange-600 transition-colors">
+            View Gaps <ArrowRight size={12} />
+          </a>
+          <button
+            onClick={() => setGapBannerDismissed(true)}
+            className="ml-1 rounded-full p-1 text-orange-400 hover:bg-orange-100 hover:text-orange-700 transition-colors"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((stat, index) => (

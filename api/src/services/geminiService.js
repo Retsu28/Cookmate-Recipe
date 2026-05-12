@@ -230,10 +230,81 @@ Return shape:
   }
 }
 
+/**
+ * Generate chat response using Gemini with conversation context
+ * @param {Object} params
+ * @param {string} params.apiKey - Gemini API key
+ * @param {string} params.systemPrompt - System prompt with user context
+ * @param {Array<{role: string, content: string}>} params.messages - Conversation history
+ * @returns {Promise<{response: string, modelUsed: string}>}
+ */
+async function generateChatResponse({ apiKey, systemPrompt, messages }) {
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  const { GoogleGenerativeAI } = require('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(apiKey);
+  
+  const modelNames = getGeminiModelNames();
+  let lastError = null;
+
+  for (const modelName of modelNames) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { 
+          temperature: 0.7, // Conversational, balanced creativity
+          maxOutputTokens: 500, // Keep responses concise
+        },
+        systemInstruction: systemPrompt,
+      });
+
+      // Separate prior history from the current user message.
+      // Gemini's startChat() history must NOT include the message we are about
+      // to send — including it there and then calling sendMessage() with it
+      // causes the model to see the same turn twice.
+      const lastMessage = messages[messages.length - 1];
+      const priorMessages = lastMessage?.role === 'user'
+        ? messages.slice(0, -1)
+        : messages;
+      const query = lastMessage?.role === 'user' ? lastMessage.content : '';
+
+      const chat = model.startChat({
+        history: priorMessages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        })),
+      });
+
+      const result = await withTimeout(
+        chat.sendMessage(query || 'Hello'),
+        GEMINI_TIMEOUT_MS,
+        'Gemini chat response'
+      );
+
+      const responseText = result.response.text();
+      
+      return {
+        response: responseText.trim(),
+        modelUsed: modelName,
+      };
+    } catch (err) {
+      lastError = err;
+      if (shouldStopGeminiFallback(err)) throw err;
+      console.warn(`[chat] Gemini model ${modelName} unavailable, trying fallback:`, err.message);
+    }
+  }
+
+  throw lastError || new Error('No Gemini model is available for chat');
+}
+
 module.exports = {
   generateGeminiContent,
   selectRecipeWithGeminiRAG,
+  generateChatResponse,
   geminiErrorPayload,
+  isGeminiQuotaError,
   parseJsonFromModel,
   withTimeout,
   GEMINI_TIMEOUT_MS,

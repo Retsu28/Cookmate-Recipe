@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Brain,
   CalendarDays,
   Camera,
   Home,
@@ -31,6 +32,7 @@ const adminNavItems: AdminNavItem[] = [
   { label: 'Notifications', path: '/admin/notifications', icon: Bell },
   { label: 'Reports', path: '/admin/reports', icon: BarChart3 },
   { label: 'System Status', path: '/admin/system-status', icon: Server },
+  { label: 'ML Analytics', path: '/admin/ml-analytics', icon: Brain },
 ];
 
 interface AdminSidebarProps {
@@ -62,13 +64,13 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
                 'group relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all',
                 isActive
                   ? 'border border-stone-200 bg-white text-orange-600 shadow-sm'
-                  : 'text-stone-500 hover:bg-stone-200/70 hover:text-stone-900'
+                  : 'text-stone-500 hover:bg-white/5 hover:text-orange-600'
               )
             }
           >
             {({ isActive }) => (
               <>
-                <item.icon size={18} className={cn('transition-colors', isActive ? 'text-orange-500' : 'text-stone-400 group-hover:text-stone-900')} />
+                <item.icon size={18} className={cn('transition-colors', isActive ? 'text-orange-500' : 'text-stone-400 group-hover:text-orange-600')} />
                 <span>{item.label}</span>
                 {isActive && <span className="ml-auto h-2 w-2 rounded-full bg-orange-500" />}
               </>
