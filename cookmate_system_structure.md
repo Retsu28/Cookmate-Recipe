@@ -140,6 +140,8 @@ src/
 - `/admin/notifications`
 - `/admin/reports`
 - `/admin/system-status`
+- `/admin/ml-analytics`
+- `/admin/audit-log`
 
 ### Web auth structure
 
@@ -158,6 +160,8 @@ Additional service-layer helpers in `src/services/`:
 - `authService.ts` — Firebase auth, token persistence, current-user refresh
 - `mealPlannerService.ts` — meal plan CRUD, grocery lists, preferences, reminder tokens
 - `profileService.ts` — profile fetch and update
+
+The floating AI chatbot is provided by `src/context/AIChatContext.tsx` and `src/components/AIChatWidget.tsx`. Conversations are persisted in PostgreSQL via `/api/chat` and user pantry/dietary context is injected into each Gemini request.
 
 ---
 
@@ -221,12 +225,15 @@ api/
 1. Loads environment variables.
 2. Tests the PostgreSQL connection.
 3. Attempts admin account bootstrap.
-4. Creates the Express app.
-5. Enables CORS with configured origins.
-6. Enables JSON parsing and cookie parsing.
-7. Mounts the API router at `/api`.
-8. Registers centralized error handling.
-9. Starts listening on the configured port.
+4. Runs initial deleted-account purge; schedules daily purge and refresh-token cleanup.
+5. Creates the Express app with `trust proxy 1`.
+6. Applies Helmet security headers and CSP.
+7. Enables CORS with configured origins.
+8. Applies CSRF double-submit cookie protection.
+9. Enables JSON parsing (1 MB default, 15 MB for ML camera routes) and cookie parsing.
+10. Mounts the API router at `/api`.
+11. Registers centralized error handling.
+12. Starts listening on the configured port with graceful SIGTERM/SIGINT shutdown.
 
 ### Mounted route modules
 
@@ -241,8 +248,12 @@ The central router in `api/src/routes/index.js` mounts:
 - `/api/notifications`
 - `/api/profile`
 - `/api/inventory`
+- `/api/chat`
 - `/api/ml`
+- `/api/ml-analytics`
 - `/api/admin`
+
+`/api/settings` is mounted directly in `server.js` (outside the main router).
 
 ### API responsibility map
 
@@ -256,16 +267,25 @@ The central router in `api/src/routes/index.js` mounts:
 | Notifications | `/api/notifications` |
 | Profile | `/api/profile` |
 | Inventory | `/api/inventory` |
+| AI chatbot | `/api/chat` |
 | ML/recommendations | `/api/ml` |
+| ML analytics (admin) | `/api/ml-analytics` |
 | Admin monitoring/data | `/api/admin` |
+| User settings | `/api/settings` |
 | Health check | `/api/health` |
 
 ### Notable API features
 
 - Auth uses JWT-backed login, signup, logout, and current-user refresh through `/api/auth/me`.
+- Long-lived refresh tokens stored in `refresh_tokens` table; `/api/auth/refresh` issues new access JWTs.
+- Login attempts are tracked in `login_attempts` for brute-force protection.
+- Admin actions (recipe/ingredient/user mutations) are recorded in `admin_audit_log` via `auditLog()` middleware.
 - Recipes support published/featured/recent/category/home-section endpoints, recently viewed tracking, pagination, filtering, and A-Z sorting with `sort=title_asc` or `sort=az`.
+- Video uploads use Cloudinary (up to 30 MB); avatar uploads use local `api/uploads/` (up to 2 MB).
 - AI camera and ML features live under `/api/ml`, including ingredient recommendation, Gemini image analysis, image-analysis queue status, AI camera saves, and background-removal support.
 - AI camera endpoints use rate limiting for image-analysis request protection.
+- AI chatbot (`/api/chat`) persists conversations per user in `chat_conversations`, injects pantry/dietary context, and is separately rate-limited.
+- `/api/ml-analytics` proxies admin-only ML forecasting and model monitoring to a FastAPI microservice (`ml_service/`).
 - Meal planner includes plan CRUD, upcoming meals, preferences, reminder token registration, local-schedule acknowledgment, reminder logging, grocery list generation, and saved grocery lists.
 - `POST /api/auth/firebase` verifies Firebase ID tokens via `firebase-admin`, auto-links legacy users by email, and issues a CookMate JWT.
 - `POST /api/auth/reset-password` and `POST /api/auth/forgot-password` support password-reset token flow via `nodemailer`.
@@ -294,7 +314,14 @@ database/
 │   ├── 20260508_meal_planner_notifications.sql
 │   ├── 20260508_password_reset_tokens.sql
 │   ├── 20260508_relax_meal_planner_timezones.sql
-│   └── 20260508_saved_grocery_lists.sql
+│   ├── 20260508_saved_grocery_lists.sql
+│   ├── 20260511_performance_indexes.sql
+│   ├── 20260512_chat_conversations.sql
+│   ├── 20260512_video_instructions.sql
+│   ├── 20260513_add_interval_time.sql
+│   ├── 20260513_admin_audit_log.sql
+│   ├── 20260513_login_attempts.sql
+│   └── 20260513_refresh_tokens.sql
 └── seeds/
     └── philippine_food_recipes_100.csv
 ```
@@ -312,15 +339,25 @@ database/
 - `kitchen_inventory`
 - `reviews`
 - `notifications`
+- `chat_conversations`
+- `refresh_tokens`
+- `login_attempts`
+- `admin_audit_log`
 
 ### Important data model notes
 
 - `users.email` has normalized uniqueness; `users.full_name` allows duplicates as of `20260503_allow_duplicate_user_full_names.sql`.
 - `users.role` supports role-based access with `user` and `admin`.
-- `recipes` includes source IDs, metadata, instructions, tags, normalized ingredients, image URLs, featured flags, and published flags.
+- `users.firebase_uid` links the Firebase UID with a partial unique constraint; `users.email_verified` tracks Firebase email verification.
+- `recipes` includes source IDs, metadata, instructions, video instruction timestamps, tags, normalized ingredients, image URLs, featured flags, and published flags.
 - `recipe_ingredients` connects recipes to ingredients.
 - `recipe_viewed` stores recently viewed recipe history per user.
 - `ai_camera_saves` stores completed AI camera analysis snapshots, original/processed image data, detected ingredients, matched recipe IDs, and full analysis output.
+- `chat_conversations` stores AI chatbot message history per user.
+- `refresh_tokens` stores long-lived refresh tokens for access JWT renewal.
+- `login_attempts` tracks per-user login failures for brute-force detection.
+- `admin_audit_log` records admin mutations (create/update/delete) with actor, target, and timestamp.
+- Performance indexes were added in `20260511_performance_indexes.sql`.
 - Meal plans, shopping lists, inventory, reviews, and notifications are linked to users.
 - Recipe seed data is stored in `database/seeds/philippine_food_recipes_100.csv`.
 
@@ -416,13 +453,15 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 - Protected stack screens: `Onboarding`, `AllRecipes`, `RecipeDetail`, `Notifications`, `NotificationSettings`, `CookingMode`
 - Tab scenes use `TabSceneAnimator` for focus-triggered fade-up entrance animations.
 - Mobile page-switch skeleton loading is centralized in `mobile/App.js`.
-- Offline support: `mobile/src/offline/` provides `db.js`, `cacheService.js`, `syncQueue.js`, `network.js`, and `OfflineIndicator.js`.
+- Offline support: `mobile/src/offline/` provides `db.js`, `cacheService.js`, `syncQueue.js`, `network.js` (NetInfo-backed), and `OfflineIndicator.js` (animated green/red pulse dot).
 - Planner notifications: `mobile/src/notifications/plannerNotifications.js` schedules and manages local push notifications for upcoming meals.
 - Planner realtime: `mobile/src/socket/plannerSocket.js` connects to the backend Socket.io server for live planner updates.
 
 ### Mobile components
 
 - `AIAssistantWidget.js` — floating AI assistant chat
+- `AccountSettings` / settings sub-screens — accessible via Profile tab
+- `StartCookingSplashScreen.js` — animated transition screen shown when entering cooking mode
 - `AuthThemeToggle.js` — theme toggle for auth screens
 - `AuthVideoBackground.js` — video background on auth screens
 - `AuthVisualPanel.js` — visual panel for auth forms
@@ -454,16 +493,22 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 |---|---|---|---|
 | Login/signup/logout | Yes | Yes | Yes |
 | Current user refresh | Yes | `/api/auth/me` | Yes |
+| Refresh token flow | Yes | `POST /api/auth/refresh` | Yes |
 | Recipe browsing | Yes | `/api/recipes` | Yes |
 | A-Z all-recipes listing | Yes | `sort=title_asc` / `sort=az` | Yes |
 | Recipe detail | Yes | `/api/recipes/:id` | Yes |
 | Recently viewed recipes | Yes | `/api/recipes/recently-viewed` and `/api/recipes/:id/view` | Yes |
+| Cooking mode with video | Web | `/api/recipes/:id` + Cloudinary video | Yes |
 | Meal planner | Yes | `/api/meal-planner` | Yes |
 | Shopping list | Client support | `/api/shopping-list` | Client support |
 | Notifications | Yes | `/api/notifications` | Yes |
 | Profile | Yes | `/api/profile` | Yes |
 | Inventory | Client support | `/api/inventory` | Client support |
+| User settings | Yes | `/api/settings` | Yes |
 | Admin | Web only | `/api/admin` and role-backed support | Not applicable |
+| Admin audit log | Web only | `admin_audit_log` table, `auditLog()` middleware | Not applicable |
+| ML analytics dashboard | Web only (admin) | `/api/ml-analytics` → FastAPI `ml_service/` | Not applicable |
+| AI chatbot | Yes (`AIChatWidget`) | `/api/chat`, `chat_conversations` table | Yes (`AIAssistantWidget`) |
 | AI camera image analysis | Yes | `/api/ml/camera/analyze` | Yes |
 | AI camera saved results | Yes | `/api/ml/ai-camera-saves` | Yes |
 | AI/ML recipe recommendations | Client features | `/api/ml/recommend`, `/api/ml/recommend/by-ingredients`, `/api/ml/analyze-ingredients` | Client features |
@@ -472,6 +517,8 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 | Planner realtime updates | Yes (Socket.io) | `api/src/realtime/plannerSocket.js` | Yes (Socket.io) |
 | Password reset | Yes | `/api/auth/forgot-password`, `/api/auth/reset-password` | Yes (ForgotPassword screen) |
 | Firebase auth exchange | Yes | `POST /api/auth/firebase` | Yes |
+| Offline read-through cache | Yes (IndexedDB) | — | Yes (AsyncStorage) |
+| Offline sync queue | Yes | — | Yes |
 
 ---
 
@@ -518,13 +565,17 @@ The Axios client attaches the saved JWT token to outgoing requests when a token 
 |---|---|
 | Root web app | Active React/Vite TypeScript app |
 | Backend | Active Express API mounted under `/api` |
-| Database | PostgreSQL schema, migrations, and Philippine recipe seed CSV |
-| Mobile | Active Expo React Native app |
-| Auth | Firebase Auth (web/mobile) + backend JWT exchange, password reset via email |
-| Admin | Web-only admin area protected by admin authorization |
-| Recipes | Database-backed with filtering, pagination, featured/recent/category endpoints, and A-Z listing support |
+| Database | PostgreSQL schema, 20 migrations, and Philippine recipe seed CSV |
+| Mobile | Active Expo React Native app (Expo SDK 55, RN 0.83) |
+| Auth | Firebase Auth (web/mobile) + backend JWT exchange + refresh tokens, password reset via email, login attempt tracking |
+| Admin | Web-only admin area protected by admin authorization; includes audit log, ML analytics, and operational dashboards |
+| Recipes | Database-backed with filtering, pagination, featured/recent/category endpoints, A-Z listing, video instructions (Cloudinary) |
+| AI chatbot | Gemini-backed floating chatbot for both web and mobile; conversations persisted in PostgreSQL, pantry/dietary context injected |
 | AI/ML | Gemini-backed camera analysis, TF-IDF recipe matching, background-removal/sticker output, saved camera results, and recommendation endpoints |
+| ML microservice | FastAPI `ml_service/` for trending forecasts, churn risk, ingredient gaps, traffic forecasts, model status, drift reports (admin-only) |
 | Meal planner | Full meal plan CRUD, preferences, grocery list generation, saved grocery lists, reminder scheduling, push notifications via Expo Server SDK, Socket.io realtime updates |
+| Offline | IndexedDB (web) / AsyncStorage (mobile) read-through cache for recipes, meal plans, grocery lists, saved recipes; FIFO sync queue |
 | PWA | Root web app includes PWA support through Vite plugin configuration |
+| Security | Helmet CSP, CSRF double-submit cookie, JWT+refresh token auth, CORS per-origin, rate limiting on AI/auth routes |
 
-This document should stay synchronized with the real repository structure, route tree, package scripts, and database files.
+> Last updated: May 2026. This document should stay synchronized with the real repository structure, route tree, package scripts, and database files.

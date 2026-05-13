@@ -1,4 +1,5 @@
-const fs = require('fs');
+﻿const fs = require('fs');
+const logger = require('../config/logger');
 const path = require('path');
 const { pool } = require('../config/db');
 const { verifyAuthToken, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
@@ -10,18 +11,33 @@ const { sendMail } = require('../config/mailer');
  * Excludes the admin who uploaded the recipe
  */
 async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null, excludeUserId = null) {
-  console.log(`[notifyUsersAboutNewRecipe] Starting notification for recipe: ${recipeTitle}, excludeUserId: ${excludeUserId}`);
+  logger.info(`[notifyUsersAboutNewRecipe] Starting notification for recipe: ${recipeTitle}, excludeUserId: ${excludeUserId}`);
   try {
-    // Get all users with their email addresses (excluding the admin who uploaded)
+    // Get all users along with their notification settings
+    // Only include users who have NOT disabled emailNotifications or newRecipeAlerts
     const usersResult = await pool.query(
-      `SELECT id, email, full_name FROM users WHERE (role = 'user' OR role = 'admin') AND ($1::int IS NULL OR id != $1)`,
+      `SELECT u.id, u.email, u.full_name,
+              (us.settings_value->>'emailNotifications')::text AS email_notif,
+              (us.settings_value->>'newRecipeAlerts')::text AS recipe_alerts
+       FROM users u
+       LEFT JOIN public.user_settings us
+         ON us.user_id = u.id AND us.settings_key = 'notifications'
+       WHERE (u.role = 'user' OR u.role = 'admin')
+         AND ($1::int IS NULL OR u.id != $1)`,
       [excludeUserId]
     );
 
-    console.log(`[notifyUsersAboutNewRecipe] Found ${usersResult.rows.length} users to notify`);
+    // Filter: only notify users who haven't explicitly turned off email or new recipe alerts
+    const eligibleUsers = usersResult.rows.filter(u => {
+      const emailOn = u.email_notif === null || u.email_notif === 'true';
+      const alertOn = u.recipe_alerts === null || u.recipe_alerts === 'true';
+      return emailOn && alertOn;
+    });
 
-    if (usersResult.rows.length === 0) {
-      console.log('[notifyUsersAboutNewRecipe] No users to notify, skipping');
+    logger.info(`[notifyUsersAboutNewRecipe] ${usersResult.rows.length} total users, ${eligibleUsers.length} opted-in`);
+
+    if (eligibleUsers.length === 0) {
+      logger.info('[notifyUsersAboutNewRecipe] No opted-in users to notify, skipping');
       return;
     }
 
@@ -44,9 +60,9 @@ async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null,
 
     const textContent = `New Recipe Available!\n\nHi there,\n\nWe're excited to share a new recipe with you: ${recipeTitle}\n\nCheck it out at: ${recipeUrl}\n\nYou're receiving this because you're a CookMate user.`;
 
-    // Send ONE email with all users in BCC (single summary email)
-    const bccEmails = usersResult.rows.map(u => u.email).filter(Boolean);
-    console.log(`[notifyUsersAboutNewRecipe] Sending email to ${bccEmails.length} recipients via BCC`);
+    // Send ONE email with opted-in users in BCC
+    const bccEmails = eligibleUsers.map(u => u.email).filter(Boolean);
+    logger.info(`[notifyUsersAboutNewRecipe] Sending email to ${bccEmails.length} opted-in recipients via BCC`);
     
     const emailPromise = bccEmails.length > 0
       ? sendMail({
@@ -56,16 +72,16 @@ async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null,
           html: htmlContent,
           text: textContent,
         }).then(info => {
-          console.log(`[notifyUsersAboutNewRecipe] Email sent successfully:`, info?.messageId || 'no messageId');
+          logger.info(`[notifyUsersAboutNewRecipe] Email sent successfully:`, info?.messageId || 'no messageId');
           return info;
         }).catch(err => {
-          console.error(`[newRecipeNotify] Failed to send summary email:`, err.message);
+          logger.error(`[newRecipeNotify] Failed to send summary email:`, err.message);
         })
       : Promise.resolve();
 
-    // Create in-app notifications for each user
-    console.log(`[notifyUsersAboutNewRecipe] Creating in-app notifications for ${usersResult.rows.length} users`);
-    const notificationPromises = usersResult.rows.map(user =>
+    // Create in-app notifications for opted-in users
+    logger.info(`[notifyUsersAboutNewRecipe] Creating in-app notifications for ${eligibleUsers.length} opted-in users`);
+    const notificationPromises = eligibleUsers.map(user =>
       pool.query(
         `INSERT INTO notifications (user_id, title, message, type, is_read)
          VALUES ($1, $2, $3, 'Recipe', FALSE)`,
@@ -75,18 +91,18 @@ async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null,
           `A new recipe "${recipeTitle}" has been added. Check it out!`
         ]
       ).then(() => {
-        console.log(`[notifyUsersAboutNewRecipe] In-app notification created for user ${user.id}`);
+        logger.info(`[notifyUsersAboutNewRecipe] In-app notification created for user ${user.id}`);
       }).catch(err => {
-        console.error(`[newRecipeNotify] Failed to create notification for user ${user.id}:`, err.message);
+        logger.error(`[newRecipeNotify] Failed to create notification for user ${user.id}:`, err.message);
       })
     );
 
     // Execute all promises (don't block on failures)
     await Promise.allSettled([emailPromise, ...notificationPromises]);
 
-    console.log(`[notifyUsersAboutNewRecipe] Completed. Notified ${usersResult.rows.length} users about new recipe: ${recipeTitle}`);
+    logger.info(`[notifyUsersAboutNewRecipe] Completed. Notified ${usersResult.rows.length} users about new recipe: ${recipeTitle}`);
   } catch (err) {
-    console.error('[newRecipeNotify] Error notifying users:', err);
+    logger.error('[newRecipeNotify] Error notifying users:', err);
     // Don't throw - notification failures shouldn't block recipe creation
   }
 }
@@ -154,6 +170,7 @@ const RECIPE_COLS = `
   servings, calories,
   region_or_origin, category, tags, normalized_ingredients,
   image_url, is_featured, is_published, author_id,
+  video_filename, instruction_timestamps,
   created_at, updated_at
 `.replace(/\s+/g, ' ').trim();
 
@@ -216,7 +233,7 @@ exports.getAll = async (req, res) => {
 
     res.json({ recipes: result.rows, total, limit, offset });
   } catch (err) {
-    console.error('[recipes/getAll]', err);
+    logger.error('[recipes/getAll]', err);
     res.status(500).json({ error: 'Failed to fetch recipes.' });
   }
 };
@@ -238,7 +255,7 @@ exports.getFeatured = async (_req, res) => {
     }
     res.json({ recipes: result.rows });
   } catch (err) {
-    console.error('[recipes/getFeatured]', err);
+    logger.error('[recipes/getFeatured]', err);
     res.status(500).json({ error: 'Failed to fetch featured recipes.' });
   }
 };
@@ -251,7 +268,7 @@ exports.getRecent = async (_req, res) => {
     );
     res.json({ recipes: result.rows });
   } catch (err) {
-    console.error('[recipes/getRecent]', err);
+    logger.error('[recipes/getRecent]', err);
     res.status(500).json({ error: 'Failed to fetch recent recipes.' });
   }
 };
@@ -266,7 +283,7 @@ exports.getCategories = async (_req, res) => {
     );
     res.json({ categories: result.rows });
   } catch (err) {
-    console.error('[recipes/getCategories]', err);
+    logger.error('[recipes/getCategories]', err);
     res.status(500).json({ error: 'Failed to fetch categories.' });
   }
 };
@@ -391,7 +408,7 @@ exports.getHomeSections = async (req, res) => {
       recentlyViewedRecipes: recentlyViewedRows,
     });
   } catch (err) {
-    console.error('[recipes/getHomeSections]', err);
+    logger.error('[recipes/getHomeSections]', err);
     res.status(500).json({ error: 'Failed to fetch home sections.' });
   }
 };
@@ -420,7 +437,7 @@ exports.getStats = async (_req, res) => {
       topTags: tagsR.rows,
     });
   } catch (err) {
-    console.error('[recipes/getStats]', err);
+    logger.error('[recipes/getStats]', err);
     res.status(500).json({ error: 'Failed to fetch recipe stats.' });
   }
 };
@@ -445,7 +462,7 @@ exports.getById = async (req, res) => {
     }
     res.json({ recipe: result.rows[0] });
   } catch (err) {
-    console.error('[recipes/getById]', err);
+    logger.error('[recipes/getById]', err);
     res.status(500).json({ error: 'Failed to fetch recipe.' });
   }
 };
@@ -460,7 +477,11 @@ exports.createRecipe = async (req, res) => {
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
+      instruction_timestamps,
     } = req.body;
+
+    // Handle uploaded video file
+    const video_filename = req.file ? req.file.filename : null;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Recipe title is required.' });
@@ -470,6 +491,18 @@ exports.createRecipe = async (req, res) => {
     const cookTime = parseInt(cook_time_minutes) || null;
     const totalTime = (prepTime != null && cookTime != null) ? prepTime + cookTime : null;
 
+    // Parse instruction timestamps
+    let timestamps = [];
+    if (instruction_timestamps) {
+      try {
+        timestamps = typeof instruction_timestamps === 'string'
+          ? JSON.parse(instruction_timestamps)
+          : instruction_timestamps;
+      } catch (e) {
+        timestamps = [];
+      }
+    }
+
     const result = await pool.query(
       `INSERT INTO recipes (
           title, description, instructions,
@@ -477,9 +510,10 @@ exports.createRecipe = async (req, res) => {
           servings, calories,
           difficulty, region_or_origin, category, tags,
           normalized_ingredients,
-          image_url, is_featured, is_published, author_id, updated_at
+          image_url, is_featured, is_published, author_id, updated_at,
+          video_filename, instruction_timestamps
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,CURRENT_TIMESTAMP)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,CURRENT_TIMESTAMP,$19,$20)
        RETURNING *`,
       [
         title.trim(),
@@ -499,6 +533,8 @@ exports.createRecipe = async (req, res) => {
         is_featured === true || is_featured === 'true' ? true : false,
         is_published !== false && is_published !== 'false' ? true : false,
         req.userId || null,
+        video_filename,
+        JSON.stringify(timestamps),
       ]
     );
 
@@ -512,10 +548,10 @@ exports.createRecipe = async (req, res) => {
     res.status(201).json({ recipe: createdRecipe });
 
     // Notify users about the new recipe (fire and forget), exclude the admin who uploaded
-    console.log(`[createRecipe] Recipe created, starting notification. req.userId: ${req.userId}`);
+    logger.info(`[createRecipe] Recipe created, starting notification. req.userId: ${req.userId}`);
     notifyUsersAboutNewRecipe(createdRecipe.title, createdRecipe.id, createdRecipe.image_url, req.userId);
   } catch (err) {
-    console.error('[recipes/createRecipe]', err);
+    logger.error('[recipes/createRecipe]', err);
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A recipe with this title already exists.' });
     }
@@ -534,6 +570,7 @@ exports.updateRecipe = async (req, res) => {
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
+      instruction_timestamps, remove_video,
     } = req.body;
 
     if (!title || !title.trim()) {
@@ -544,36 +581,82 @@ exports.updateRecipe = async (req, res) => {
     const cookTime = parseInt(cook_time_minutes) || null;
     const totalTime = (prepTime != null && cookTime != null) ? prepTime + cookTime : null;
 
+    // Handle video file: use new upload, keep existing, or remove
+    let video_filename = undefined;
+    if (req.file) {
+      // New video uploaded
+      video_filename = req.file.filename;
+      // Delete old video file if exists
+      const old = await pool.query('SELECT video_filename FROM recipes WHERE id = $1', [id]);
+      if (old.rows[0]?.video_filename) {
+        const oldPath = path.join(process.cwd(), 'uploads', 'mp4', old.rows[0].video_filename);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+    } else if (remove_video === 'true' || remove_video === true) {
+      // Remove existing video
+      const old = await pool.query('SELECT video_filename FROM recipes WHERE id = $1', [id]);
+      if (old.rows[0]?.video_filename) {
+        const oldPath = path.join(process.cwd(), 'uploads', 'mp4', old.rows[0].video_filename);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+      video_filename = null;
+    }
+
+    // Parse instruction timestamps
+    let timestamps = [];
+    if (instruction_timestamps) {
+      try {
+        timestamps = typeof instruction_timestamps === 'string'
+          ? JSON.parse(instruction_timestamps)
+          : instruction_timestamps;
+      } catch (e) {
+        timestamps = [];
+      }
+    }
+
+    // Build dynamic update query
+    const updates = [
+      'title = $1', 'description = $2', 'instructions = $3',
+      'prep_time_minutes = $4', 'cook_time_minutes = $5', 'total_time_minutes = $6',
+      'servings = $7', 'calories = $8',
+      'difficulty = $9', 'region_or_origin = $10', 'category = $11', 'tags = $12',
+      'normalized_ingredients = $13',
+      'image_url = $14', 'is_featured = $15', 'is_published = $16',
+      'updated_at = CURRENT_TIMESTAMP'
+    ];
+    const params = [
+      title.trim(),
+      description || null,
+      Array.isArray(instructions) ? instructions : instructions ? [instructions] : null,
+      prepTime,
+      cookTime,
+      totalTime,
+      parseInt(servings) || null,
+      parseInt(calories) || null,
+      difficulty || null,
+      region_or_origin || null,
+      category || null,
+      Array.isArray(tags) ? tags : tags ? tags.split(';').map(t => t.trim()).filter(Boolean) : null,
+      Array.isArray(normalized_ingredients) ? normalized_ingredients : normalized_ingredients ? normalized_ingredients.split(';').map(t => t.trim().toLowerCase()).filter(Boolean) : null,
+      image_url || null,
+      is_featured === true || is_featured === 'true' ? true : false,
+      is_published !== false && is_published !== 'false' ? true : false,
+    ];
+
+    if (video_filename !== undefined) {
+      updates.push(`video_filename = $${params.length + 1}`);
+      params.push(video_filename);
+    }
+    if (instruction_timestamps !== undefined) {
+      updates.push(`instruction_timestamps = $${params.length + 1}`);
+      params.push(JSON.stringify(timestamps));
+    }
+
+    params.push(id); // WHERE id = $n
+
     const result = await pool.query(
-      `UPDATE recipes SET
-          title = $1, description = $2, instructions = $3,
-          prep_time_minutes = $4, cook_time_minutes = $5, total_time_minutes = $6,
-          servings = $7, calories = $8,
-          difficulty = $9, region_or_origin = $10, category = $11, tags = $12,
-          normalized_ingredients = $13,
-          image_url = $14, is_featured = $15, is_published = $16,
-          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $17
-       RETURNING *`,
-      [
-        title.trim(),
-        description || null,
-        Array.isArray(instructions) ? instructions : instructions ? [instructions] : null,
-        prepTime,
-        cookTime,
-        totalTime,
-        parseInt(servings) || null,
-        parseInt(calories) || null,
-        difficulty || null,
-        region_or_origin || null,
-        category || null,
-        Array.isArray(tags) ? tags : tags ? tags.split(';').map(t => t.trim()).filter(Boolean) : null,
-        Array.isArray(normalized_ingredients) ? normalized_ingredients : normalized_ingredients ? normalized_ingredients.split(';').map(t => t.trim().toLowerCase()).filter(Boolean) : null,
-        image_url || null,
-        is_featured === true || is_featured === 'true' ? true : false,
-        is_published !== false && is_published !== 'false' ? true : false,
-        id,
-      ]
+      `UPDATE recipes SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
     );
 
     if (result.rowCount === 0) {
@@ -587,7 +670,7 @@ exports.updateRecipe = async (req, res) => {
 
     res.json({ recipe: result.rows[0] });
   } catch (err) {
-    console.error('[recipes/updateRecipe]', err);
+    logger.error('[recipes/updateRecipe]', err);
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A recipe with this title already exists.' });
     }
@@ -605,7 +688,7 @@ exports.deleteRecipe = async (req, res) => {
     }
     res.json({ message: 'Recipe deleted.', recipe: result.rows[0] });
   } catch (err) {
-    console.error('[recipes/deleteRecipe]', err);
+    logger.error('[recipes/deleteRecipe]', err);
     res.status(500).json({ error: 'Failed to delete recipe.' });
   }
 };
@@ -648,7 +731,7 @@ exports.toggleFeatured = async (req, res) => {
 
     res.json({ recipe: result.rows[0] });
   } catch (err) {
-    console.error('[recipes/toggleFeatured]', err);
+    logger.error('[recipes/toggleFeatured]', err);
     res.status(500).json({ error: 'Failed to toggle featured status.' });
   }
 };
@@ -666,7 +749,7 @@ exports.togglePublished = async (req, res) => {
     }
     res.json({ recipe: result.rows[0] });
   } catch (err) {
-    console.error('[recipes/togglePublished]', err);
+    logger.error('[recipes/togglePublished]', err);
     res.status(500).json({ error: 'Failed to toggle published status.' });
   }
 };
@@ -700,7 +783,7 @@ exports.recordView = async (req, res) => {
     if (err?.code === '23503') {
       return res.status(404).json({ error: 'Recipe not found.' });
     }
-    console.error('[recipes/recordView]', err);
+    logger.error('[recipes/recordView]', err);
     res.status(500).json({ error: 'Failed to record recipe view.' });
   }
 };
@@ -728,7 +811,7 @@ exports.getRecentlyViewed = async (req, res) => {
 
     res.json({ recipes: result.rows });
   } catch (err) {
-    console.error('[recipes/getRecentlyViewed]', err);
+    logger.error('[recipes/getRecentlyViewed]', err);
     res.status(500).json({ error: 'Failed to fetch recently viewed recipes.' });
   }
 };
@@ -838,7 +921,7 @@ exports.importCsv = async (req, res) => {
       notifyUsersAboutNewRecipesBatch(inserted, insertedRecipes, req.userId);
     }
   } catch (err) {
-    console.error('[recipes/importCsv]', err);
+    logger.error('[recipes/importCsv]', err);
     res.status(500).json({ error: 'Failed to import CSV.' });
   }
 };
@@ -850,13 +933,26 @@ exports.importCsv = async (req, res) => {
  */
 async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, excludeUserId = null) {
   try {
-    // Get all users with their email addresses (excluding the admin who uploaded)
+    // Get users with notification settings — filter by emailNotifications + newRecipeAlerts
     const usersResult = await pool.query(
-      `SELECT id, email, full_name FROM users WHERE (role = 'user' OR role = 'admin') AND ($1::int IS NULL OR id != $1)`,
+      `SELECT u.id, u.email, u.full_name,
+              (us.settings_value->>'emailNotifications')::text AS email_notif,
+              (us.settings_value->>'newRecipeAlerts')::text AS recipe_alerts
+       FROM users u
+       LEFT JOIN public.user_settings us
+         ON us.user_id = u.id AND us.settings_key = 'notifications'
+       WHERE (u.role = 'user' OR u.role = 'admin')
+         AND ($1::int IS NULL OR u.id != $1)`,
       [excludeUserId]
     );
 
-    if (usersResult.rows.length === 0) return;
+    const eligibleUsers = usersResult.rows.filter(u => {
+      const emailOn = u.email_notif === null || u.email_notif === 'true';
+      const alertOn = u.recipe_alerts === null || u.recipe_alerts === 'true';
+      return emailOn && alertOn;
+    });
+
+    if (eligibleUsers.length === 0) return;
 
     const appUrl = process.env.APP_URL || 'https://cookmate.app';
     const recipesUrl = `${appUrl}/recipes`;
@@ -882,8 +978,8 @@ async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, e
 
     const textContent = `New Recipes Available!\n\nHi there,\n\nWe're excited to share ${insertedCount} new recipe${insertedCount > 1 ? 's' : ''} with you:\n\n${titlePreview}\n\nExplore all the new recipes at: ${recipesUrl}\n\nYou're receiving this because you're a CookMate user.`;
 
-    // Send ONE email with all users in BCC (single summary email)
-    const bccEmails = usersResult.rows.map(u => u.email).filter(Boolean);
+    // Send ONE email with opted-in users in BCC
+    const bccEmails = eligibleUsers.map(u => u.email).filter(Boolean);
     const emailPromise = bccEmails.length > 0
       ? sendMail({
           to: process.env.SMTP_FROM || 'noreply@cookmate.app',
@@ -892,12 +988,12 @@ async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, e
           html: htmlContent,
           text: textContent,
         }).catch(err => {
-          console.error(`[newRecipesBatchNotify] Failed to send summary email:`, err.message);
+          logger.error(`[newRecipesBatchNotify] Failed to send summary email:`, err.message);
         })
       : Promise.resolve();
 
-    // Create in-app notifications for each user
-    const notificationPromises = usersResult.rows.map(user =>
+    // Create in-app notifications for opted-in users
+    const notificationPromises = eligibleUsers.map(user =>
       pool.query(
         `INSERT INTO notifications (user_id, title, message, type, is_read)
          VALUES ($1, $2, $3, 'Recipe', FALSE)`,
@@ -907,16 +1003,16 @@ async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, e
           `We've added ${insertedCount} new recipe${insertedCount > 1 ? 's' : ''} including ${titlePreview}. Check them out!`
         ]
       ).catch(err => {
-        console.error(`[newRecipesBatchNotify] Failed to create notification for user ${user.id}:`, err.message);
+        logger.error(`[newRecipesBatchNotify] Failed to create notification for user ${user.id}:`, err.message);
       })
     );
 
     // Execute all promises (don't block on failures)
     await Promise.allSettled([emailPromise, ...notificationPromises]);
 
-    console.log(`[newRecipesBatchNotify] Notified ${usersResult.rows.length} users about ${insertedCount} new recipes`);
+    logger.info(`[newRecipesBatchNotify] Notified ${eligibleUsers.length} opted-in users about ${insertedCount} new recipes`);
   } catch (err) {
-    console.error('[newRecipesBatchNotify] Error notifying users:', err);
+    logger.error('[newRecipesBatchNotify] Error notifying users:', err);
     // Don't throw - notification failures shouldn't block import
   }
 }
@@ -943,7 +1039,111 @@ exports.getRecommendedForMeal = async (req, res) => {
 
     res.json({ recipes: result.rows, meal_type: mealType, total: result.rows.length });
   } catch (err) {
-    console.error('[recipes/getRecommendedForMeal]', err);
+    logger.error('[recipes/getRecommendedForMeal]', err);
     res.status(500).json({ error: 'Failed to fetch recommended recipes.' });
+  }
+};
+
+// ─── GET /api/recipes/user/:userId/saved ──────────────────────────────────
+// Returns all saved recipes for the authenticated user.
+exports.getSavedRecipes = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verify the requesting user is accessing their own saved recipes
+    const tokenUser = req.user;
+    if (tokenUser.id !== parseInt(userId, 10)) {
+      return res.status(403).json({ error: 'You can only view your own saved recipes.' });
+    }
+
+    const result = await pool.query(
+      `SELECT sr.id, sr.recipe_id, sr.saved_at,
+              r.title, r.image_url, r.category, r.total_time_minutes
+       FROM saved_recipes sr
+       JOIN recipes r ON r.id = sr.recipe_id
+       WHERE sr.user_id = $1
+       ORDER BY sr.saved_at DESC`,
+      [userId]
+    );
+
+    res.json({ saved: result.rows });
+  } catch (err) {
+    logger.error('[recipes/getSavedRecipes]', err);
+    res.status(500).json({ error: 'Failed to fetch saved recipes.' });
+  }
+};
+
+// ─── POST /api/recipes/:id/save ──────────────────────────────────
+// Saves a recipe for the authenticated user.
+exports.saveRecipe = async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+
+    if (!recipeId || isNaN(recipeId)) {
+      return res.status(400).json({ error: 'Invalid recipe ID.' });
+    }
+
+    // Check if recipe exists
+    const recipeExists = await pool.query(
+      'SELECT id FROM recipes WHERE id = $1 AND is_published = true',
+      [recipeId]
+    );
+
+    if (recipeExists.rows.length === 0) {
+      return res.status(404).json({ error: 'Recipe not found.' });
+    }
+
+    // Check if already saved
+    const existing = await pool.query(
+      'SELECT id FROM saved_recipes WHERE user_id = $1 AND recipe_id = $2',
+      [userId, recipeId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Recipe already saved.', saved_id: existing.rows[0].id });
+    }
+
+    // Save the recipe
+    const result = await pool.query(
+      'INSERT INTO saved_recipes (user_id, recipe_id) VALUES ($1, $2) RETURNING id, saved_at',
+      [userId, recipeId]
+    );
+
+    res.status(201).json({
+      message: 'Recipe saved successfully.',
+      saved: result.rows[0]
+    });
+  } catch (err) {
+    logger.error('[recipes/saveRecipe]', err);
+    res.status(500).json({ error: 'Failed to save recipe.' });
+  }
+};
+
+// ─── DELETE /api/recipes/user/:userId/saved/:savedId ──────────────────────────────────
+// Removes a saved recipe for the authenticated user.
+exports.unsaveRecipe = async (req, res) => {
+  try {
+    const { userId, savedId } = req.params;
+
+    // Verify the requesting user is removing their own saved recipe
+    const tokenUser = req.user;
+    if (tokenUser.id !== parseInt(userId, 10)) {
+      return res.status(403).json({ error: 'You can only remove your own saved recipes.' });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM saved_recipes WHERE id = $1 AND user_id = $2 RETURNING id',
+      [savedId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Saved recipe not found.' });
+    }
+
+    res.json({ message: 'Recipe removed from saved.' });
+  } catch (err) {
+    logger.error('[recipes/unsaveRecipe]', err);
+    res.status(500).json({ error: 'Failed to remove saved recipe.' });
   }
 };

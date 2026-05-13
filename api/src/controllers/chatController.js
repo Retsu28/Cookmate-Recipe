@@ -1,7 +1,8 @@
-const chatService = require('../services/chatService');
+﻿const chatService = require('../services/chatService');
+const logger = require('../config/logger');
 const { generateChatResponse, geminiErrorPayload, isGeminiQuotaError } = require('../services/geminiService');
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_CHAT_API_KEY = process.env.GEMINI_CHAT_API_KEY;
 
 /**
  * Build system prompt with user context
@@ -62,8 +63,8 @@ async function postChat(req, res) {
     }
 
     // Check if Gemini API is configured
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'MY_GEMINI_API_KEY') {
-      console.error('[chat] GEMINI_API_KEY not configured');
+    if (!GEMINI_CHAT_API_KEY || GEMINI_CHAT_API_KEY === 'MY_GEMINI_API_KEY') {
+      logger.error('[chat] GEMINI_CHAT_API_KEY not configured');
       return res.status(503).json({ 
         error: 'AI chat is not configured. Please contact support.' 
       });
@@ -92,13 +93,13 @@ async function postChat(req, res) {
     let aiResponse;
     try {
       const result = await generateChatResponse({
-        apiKey: GEMINI_API_KEY,
+        apiKey: GEMINI_CHAT_API_KEY,
         systemPrompt,
         messages: updatedHistory,
       });
       aiResponse = result.response;
     } catch (geminiErr) {
-      console.error('[chat] Gemini error:', geminiErr.message);
+      logger.error('[chat] Gemini error:', geminiErr.message);
       const errorPayload = geminiErrorPayload(geminiErr);
       
       // Return user-friendly error message
@@ -135,7 +136,7 @@ async function postChat(req, res) {
     });
 
   } catch (err) {
-    console.error('[chat] Unexpected error:', err);
+    logger.error('[chat] Unexpected error:', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 }
@@ -159,7 +160,7 @@ async function getChatHistory(req, res) {
       userId
     });
   } catch (err) {
-    console.error('[chat/history] Error:', err);
+    logger.error('[chat/history] Error:', err);
     res.status(500).json({ error: 'Failed to load chat history.' });
   }
 }
@@ -168,3 +169,4 @@ module.exports = {
   postChat,
   getChatHistory
 };
+

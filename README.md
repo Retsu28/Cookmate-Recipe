@@ -4,17 +4,21 @@
 
 # Run CookMate locally
 
-CookMate is a monorepo with three apps:
+CookMate is a monorepo with four apps:
 
 - `./` — React + Vite web app
 - `api/` — Express API backed by PostgreSQL
-- `mobile/` — Expo React Native mobile app\n\nSee [ARCHITECTURE.md](./ARCHITECTURE.md) and [cookmate_system_structure.md](./cookmate_system_structure.md) for full architecture and system details.
+- `mobile/` — Expo React Native mobile app
+- `ml_service/` — FastAPI ML microservice for admin analytics
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) and [cookmate_system_structure.md](./cookmate_system_structure.md) for full architecture and system details.
 
 ## Prerequisites
 
 - Node.js 18+
 - npm
 - PostgreSQL
+- Python 3.10+ (for ML service)
 - Expo Go / Android Studio / Xcode if you want to run the mobile app
 
 ## 1. Install dependencies
@@ -98,7 +102,34 @@ npm run dev
 
 The API runs at `http://localhost:5000`.
 
-## 5. Start the web app
+## 5. Start the ML service (optional)
+
+The ML service provides AI-powered analytics for the admin panel (trending forecasts, churn risk, etc.).
+
+From `ml_service/`:
+
+```bash
+# 1. Create virtual environment (first time only)
+py -m venv venv
+
+# 2. Activate it
+# Windows:
+venv\Scripts\activate
+
+
+# 3. Install dependencies (first time only)
+py -m pip install -r requirements.txt
+
+# 4. Create .env file (first time only)
+copy .env.example .env    # Windows
+
+# 5. Start the service
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+The ML service runs at `http://localhost:8001`.
+
+## 6. Start the web app
 
 From the repo root:
 
@@ -108,7 +139,7 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
-## 6. Start the mobile app
+## 7. Start the mobile app
 
 From `mobile/`:
 
@@ -135,5 +166,6 @@ Do not use `mobile/` for browser development. The repo root app is the web exper
 
 1. Start PostgreSQL
 2. Start the API on port `5000`
-3. Start the web app on port `5173`
-4. Start the mobile app only if you need native testing
+3. Start the ML service on port `8001` (optional — needed for admin analytics)
+4. Start the web app on port `5173`
+5. Start the mobile app only if you need native testing

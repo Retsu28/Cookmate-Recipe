@@ -9,6 +9,7 @@ import {
   Home,
   Package,
   Server,
+  ShieldCheck,
   Star,
   Users,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ const adminNavItems: AdminNavItem[] = [
   { label: 'Reports', path: '/admin/reports', icon: BarChart3 },
   { label: 'System Status', path: '/admin/system-status', icon: Server },
   { label: 'ML Analytics', path: '/admin/ml-analytics', icon: Brain },
+  { label: 'Audit Log', path: '/admin/audit-log', icon: ShieldCheck },
 ];
 
 interface AdminSidebarProps {
@@ -82,7 +84,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
       <div className="m-4 rounded-[1.5rem] border border-stone-200 bg-white p-4">
         <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600">Admin access</p>
         <p className="mt-2 text-sm leading-relaxed text-stone-600">
-          Admin pages still use local mock data for now, while access stays limited to signed-in admin accounts.
+          Restricted to signed-in admin accounts. All actions are logged.
         </p>
       </div>
     </aside>

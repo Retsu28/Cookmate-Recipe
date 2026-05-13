@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Mail, Newspaper, Smartphone, Sparkles, type LucideIcon } from 'lucide-react';
+import { Bell, Mail, Smartphone, Sparkles, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -8,14 +8,12 @@ import settingsService from '@/services/settingsService';
 type NotificationPreferences = {
   emailNotifications: boolean;
   pushNotifications: boolean;
-  weeklyDigest: boolean;
   newRecipeAlerts: boolean;
 };
 
 const defaultPreferences: NotificationPreferences = {
   emailNotifications: true,
   pushNotifications: true,
-  weeklyDigest: false,
   newRecipeAlerts: true,
 };
 
@@ -36,12 +34,6 @@ const rows: Array<{
     title: 'Push notifications',
     description: 'Show timely reminders and app updates on this device.',
     icon: Smartphone,
-  },
-  {
-    id: 'weeklyDigest',
-    title: 'Weekly digest',
-    description: 'Get a summary of recipes, meal plans, and cooking activity each week.',
-    icon: Newspaper,
   },
   {
     id: 'newRecipeAlerts',
@@ -69,8 +61,6 @@ function normalizePreferences(value: Record<string, unknown>): NotificationPrefe
       typeof value.pushNotifications === 'boolean'
         ? value.pushNotifications
         : defaultPreferences.pushNotifications,
-    weeklyDigest:
-      typeof value.weeklyDigest === 'boolean' ? value.weeklyDigest : defaultPreferences.weeklyDigest,
     newRecipeAlerts:
       typeof value.newRecipeAlerts === 'boolean'
         ? value.newRecipeAlerts

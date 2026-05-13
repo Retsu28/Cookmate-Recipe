@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { Layout } from '../components/Layout';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -7,9 +8,9 @@ import { Card, CardContent } from '../components/ui/card';
 import {
   Clock, ChefHat, Users, Flame, Info,
   CheckCircle2, Printer, Share2, Heart,
-  ShoppingCart, Star, ArrowLeft, Play, X, Sparkles, Loader2, CalendarPlus
+  ShoppingCart, Star, ArrowLeft, Play, Pause, Volume2, VolumeX, X, Sparkles, Loader2, CalendarPlus, WifiOff
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import api from '@/services/api';
 import { getRecipeByIdCached } from '@/offline/cacheService';
@@ -17,6 +18,7 @@ import { OFFLINE_MESSAGE } from '@/offline/network';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
 import { AddToPlannerModal } from '@/components/meal-planner/AddToPlannerModal';
+import StartCookingSplash from '@/components/StartCookingSplash';
 
 interface Ingredient {
   id: number;
@@ -44,6 +46,8 @@ interface DbRecipe {
   tags: string[] | null;
   normalized_ingredients: string[] | null;
   image_url: string | null;
+  video_filename: string | null;
+  instruction_timestamps: { start: number; end: number }[] | null;
   is_featured: boolean;
   ingredients: Ingredient[];
 }
@@ -56,11 +60,13 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState<DbRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [fromCache, setFromCache] = useState(false);
   const [servings, setServings] = useState(4);
   const [isCooking, setIsCooking] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
   const [plannerModalOpen, setPlannerModalOpen] = useState(false);
+  const [showStartCookingSplash, setShowStartCookingSplash] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -71,9 +77,15 @@ export default function RecipeDetail() {
     )
       .then(data => {
         setRecipe(data.recipe);
+        setFromCache(!!(data as { fromCache?: boolean }).fromCache);
         if (data.recipe.servings) setServings(data.recipe.servings);
       })
-      .catch(err => setError(err.message || 'Recipe not found.'))
+      .catch(err => {
+        const isOfflineMiss = (err as { code?: string }).code === 'OFFLINE_CACHE_MISS';
+        setError(isOfflineMiss
+          ? 'This recipe hasn\'t been cached yet. Open it while online to view it offline.'
+          : err.message || 'Recipe not found.');
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -128,8 +140,30 @@ export default function RecipeDetail() {
     );
   }
 
+  if (showStartCookingSplash) {
+    return (
+      <StartCookingSplash
+        recipe={recipe}
+        onFinished={() => {
+          setShowStartCookingSplash(false);
+          setIsCooking(true);
+        }}
+      />
+    );
+  }
+
   if (isCooking && steps.length > 0) {
-    return <GuidedCooking mode={{ title: recipe.title, steps }} step={currentStep} setStep={setCurrentStep} onExit={() => setIsCooking(false)} />;
+    const videoUrl = recipe.video_filename || null;
+    return (
+      <GuidedCooking
+        mode={{ title: recipe.title, steps }}
+        step={currentStep}
+        setStep={setCurrentStep}
+        onExit={() => setIsCooking(false)}
+        videoUrl={videoUrl}
+        timestamps={recipe.instruction_timestamps || []}
+      />
+    );
   }
 
   return (
@@ -143,6 +177,14 @@ export default function RecipeDetail() {
         >
           <ArrowLeft size={20} /> Back
         </button>
+
+        {/* Offline cache banner */}
+        {(!isOnline || fromCache) && (
+          <div className="flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-5 py-3 text-sm font-semibold text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/20 dark:text-orange-300">
+            <WifiOff size={15} className="shrink-0" />
+            <span>Offline mode — showing cached recipe. Some live features may be unavailable.</span>
+          </div>
+        )}
 
         {/* Hero Section */}
         <div className="flex flex-col lg:flex-row gap-12">
@@ -206,7 +248,7 @@ export default function RecipeDetail() {
                     return;
                   }
                   setCurrentStep(0);
-                  setIsCooking(true);
+                  setShowStartCookingSplash(true);
                 }}
                 aria-disabled={!isOnline || steps.length === 0}
                 title={!isOnline ? OFFLINE_MESSAGE : undefined}
@@ -385,24 +427,229 @@ export default function RecipeDetail() {
   );
 }
 
-function GuidedCooking({ mode, step, setStep, onExit }: any) {
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+interface GuidedCookingProps {
+  mode: { title: string; steps: { number: number; text: string; time: number | null }[] };
+  step: number;
+  setStep: (step: number) => void;
+  onExit: () => void;
+  videoUrl: string | null;
+  timestamps: { start: number; end: number; interval?: number }[] | null;
+}
+
+function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: GuidedCookingProps) {
   const current = mode.steps[step];
   const progress = ((step + 1) / mode.steps.length) * 100;
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const [showPlayButton, setShowPlayButton] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [showVolume, setShowVolume] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const [intervalTimeLeft, setIntervalTimeLeft] = useState(0);
+  const [showIntervalComplete, setShowIntervalComplete] = useState(false);
+  const [addedTime, setAddedTime] = useState(0);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  // Text-to-speech: read step instruction aloud on step change
+  const speak = useCallback((text: string) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 0.92;
+    utter.pitch = 1.05;
+    const setVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.name === 'Google US English')
+        ?? voices.find(v => v.name === 'Google UK English Female')
+        ?? voices.find(v => /female/i.test(v.name) && v.lang.startsWith('en'))
+        ?? voices.find(v => v.lang.startsWith('en'))
+        ?? null;
+      if (preferred) utter.voice = preferred;
+      window.speechSynthesis.speak(utter);
+    };
+    if (window.speechSynthesis.getVoices().length > 0) setVoice();
+    else window.speechSynthesis.onvoiceschanged = setVoice;
+  }, []);
+
+  useEffect(() => {
+    speak(current.text);
+    return () => { window.speechSynthesis?.cancel(); };
+  }, [step, speak]);
+
+  // Seek to timestamp when step changes
+  useEffect(() => {
+    if (videoRef.current && timestamps && timestamps[step]) {
+      const startTime = timestamps[step].start || 0;
+      videoRef.current.currentTime = startTime;
+      setIsPlaying(true);
+      videoRef.current.play().catch(() => {
+        // Autoplay blocked, show play button
+        setShowPlayButton(true);
+        setIsPlaying(false);
+      });
+    }
+  }, [step, timestamps]);
+
+  // Auto-loop video within timestamp range
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !timestamps || !timestamps[step]) return;
+
+    const startTime = timestamps[step].start || 0;
+    const endTime = timestamps[step].end;
+    const handleTimeUpdate = () => {
+      if (video.currentTime >= endTime) {
+        video.currentTime = startTime;
+      }
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [step, timestamps]);
+
+  // Interval timer based on timestamps: (end - start) + interval
+  useEffect(() => {
+    if (!timestamps || !timestamps[step]) return;
+    
+    const timestamp = timestamps[step];
+    const start = timestamp.start || 0;
+    const end = timestamp.end || start;
+    const videoDuration = Math.max(0, end - start); // Time from video timestamps
+    const additionalInterval = timestamp.interval || 0; // Additional cooking time from admin
+    const totalIntervalSeconds = videoDuration + additionalInterval + addedTime;
+    
+    setIntervalTimeLeft(totalIntervalSeconds);
+    setShowIntervalComplete(false);
+    
+    if (totalIntervalSeconds <= 0) return;
+    
+    const timer = setInterval(() => {
+      setIntervalTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setShowIntervalComplete(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [step, timestamps, addedTime]);
+
+  // Play a bell "ting" when interval completes
+  useEffect(() => {
+    if (!showIntervalComplete) return;
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Layer two harmonics for a metallic bell tone
+      const frequencies = [1046.5, 2093]; // C6 + C7
+      frequencies.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        // Sharp attack, long natural decay
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(i === 0 ? 0.5 : 0.25, ctx.currentTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 1.8);
+        osc.onended = () => ctx.close();
+      });
+    } catch {}
+  }, [showIntervalComplete]);
+
+  const handlePrevious = () => {
+    if (step > 0) setStep(step - 1);
+  };
+
+  const handleNext = () => {
+    if (step < mode.steps.length - 1) setStep(step + 1);
+  };
+
+  const handleFinish = () => {
+    setShowCompletion(true);
+  };
+
+  const handleCompleteAndExit = () => {
+    setShowCompletion(false);
+    onExit();
+  };
+
+  const currentTimestamp = timestamps?.[step];
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-stone-950 text-white font-sans">
-      {/* Header */}
-      <div className="p-6 flex items-center justify-between border-b border-white/10">
-        <div className="flex items-center gap-4">
-          <button onClick={onExit} aria-label="Exit cooking mode" className="p-3 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-white">
-            <X size={24} />
-          </button>
-          <div className="hidden sm:block">
-            <h2 className="font-bold text-xl">{mode.title}</h2>
-            <p className="text-sm text-stone-400">Step {step + 1} of {mode.steps.length}</p>
+    <div className={`fixed inset-0 z-[100] flex flex-col font-sans transition-colors duration-300 ${isDark ? 'bg-stone-950 text-white' : 'bg-stone-50 text-stone-900'}`}>
+      {/* Exit Confirmation Dialog */}
+      {showExitConfirm && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className={`rounded-2xl p-6 mx-4 max-w-sm w-full text-center shadow-2xl border transition-colors duration-300 ${isDark ? 'bg-stone-900 border-white/10' : 'bg-white border-stone-200'}`}>
+            <h3 className={`text-lg font-bold mb-2 ${isDark ? 'text-white' : 'text-stone-900'}`}>Exit Cooking Mode?</h3>
+            <p className={`text-sm mb-6 ${isDark ? 'text-stone-400' : 'text-stone-500'}`}>Your progress will be lost. Are you sure you want to exit?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className={`flex-1 h-11 rounded-full border font-semibold transition-colors ${isDark ? 'border-white/20 text-white hover:bg-white/10' : 'border-stone-300 text-stone-700 hover:bg-stone-100'}`}
+              >
+                Keep Cooking
+              </button>
+              <button
+                onClick={onExit}
+                className="flex-1 h-11 rounded-full bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors"
+              >
+                Exit
+              </button>
+            </div>
           </div>
         </div>
-        <div className="w-48 sm:w-64 h-3 bg-white/10 rounded-full overflow-hidden">
+      )}
+      {/* Header */}
+      <div className={`relative p-4 flex items-center justify-between border-b transition-colors duration-300 ${isDark ? 'border-white/10' : 'border-stone-200'}`}>
+        {/* Left: Exit button and title */}
+        <div className="flex items-center gap-4 flex-1">
+          <button onClick={() => setShowExitConfirm(true)} aria-label="Exit cooking mode" className={`p-3 transition-colors rounded-full ${isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-stone-200 hover:bg-stone-300 text-stone-700'}`}>
+            <X size={24} />
+          </button>
+          
+          <div>
+            <h2 className="font-bold text-lg">{mode.title}</h2>
+            <p className={`text-sm ${isDark ? 'text-stone-400' : 'text-stone-500'}`}>Step {step + 1} of {mode.steps.length}</p>
+          </div>
+        </div>
+        
+        {/* Center: Circular Timer - only shown when timestamps exist */}
+        {timestamps && timestamps[step] && (
+        <div className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 z-10">
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center ${showIntervalComplete ? 'bg-orange-500 animate-pulse' : isDark ? 'bg-stone-800 border-4 border-orange-500' : 'bg-white border-4 border-orange-500 shadow-lg'}`}>
+            <div className="text-center">
+              <div className={`text-xl font-bold ${showIntervalComplete ? 'text-white' : 'text-orange-500'}`}>
+                {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
+              </div>
+              <div className={`text-xs ${showIntervalComplete ? 'text-white/80' : isDark ? 'text-stone-400' : 'text-stone-500'}`}>
+                {showIntervalComplete ? 'Done!' : 'Interval'}
+              </div>
+            </div>
+          </div>
+        </div>
+        )}
+        
+        {/* Right: Progress bar */}
+        <div className="flex-1 flex justify-end">
+          <div className={`w-32 sm:w-48 h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-stone-200'}`}>
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
@@ -410,66 +657,348 @@ function GuidedCooking({ mode, step, setStep, onExit }: any) {
           />
         </div>
       </div>
+      </div>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
-        <div className="max-w-4xl w-full text-center">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-10"
-          >
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-500/20 text-orange-400 rounded-3xl text-4xl font-black mb-4">
-              {current.number}
-            </div>
-            <p className="text-3xl sm:text-5xl font-medium leading-tight text-white">{current.text}</p>
-
-            {current.time && (
-              <div className="mt-12 flex justify-center">
-                <div className="flex flex-col items-center gap-2 p-6 bg-white/5 rounded-[2rem] border border-white/10">
-                  <Clock size={32} className="text-orange-400" />
-                  <span className="text-4xl font-bold">{current.time}:00</span>
-                  <span className="text-stone-400 font-medium">Timer ready</span>
-                  <Button className="mt-4 bg-white text-stone-900 hover:bg-stone-200 rounded-full px-8 font-bold">
-                    Start Timer
-                  </Button>
+      {/* Main Content - Video + Step Layout */}
+      <div
+        className="flex-1 flex flex-col lg:flex-row overflow-hidden"
+        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+        onTouchEnd={(e) => {
+          if (touchStartX.current === null) return;
+          const diff = touchStartX.current - e.changedTouches[0].clientX;
+          if (Math.abs(diff) > 50) {
+            if (diff > 0) handleNext();
+            else handlePrevious();
+          }
+          touchStartX.current = null;
+        }}
+      >
+        {/* Left Side - Video Player */}
+        <div className="lg:w-1/2 flex flex-col p-4 lg:p-6">
+          {videoUrl ? (
+            <div className="relative flex-1 rounded-2xl overflow-hidden">
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+                loop={true}
+                onError={(e) => console.error('Video load error:', e, 'URL:', videoUrl)}
+                onLoadedData={() => { console.log('Video loaded successfully:', videoUrl); setIsBuffering(false); }}
+                onWaiting={() => setIsBuffering(true)}
+                onCanPlay={() => setIsBuffering(false)}
+                onPlay={() => {
+                  setShowPlayButton(false);
+                  setIsPlaying(true);
+                  setIsBuffering(false);
+                }}
+                onPause={() => setIsPlaying(false)}
+              />
+              {/* Buffering spinner */}
+              {isBuffering && (
+                <div className={`absolute inset-0 flex items-center justify-center pointer-events-none ${isDark ? 'bg-black/40' : 'bg-white/40'}`}>
+                  <Loader2 size={40} className={`animate-spin ${isDark ? 'text-white' : 'text-orange-500'}`} />
+                </div>
+              )}
+              {/* Video Overlay Container - shows controls on hover */}
+              <div 
+                className={`absolute inset-0 flex items-center justify-center transition-all group ${isDark ? 'bg-black/0 hover:bg-black/30' : 'bg-white/0 hover:bg-black/20'}`}
+                onMouseEnter={() => setShowControls(true)}
+                onMouseLeave={() => {
+                  setShowControls(false);
+                  setShowVolume(false);
+                }}
+              >
+                {/* Center Play/Pause Button - shows on hover */}
+                <button
+                  onClick={() => {
+                    if (videoRef.current) {
+                      if (isPlaying) {
+                        videoRef.current.pause();
+                      } else {
+                        videoRef.current.play();
+                      }
+                    }
+                  }}
+                  className={`p-6 bg-black/50 hover:bg-black/70 rounded-full text-white transition-all duration-300 ${showControls ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
+                >
+                  {isPlaying ? <Pause size={48} /> : <Play size={48} />}
+                </button>
+                
+                {/* Volume Control - Bottom Right - shows on hover */}
+                <div 
+                  className={`absolute bottom-4 right-4 flex items-center gap-2 transition-all duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+                  onMouseEnter={() => setShowVolume(true)}
+                  onMouseLeave={() => setShowVolume(false)}
+                >
+                  {showVolume && (
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={volume}
+                      onChange={(e) => {
+                        const newVolume = parseFloat(e.target.value);
+                        setVolume(newVolume);
+                        if (videoRef.current) {
+                          videoRef.current.volume = newVolume;
+                        }
+                      }}
+                      className="w-24 h-2 bg-white/30 rounded-lg appearance-none cursor-pointer"
+                    />
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newVolume = volume === 0 ? 1 : 0;
+                      setVolume(newVolume);
+                      if (videoRef.current) {
+                        videoRef.current.volume = newVolume;
+                      }
+                    }}
+                    className="p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+                  >
+                    {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                  </button>
                 </div>
               </div>
-            )}
+              {/* Fallback play button if autoplay blocked */}
+              {showPlayButton && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <button
+                    onClick={() => {
+                      videoRef.current?.play();
+                      setShowPlayButton(false);
+                      setIsPlaying(true);
+                    }}
+                    className="flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 rounded-full font-bold text-white transition-colors"
+                  >
+                    <Play size={20} />
+                    Click to Play Video
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={`flex-1 rounded-2xl flex items-center justify-center ${isDark ? 'bg-stone-900' : 'bg-stone-200'}`}>
+              <div className={`text-center ${isDark ? 'text-stone-500' : 'text-stone-400'}`}>
+                <Play size={48} className="mx-auto mb-2 opacity-50" />
+                <p>No video available</p>
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Right Side - Step Text */}
+        <div className="lg:w-1/2 flex flex-col p-4 lg:p-6">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex-1 flex flex-col justify-center"
+          >
+            {/* Step Number Circle */}
+            <div className="flex items-center justify-center lg:justify-start gap-4 mb-6">
+              <div className="w-16 h-16 rounded-full bg-orange-500 flex items-center justify-center text-2xl font-black shrink-0 text-white">
+                {current.number}
+              </div>
+              <div>
+                <p className={`text-sm uppercase tracking-wider ${isDark ? 'text-stone-400' : 'text-stone-500'}`}>Current Step</p>
+                {currentTimestamp && (
+                  <p className="text-sm text-orange-400">
+                    {formatTime(currentTimestamp.start)} - {formatTime(currentTimestamp.end)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Step Text */}
+            <div className="flex items-center justify-center lg:justify-start gap-3">
+              <button
+                onClick={() => speak(current.text)}
+                title="Read aloud"
+                className={`shrink-0 w-10 h-10 rounded-full transition-colors flex items-center justify-center ${isDark ? 'bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white' : 'bg-stone-200 hover:bg-stone-300 text-stone-600 hover:text-stone-900'}`}
+              >
+                <Volume2 size={18} />
+              </button>
+              <p className={`text-2xl sm:text-3xl lg:text-4xl font-medium leading-relaxed text-center lg:text-left ${isDark ? 'text-white' : 'text-stone-900'}`}>
+                {current.text}
+              </p>
+            </div>
           </motion.div>
         </div>
       </div>
 
-      {/* Footer Controls */}
-      <div className="p-6 sm:p-8 border-t border-white/10 flex justify-between items-center bg-stone-950">
-        <Button
-          variant="outline"
-          disabled={step === 0}
-          onClick={() => setStep(step - 1)}
-          className="rounded-full h-16 px-6 sm:px-10 border-white/20 text-white hover:bg-white/10 font-bold text-lg"
-        >
-          Previous
-        </Button>
-        <div className="flex gap-4">
+      {/* Bottom Controls */}
+      <div className={`border-t transition-colors duration-300 ${isDark ? 'border-white/10 bg-stone-950' : 'border-stone-200 bg-stone-100'}`}>
+        {/* Interval banner + time buttons — shown above the nav row when timestamps exist */}
+        {timestamps && timestamps[step] && (
+          <div className="flex flex-col items-center gap-1.5 pt-2 px-4">
+            {showIntervalComplete && (
+              <div className="bg-orange-500/20 text-orange-400 px-3 py-1 rounded-md text-xs font-bold text-center">
+                Interval Complete! Proceed to Next Step?
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setAddedTime(prev => prev + 60)}
+                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${isDark ? 'bg-stone-700 hover:bg-stone-600 text-white' : 'bg-stone-300 hover:bg-stone-400 text-stone-800'}`}
+              >
+                +1 min
+              </button>
+              <button
+                onClick={() => setAddedTime(prev => prev + 300)}
+                className={`px-2.5 py-1 text-xs rounded-full transition-colors ${isDark ? 'bg-stone-700 hover:bg-stone-600 text-white' : 'bg-stone-300 hover:bg-stone-400 text-stone-800'}`}
+              >
+                +5 min
+              </button>
+              <button
+                onClick={() => setAddedTime(0)}
+                className="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded-full transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Previous / step counter / Next */}
+        <div className="px-4 py-2 lg:px-6 lg:py-3 flex justify-between items-center">
+          <Button
+            variant="outline"
+            disabled={step === 0}
+            onClick={handlePrevious}
+            className={`w-24 sm:w-28 rounded-full h-9 sm:h-10 font-bold text-sm sm:text-base disabled:opacity-30 shrink-0 transition-colors ${isDark ? 'border-white/20 text-white hover:bg-white/10' : 'border-stone-300 text-stone-700 hover:bg-stone-200'}`}
+          >
+            Previous
+          </Button>
+
+          <span className={`text-sm whitespace-nowrap text-center ${isDark ? 'text-stone-400' : 'text-stone-500'}`}>
+            {step + 1} / {mode.steps.length}
+          </span>
+
           {step === mode.steps.length - 1 ? (
             <Button
-              onClick={onExit}
-              className="h-16 rounded-full bg-orange-500 px-8 text-xl font-bold text-white shadow-lg shadow-orange-500/20 sm:px-12"
+              onClick={handleFinish}
+              className="w-24 sm:w-28 h-9 sm:h-10 rounded-full bg-green-500 text-sm sm:text-base font-bold text-white shadow-lg shadow-green-500/20 hover:bg-green-600 shrink-0"
             >
               FINISH
             </Button>
           ) : (
             <Button
-              onClick={() => setStep(step + 1)}
-              className="bg-orange-500 hover:bg-orange-600 text-white rounded-full h-16 px-8 sm:px-12 font-bold text-xl shadow-lg shadow-orange-500/20"
+              onClick={handleNext}
+              disabled={intervalTimeLeft > 0 && !showIntervalComplete}
+              title={intervalTimeLeft > 0 && !showIntervalComplete ? 'Wait for interval to complete' : undefined}
+              className="w-24 sm:w-28 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-9 sm:h-10 font-bold text-sm sm:text-base shadow-lg shadow-orange-500/20 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Next Step
+              Next
             </Button>
           )}
         </div>
       </div>
+
+      {/* Completion Celebration Overlay */}
+      <AnimatePresence>
+        {showCompletion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-[300] flex items-center justify-center bg-black/92"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 200, damping: 20 }}
+              className="flex flex-col items-center px-8 text-center"
+            >
+              {/* Success Icon */}
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: 'spring', stiffness: 300, damping: 15 }}
+                className="w-32 h-32 rounded-full bg-green-500/15 flex items-center justify-center mb-8"
+              >
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                  transition={{ delay: 0.5, duration: 0.6, repeat: 1 }}
+                >
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20,6 9,17 4,12" />
+                  </svg>
+                </motion.div>
+              </motion.div>
+
+              {/* Title */}
+              <motion.h2
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-4xl md:text-5xl font-extrabold text-white mb-4"
+              >
+                Delicious!
+              </motion.h2>
+
+              {/* Subtitle */}
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-lg text-stone-400 mb-2"
+              >
+                You've completed cooking
+              </motion.p>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="text-xl font-semibold text-white mb-10 max-w-md"
+              >
+                {mode.title}
+              </motion.p>
+
+              {/* Stats */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="flex items-center gap-10 mb-12"
+              >
+                <div className="flex items-center gap-3 text-stone-400">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                  </svg>
+                  <span className="font-medium">{mode.steps.length} steps</span>
+                </div>
+              </motion.div>
+
+              {/* Button */}
+              <motion.button
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleCompleteAndExit}
+                className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg rounded-full shadow-lg shadow-orange-500/30 transition-colors"
+              >
+                Back to Recipe
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

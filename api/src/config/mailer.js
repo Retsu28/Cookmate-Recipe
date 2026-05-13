@@ -1,3 +1,4 @@
+const logger = require('./logger');
 /**
  * Gmail SMTP transporter (nodemailer).
  *
@@ -61,7 +62,7 @@ function getTransporter() {
 async function sendMail(opts) {
   const transporter = getTransporter();
   if (!transporter) {
-    console.warn('[mailer] SMTP_USER/SMTP_PASS not set — skipping sendMail');
+    logger.warn('[mailer] SMTP_USER/SMTP_PASS not set — skipping sendMail');
     return null;
   }
   const from =

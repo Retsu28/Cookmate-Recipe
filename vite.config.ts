@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         // Workbox auto-generates the service worker
         strategies: 'generateSW',
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         injectRegister: false,
         manifestFilename: 'manifest.json',
         // Include all built assets in the precache manifest
@@ -56,40 +56,73 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           cleanupOutdatedCaches: true,
-          importScripts: ['/planner-notification-sw.js'],
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MB (PNG icons are ~2.9 MB)
+          ...(mode === 'production' ? { importScripts: ['/planner-notification-sw.js'] } : {}),
+
           // -------------------------------------------------------
-          // App shell (HTML, JS, CSS) — precached on SW install
+          // App shell — precached on SW install
+          // Includes ALL JS/CSS chunks (including manualChunks) so
+          // every page is accessible offline without a network fetch.
           // -------------------------------------------------------
-          globPatterns: ['**/*.{html,js,css,woff2}'],
-          navigateFallbackDenylist: [/^\/api\//],
+          globPatterns: ['**/*.{html,js,css,woff,woff2,ttf,eot,ico,png,svg,webp}'],
+
+          // -------------------------------------------------------
+          // SPA navigation fallback — serve index.html for any
+          // route that isn't an API call or a static asset.
+          // This is what makes /planner, /camera, /recipes etc.
+          // work offline in both the browser tab and the installed PWA.
+          // -------------------------------------------------------
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [
+            /^\/api\//,          // never intercept API requests
+            /^\/socket\.io\//,   // never intercept WebSocket upgrade
+            /\.(?:js|css|png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf|eot)$/i,
+          ],
 
           // -------------------------------------------------------
           // Runtime caching
           // -------------------------------------------------------
           runtimeCaching: [
+            // API — always network-only; data is cached in IndexedDB by the app
             {
               urlPattern: /\/api\//,
               handler: 'NetworkOnly',
             },
-            // Images — cache-first, keep for 30 days, max 60 entries
+            // Gemini AI — never cache
             {
-              urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+              urlPattern: /^https:\/\/generativelanguage\.googleapis\.com\//,
+              handler: 'NetworkOnly',
+            },
+            // Remote (cross-origin) images only — cache-first, 30 days, 150 entries
+            // Local app assets (pwa icons, favicon) are covered by the precache manifest.
+            {
+              urlPattern: /^https:\/\/.+\.(?:png|jpg|jpeg|svg|gif|webp|ico)(\?.*)?$/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'cookmate-images',
                 expiration: {
-                  maxEntries: 60,
-                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+                  maxEntries: 150,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
                 },
                 cacheableResponse: {
                   statuses: [0, 200],
                 },
               },
             },
-            // Gemini API calls — network-only, never cache AI responses
+            // Cross-origin fonts (Google Fonts etc.) — cache-first
             {
-              urlPattern: /^https:\/\/generativelanguage\.googleapis\.com\//,
-              handler: 'NetworkOnly',
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'cookmate-fonts',
+                expiration: {
+                  maxEntries: 30,
+                  maxAgeSeconds: 365 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
             },
           ],
         },
@@ -122,6 +155,10 @@ export default defineConfig(({ mode }) => {
 
     server: {
       hmr: true,
+      // Exclude mobile and api folders from file watching (prevents reload spam)
+      watch: {
+        ignored: ['**/mobile/**', '**/api/**'],
+      },
       // Proxy API requests to the Express API server during development
       proxy: {
         '/api': {

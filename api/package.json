@@ -14,8 +14,9 @@
     "@date-fns/tz": "^1.4.1",
     "@google/generative-ai": "^0.24.1",
     "@imgly/background-removal-node": "^1.4.3",
-    "@types/multer": "^2.1.0",
     "bcryptjs": "^3.0.3",
+    "busboy": "^1.6.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csv-parse": "^6.2.1",
@@ -23,15 +24,17 @@
     "expo-server-sdk": "^6.1.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.4.1",
-    "firebase-admin": "^13.2.0",
+    "firebase-admin": "^13.9.0",
     "google-auth-library": "^9.15.1",
+    "helmet": "^8.1.0",
     "jimp-compact": "^0.16.1",
     "jsonwebtoken": "^9.0.3",
     "luxon": "^3.7.2",
-    "multer": "^2.1.1",
     "natural": "^6.10.5",
     "nodemailer": "^8.0.7",
     "pg": "^8.20.0",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
     "socket.io": "^4.8.3"
   },
   "private": true,
@@ -39,6 +42,8 @@
     "node": ">=18.0.0"
   },
   "overrides": {
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "lodash": "^4.18.0",
+    "zod": "^3.23.0"
   }
 }

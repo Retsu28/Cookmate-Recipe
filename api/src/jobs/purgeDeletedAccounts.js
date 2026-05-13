@@ -1,17 +1,18 @@
 const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 async function purgeDeletedAccounts() {
   try {
     const result = await pool.query(
       'DELETE FROM public.users WHERE deletion_scheduled_at <= NOW() RETURNING id'
     );
-    console.log(`[purgeDeletedAccounts] Deleted ${result.rowCount} account(s).`);
+    logger.info(`[purgeDeletedAccounts] Deleted ${result.rowCount} account(s).`);
   } catch (err) {
     if (err?.code === '42703') {
-      console.warn('[purgeDeletedAccounts] Skipped because soft-delete migration has not been applied.');
+      logger.warn('[purgeDeletedAccounts] Skipped because soft-delete migration has not been applied.');
       return;
     }
-    console.error('[purgeDeletedAccounts] Failed:', err);
+    logger.error('[purgeDeletedAccounts] Failed:', err);
   }
 }
 

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 const USER_CACHE_TTL_MS = 30_000;
 const userCache = new Map();
@@ -87,7 +88,7 @@ async function requireAuth(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
-    console.error('[requireAuth] failed:', err);
+    logger.error('[requireAuth] failed:', err);
     return res.status(401).json({ error: 'Invalid or expired token.' });
   }
 }

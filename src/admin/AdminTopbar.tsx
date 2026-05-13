@@ -1,7 +1,6 @@
-import { Bell, Menu, Search, ShieldCheck } from 'lucide-react';
+import { Bell, Menu, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 interface AdminTopbarProps {
@@ -28,15 +27,6 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
       >
         <Menu size={20} />
       </Button>
-
-      <div className="relative hidden flex-1 sm:block">
-        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
-        <Input
-          aria-label="Search admin records"
-          placeholder="Search admin records..."
-          className="h-11 rounded-full border-stone-200 bg-white pl-11 font-medium shadow-sm"
-        />
-      </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <Badge className="hidden h-8 rounded-full bg-orange-100 px-3 font-bold text-orange-700 sm:inline-flex">

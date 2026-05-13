@@ -17,6 +17,7 @@ import {
   RefreshCw,
   ShoppingCart,
   Trash2,
+  WifiOff,
   X,
 } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
@@ -475,7 +476,7 @@ export default function MealPlanner() {
 
   return (
     <Layout>
-      <div className="mx-auto flex w-full max-w-7xl xl:max-w-[1600px] flex-col items-start gap-8 px-4 py-8 animate-fade-up sm:px-6 md:py-12 lg:px-8 xl:flex-row">
+      <div className="relative mx-auto flex w-full max-w-7xl xl:max-w-[1600px] flex-col items-start gap-8 px-4 py-8 animate-fade-up sm:px-6 md:py-12 lg:px-8 xl:flex-row">
         <div className="flex-1 w-full min-w-0 space-y-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
@@ -677,17 +678,24 @@ export default function MealPlanner() {
                           >
                             <div className="mb-2 flex items-center justify-between gap-1">
                               <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRecommendationsDrawer({ open: true, mealType: slot.id, date: day });
-                                }}
-                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
-                                aria-label={`Add ${slot.label} recipe`}
-                              >
-                                <Plus size={13} />
-                              </button>
+                              {!isOnline ? (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-orange-600 dark:bg-orange-500/15 dark:text-orange-300">
+                                  <WifiOff size={8} />
+                                  Offline
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRecommendationsDrawer({ open: true, mealType: slot.id, date: day });
+                                  }}
+                                  className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
+                                  aria-label={`Add ${slot.label} recipe`}
+                                >
+                                  <Plus size={13} />
+                                </button>
+                              )}
                             </div>
 
                             <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
@@ -703,8 +711,20 @@ export default function MealPlanner() {
 
                             {slotPlans.length === 0 ? (
                               <div className="mt-2 flex flex-1 flex-col justify-end">
-                                <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
-                                <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                                {!isOnline ? (
+                                  <>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-orange-600 dark:bg-orange-500/15 dark:text-orange-300 w-fit">
+                                      <WifiOff size={9} />
+                                      Offline mode
+                                    </span>
+                                    <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-1">No cached plan</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
+                                    <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                                  </>
+                                )}
                               </div>
                             ) : (
                               <div className="mt-2 flex flex-1 flex-col gap-1.5">
@@ -798,17 +818,24 @@ export default function MealPlanner() {
                       >
                         <div className="mb-2 flex items-center justify-between gap-1">
                           <span className={cn('h-2 w-2 shrink-0 rounded-full', slot.color)} />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRecommendationsDrawer({ open: true, mealType: slot.id, date: currentDate });
-                            }}
-                            className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
-                            aria-label={`Add ${slot.label} recipe`}
-                          >
-                            <Plus size={13} />
-                          </button>
+                          {!isOnline ? (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-orange-600 dark:bg-orange-500/15 dark:text-orange-300">
+                              <WifiOff size={8} />
+                              Offline
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRecommendationsDrawer({ open: true, mealType: slot.id, date: currentDate });
+                              }}
+                              className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-orange-100 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-400"
+                              aria-label={`Add ${slot.label} recipe`}
+                            >
+                              <Plus size={13} />
+                            </button>
+                          )}
                         </div>
 
                         <p className="text-[10px] font-extrabold uppercase tracking-widest text-stone-500 dark:text-stone-400">{slot.label}</p>
@@ -824,8 +851,20 @@ export default function MealPlanner() {
 
                         {slotPlans.length === 0 ? (
                           <div className="mt-2 flex flex-1 flex-col justify-end">
-                            <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
-                            <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                            {!isOnline ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-orange-600 dark:bg-orange-500/15 dark:text-orange-300 w-fit">
+                                  <WifiOff size={9} />
+                                  Offline mode
+                                </span>
+                                <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-1">No cached plan</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-[15px] font-extrabold text-stone-900 dark:text-stone-100">Add Recipe</p>
+                                <p className="text-[11px] font-medium text-stone-400 dark:text-stone-500 mt-0.5">No recipe planned</p>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <div className="mt-2 flex flex-1 flex-col gap-1.5">

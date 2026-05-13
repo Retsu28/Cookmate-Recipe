@@ -42,13 +42,28 @@ function getSavedAppearance() {
   const isValidTheme = (v: string | null) => v === 'light' || v === 'dark' || v === 'system';
   const isValidFontSize = (v: string | null) => v === 'small' || v === 'medium' || v === 'large';
   
-  // Check system preference for theme
   const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   
   return {
     theme: isValidTheme(savedTheme) ? savedTheme : systemTheme,
     fontSize: isValidFontSize(savedFontSize) ? savedFontSize : 'medium',
   };
+}
+
+// Apply theme + font-size synchronously before first paint to avoid flash
+function applyAppearanceSync(appearance: { theme: string | null; fontSize: string | null }) {
+  if (typeof window === 'undefined') return;
+  const root = document.documentElement;
+  root.classList.remove('light', 'dark');
+  if (appearance.theme === 'system') {
+    root.classList.add(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  } else if (appearance.theme === 'light' || appearance.theme === 'dark') {
+    root.classList.add(appearance.theme);
+  }
+  if (appearance.fontSize) {
+    root.dataset.fontSize = appearance.fontSize;
+    root.setAttribute('data-font-size', appearance.fontSize);
+  }
 }
 
 interface SplashScreenProps {
@@ -66,25 +81,17 @@ export default function SplashScreen({
 }: SplashScreenProps) {
   const [visible, setVisible] = useState(true);
   const [minimumElapsed, setMinimumElapsed] = useState(false);
-  const appearance = useMemo(() => getSavedAppearance(), []);
+  const appearance = useMemo(() => {
+    const a = getSavedAppearance();
+    applyAppearanceSync(a);
+    return a;
+  }, []);
   const floaters = useMemo(() => buildFloaters(), []);
 
-  // Apply theme and font size to document immediately
+  // Re-apply on theme/fontSize change (handles settings updates)
   useEffect(() => {
-    // Apply font size
-    document.documentElement.dataset.fontSize = appearance.fontSize;
-    document.documentElement.setAttribute('data-font-size', appearance.fontSize);
-    
-    // Apply theme (for Tailwind dark: classes to work)
-    const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    if (appearance.theme === 'system') {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.classList.add(systemDark ? 'dark' : 'light');
-    } else {
-      root.classList.add(appearance.theme);
-    }
-  }, [appearance.theme, appearance.fontSize]);
+    applyAppearanceSync(appearance);
+  }, [appearance]);
 
   useEffect(() => {
     const timer = setTimeout(() => setMinimumElapsed(true), minimumDuration);
@@ -105,7 +112,12 @@ export default function SplashScreen({
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#fff7ed_0%,#ffedd5_30%,#fed7aa_60%,#fdba74_100%)] dark:bg-[linear-gradient(135deg,#0c0a09_0%,#1c1917_35%,#431407_70%,#7c2d12_100%)]"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden"
+          style={{
+            background: appearance.theme === 'dark' || (appearance.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+              ? 'linear-gradient(135deg,#0c0a09 0%,#1c1917 35%,#431407 70%,#7c2d12 100%)'
+              : 'linear-gradient(135deg,#fff7ed 0%,#ffedd5 30%,#fed7aa 60%,#fdba74 100%)',
+          }}
         >
           {/* Floating food icons — same style as AuthVisualPanel */}
           {floaters.map(({ id, Icon, x, y, size, delay, duration, rotate }) => (

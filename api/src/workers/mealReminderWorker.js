@@ -1,4 +1,5 @@
 const { processDuePlannerReminders } = require('../services/plannerReminderService');
+const logger = require('../config/logger');
 
 const DEFAULT_INTERVAL_MS = 5 * 1000;
 
@@ -13,10 +14,10 @@ async function tick() {
       limit: Number(process.env.MEAL_REMINDER_WORKER_LIMIT || 50),
     });
     if (result.claimed > 0) {
-      console.log(`[mealReminderWorker] processed ${result.claimed} due reminder(s).`);
+      logger.info(`[mealReminderWorker] processed ${result.claimed} due reminder(s).`);
     }
   } catch (err) {
-    console.error('[mealReminderWorker] failed:', err);
+    logger.error('[mealReminderWorker] failed:', err);
   } finally {
     running = false;
   }
@@ -25,7 +26,7 @@ async function tick() {
 function startMealReminderWorker() {
   if (timer) return;
   if (process.env.MEAL_REMINDER_WORKER_ENABLED === 'false') {
-    console.log('[mealReminderWorker] disabled by MEAL_REMINDER_WORKER_ENABLED=false');
+    logger.info('[mealReminderWorker] disabled by MEAL_REMINDER_WORKER_ENABLED=false');
     return;
   }
 
@@ -37,7 +38,7 @@ function startMealReminderWorker() {
   timer = setInterval(tick, intervalMs);
   timer.unref?.();
   tick().catch(() => {});
-  console.log(`[mealReminderWorker] running every ${intervalMs}ms`);
+  logger.info(`[mealReminderWorker] running every ${intervalMs}ms`);
 }
 
 function stopMealReminderWorker() {

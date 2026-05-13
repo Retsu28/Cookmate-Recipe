@@ -1,5 +1,6 @@
 const { Expo } = require('expo-server-sdk');
 const { pool } = require('../config/db');
+const logger = require('../config/logger');
 const {
   MEAL_TYPE_LABELS,
   buildDedupeKey,
@@ -135,7 +136,7 @@ async function logReminderEvent({
     );
   } catch (err) {
     if (err.code !== '42P01') {
-      console.warn('[plannerReminder/logReminderEvent] skipped:', err.message);
+      logger.warn('[plannerReminder/logReminderEvent] skipped:', err.message);
     }
   }
 }
@@ -576,6 +577,28 @@ async function processPlannerNotification(notification) {
       dedupeKey: notification.dedupe_key,
     });
     return { status: 'skipped', reason: 'duplicate_suppressed' };
+  }
+
+  // Check user's pushNotifications preference — skip if they turned it off
+  const pushSettingResult = await pool.query(
+    `SELECT settings_value->>'pushNotifications' AS push_on
+     FROM public.user_settings
+     WHERE user_id = $1 AND settings_key = 'notifications'
+     LIMIT 1`,
+    [plan.user_id]
+  );
+  const pushOn = pushSettingResult.rows[0]?.push_on;
+  if (pushOn === 'false') {
+    await markNotificationTerminal(notification.id, 'skipped', { lastError: 'push_notifications_disabled_by_user' });
+    await logReminderEvent({
+      mealPlanId: plan.id,
+      plannerNotificationId: notification.id,
+      userId: plan.user_id,
+      channel: 'server_push',
+      eventType: 'skipped_push_disabled',
+      dedupeKey: notification.dedupe_key,
+    });
+    return { status: 'skipped', reason: 'push_notifications_disabled_by_user' };
   }
 
   if (windowStatus.status === 'ended') {

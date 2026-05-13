@@ -1,5 +1,31 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authService, type AuthUser } from '@/services/authService';
+import settingsService from '@/services/settingsService';
+
+/* ------------------------------------------------------------------ */
+/*  Restore saved appearance (theme + fontSize) from the API into      */
+/*  localStorage + DOM so every page — including Onboarding — uses     */
+/*  the user's preferences even after a cache clear.                   */
+/* ------------------------------------------------------------------ */
+async function restoreAppearance(userId: number) {
+  try {
+    const prefs = await settingsService.getSettings(String(userId), 'appearance');
+    const theme = typeof prefs?.theme === 'string' ? prefs.theme : null;
+    const fontSize = typeof prefs?.fontSize === 'string' ? prefs.fontSize : null;
+    if (theme) {
+      localStorage.setItem('cookmate:theme', theme);
+      document.documentElement.classList.remove('light', 'dark');
+      if (theme === 'dark') document.documentElement.classList.add('dark');
+      else if (theme === 'light') document.documentElement.classList.add('light');
+    }
+    if (fontSize) {
+      localStorage.setItem('cookmate:fontSize', fontSize);
+      document.documentElement.setAttribute('data-font-size', fontSize);
+    }
+  } catch {
+    /* network error — keep whatever is already in localStorage */
+  }
+}
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -35,8 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .me()
       .then((fresh) => {
         if (cancelled) return;
-        if (fresh) setUser(fresh);
-        else if (cached) setUser(null);
+        if (fresh) {
+          setUser(fresh);
+          if (fresh.id) restoreAppearance(fresh.id);
+        } else if (cached) setUser(null);
       })
       .catch(() => {
         /* network error: keep cached user so offline reads still work */
@@ -63,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await authService.login(email, password);
     setUser(res.user);
+    if (res.user.id) restoreAppearance(res.user.id);
     setShowPostLoginSplash(true);
     return res.user;
   }, []);
@@ -75,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = useCallback(async (credential: string) => {
     const res = await authService.googleLogin(credential);
     setUser(res.user);
+    if (res.user.id) restoreAppearance(res.user.id);
     setShowPostLoginSplash(true);
     return res.user;
   }, []);

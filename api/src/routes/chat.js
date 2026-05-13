@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
+const logger = require('../config/logger');
+const { ipKeyGenerator } = require('express-rate-limit');
 const { requireAuth } = require('../middleware/requireAuth');
 const chatController = require('../controllers/chatController');
 
@@ -30,10 +32,10 @@ const ipChatLimiter = rateLimit({
   max: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
+  keyGenerator: ipKeyGenerator,
   skipSuccessfulRequests: false,
   handler: (req, res) => {
-    console.warn(`[chat-ratelimit] IP limit hit — ip=${req.ip} at ${new Date().toISOString()}`);
+    logger.warn(`[chat-ratelimit] IP limit hit — ip=${req.ip} at ${new Date().toISOString()}`);
     res.status(429).json({ error: 'Too many requests from this IP. Please try again later.' });
   },
 });
@@ -51,7 +53,7 @@ const userChatLimiter = rateLimit({
   keyGenerator: (req) => `user:${req.userId}`,
   skipSuccessfulRequests: false,
   handler: (req, res) => {
-    console.warn(`[chat-ratelimit] 10-min user limit hit — userId=${req.userId} ip=${req.ip} at ${new Date().toISOString()}`);
+    logger.warn(`[chat-ratelimit] 10-min user limit hit — userId=${req.userId} ip=${req.ip} at ${new Date().toISOString()}`);
     res.status(429).json({ error: 'You are sending messages too quickly. Please wait a moment before trying again.' });
   },
 });
@@ -68,7 +70,7 @@ const userDailyLimiter = rateLimit({
   keyGenerator: (req) => `daily:${req.userId}`,
   skipSuccessfulRequests: false,
   handler: (req, res) => {
-    console.warn(`[chat-ratelimit] Daily user limit hit — userId=${req.userId} ip=${req.ip} at ${new Date().toISOString()}`);
+    logger.warn(`[chat-ratelimit] Daily user limit hit — userId=${req.userId} ip=${req.ip} at ${new Date().toISOString()}`);
     res.status(429).json({ error: 'You have reached your daily message limit. Please try again tomorrow.' });
   },
 });
@@ -81,10 +83,10 @@ const historyLimiter = rateLimit({
   max: 60,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => `user:${req.userId ?? req.ip}`,
+  keyGenerator: (req) => (req.userId ? `user:${req.userId}` : ipKeyGenerator(req)),
   skipSuccessfulRequests: false,
   handler: (req, res) => {
-    console.warn(`[chat-ratelimit] History limit hit — userId=${req.userId ?? 'anon'} ip=${req.ip} at ${new Date().toISOString()}`);
+    logger.warn(`[chat-ratelimit] History limit hit — userId=${req.userId ?? 'anon'} ip=${req.ip} at ${new Date().toISOString()}`);
     res.status(429).json({ error: 'Too many history requests. Please slow down.' });
   },
 });

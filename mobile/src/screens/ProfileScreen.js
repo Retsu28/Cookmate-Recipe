@@ -46,7 +46,6 @@ const profileTabs = [
 const emptyForm = {
   fullName: '',
   email: '',
-  bio: '',
   cookingSkillLevel: 'Beginner',
   currentPassword: '',
   newPassword: '',
@@ -70,7 +69,6 @@ function baselineFromProfile(profile) {
   return {
     fullName: profile?.full_name || '',
     email: profile?.email || '',
-    bio: profile?.bio || '',
     cookingSkillLevel: profile?.cooking_skill_level || 'Beginner',
   };
 }
@@ -104,7 +102,6 @@ export default function ProfileScreen({ navigation }) {
     () => ({
       fullName: user?.name || user?.full_name || '',
       email: user?.email || '',
-      bio: '',
       cookingSkillLevel: 'Beginner',
     }),
     [user?.email, user?.full_name, user?.name]
@@ -290,7 +287,6 @@ export default function ProfileScreen({ navigation }) {
       !!avatarUri ||
       normalizeFullName(form.fullName) !== normalizeFullName(initial.fullName) ||
       normalizeEmail(form.email) !== normalizeEmail(initial.email) ||
-      form.bio.trim() !== initial.bio.trim() ||
       form.cookingSkillLevel !== initial.cookingSkillLevel ||
       form.currentPassword.length > 0 ||
       form.newPassword.length > 0 ||
@@ -440,7 +436,6 @@ export default function ProfileScreen({ navigation }) {
     const payload = {
       full_name: normalizeFullName(form.fullName),
       email: normalizeEmail(form.email),
-      bio: form.bio.trim(),
       cooking_skill_level: form.cookingSkillLevel,
     };
     if (securityChanging) payload.current_password = form.currentPassword;
@@ -563,6 +558,12 @@ export default function ProfileScreen({ navigation }) {
                 Tap avatar to change · Save to upload
               </Text>
             )}
+            <Text style={[st.avatarHint, { color: colors.textSubtle, marginTop: 4 }]}>
+              {'Cooking Skill — '}
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>
+                {form.cookingSkillLevel || 'Not set'}
+              </Text>
+            </Text>
 
             <View style={[st.statsRow, { borderTopColor: isDark ? colors.border : '#d6d3d1' }]}>
               {[
@@ -639,18 +640,6 @@ export default function ProfileScreen({ navigation }) {
                     placeholder="Jane Doe"
                     placeholderTextColor={colors.textSubtle}
                     autoCapitalize="words"
-                    editable={!profileLoading && !saving}
-                  />
-
-                  <FieldLabel label="Bio" colors={colors} fontSizes={fontSizes} />
-                  <TextInput
-                    value={form.bio}
-                    onChangeText={(value) => setField('bio', value)}
-                    style={[inputBase, st.textArea]}
-                    placeholder="A short note about your cooking style"
-                    placeholderTextColor={colors.textSubtle}
-                    multiline
-                    textAlignVertical="top"
                     editable={!profileLoading && !saving}
                   />
 

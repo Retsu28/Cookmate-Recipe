@@ -3,34 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { lazy, useState } from 'react';
+import { lazy, Suspense, useState } from 'react'; // lazy/Suspense kept for admin routes
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from '@/components/ui/sonner';
 import AppShell from './app/AppShell';
 import SplashScreen from '@/components/SplashScreen';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import PlannerReminderBridge from '@/notifications/PlannerReminderBridge';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AIChatProvider } from '@/context/AIChatContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
 import AdminGate from '@/auth/AdminGate';
 import AdminLayout from './admin/AdminLayout';
+import { ContentSkeleton } from '@/components/SkeletonScreen';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const SearchPage = lazy(() => import('./pages/Search'));
-const AllRecipesPage = lazy(() => import('./pages/AllRecipes'));
-const RecipeDetail = lazy(() => import('./pages/RecipeDetail'));
-const MealPlanner = lazy(() => import('./pages/MealPlanner'));
-const ProfilePage = lazy(() => import('./pages/Profile'));
-const NotificationsPage = lazy(() => import('./pages/Notifications'));
-const AICamera = lazy(() => import('./pages/AICamera'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Onboarding = lazy(() => import('./pages/Onboarding'));
+// Core user pages — bundled directly so they are always accessible offline
+// (no separate chunk fetch required when the app shell is cached)
+import Dashboard from './pages/Dashboard';
+import SearchPage from './pages/Search';
+import AllRecipesPage from './pages/AllRecipes';
+import MealPlanner from './pages/MealPlanner';
+import AICamera from './pages/AICamera';
+import ProfilePage from './pages/Profile';
+import NotificationsPage from './pages/Notifications';
+import Settings from './pages/Settings';
+import Onboarding from './pages/Onboarding';
+
+import RecipeDetail from './pages/RecipeDetail';
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const MLAnalytics = lazy(() => import('./admin/pages/MLAnalytics'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
@@ -42,6 +48,7 @@ const ReviewsFeedback = lazy(() => import('./admin/pages/ReviewsFeedback'));
 const NotificationManagement = lazy(() => import('./admin/pages/NotificationManagement'));
 const Reports = lazy(() => import('./admin/pages/Reports'));
 const SystemStatus = lazy(() => import('./admin/pages/SystemStatus'));
+const AuditLog = lazy(() => import('./admin/pages/AuditLog'));
 
 function PostLoginSplash() {
   const { showPostLoginSplash, finishPostLoginSplash } = useAuth();
@@ -70,7 +77,7 @@ export default function App() {
   const [splashDone, setSplashDone] = useState(false);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem={true}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem={true} storageKey="cookmate:theme">
       {!splashDone && <SplashScreen onFinished={() => setSplashDone(true)} />}
       <AuthProvider>
         <PostLoginSplash />
@@ -81,17 +88,18 @@ export default function App() {
           <Routes>
             <Route element={<AdminGate />}>
               <Route path="admin" element={<AdminLayout />}>
-                <Route index element={<AdminOverview />} />
-                <Route path="recipes" element={<RecipeManagement />} />
-                <Route path="ingredients" element={<IngredientManagement />} />
-                <Route path="users" element={<UserManagement />} />
-                <Route path="meal-planner" element={<MealPlannerMonitoring />} />
-                <Route path="ai-activity" element={<AIActivityMonitoring />} />
-                <Route path="reviews" element={<ReviewsFeedback />} />
-                <Route path="notifications" element={<NotificationManagement />} />
-                <Route path="reports" element={<Reports />} />
-                <Route path="system-status" element={<SystemStatus />} />
-                <Route path="ml-analytics" element={<MLAnalytics />} />
+                <Route index element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AdminOverview /></Suspense></PageErrorBoundary>} />
+                <Route path="recipes" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><RecipeManagement /></Suspense></PageErrorBoundary>} />
+                <Route path="ingredients" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><IngredientManagement /></Suspense></PageErrorBoundary>} />
+                <Route path="users" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><UserManagement /></Suspense></PageErrorBoundary>} />
+                <Route path="meal-planner" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><MealPlannerMonitoring /></Suspense></PageErrorBoundary>} />
+                <Route path="ai-activity" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AIActivityMonitoring /></Suspense></PageErrorBoundary>} />
+                <Route path="reviews" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><ReviewsFeedback /></Suspense></PageErrorBoundary>} />
+                <Route path="notifications" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><NotificationManagement /></Suspense></PageErrorBoundary>} />
+                <Route path="reports" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><Reports /></Suspense></PageErrorBoundary>} />
+                <Route path="system-status" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><SystemStatus /></Suspense></PageErrorBoundary>} />
+                <Route path="ml-analytics" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><MLAnalytics /></Suspense></PageErrorBoundary>} />
+                <Route path="audit-log" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AuditLog /></Suspense></PageErrorBoundary>} />
               </Route>
             </Route>
 
@@ -121,6 +129,7 @@ export default function App() {
           </Routes>
           <Toaster position="top-right" />
           <InstallPrompt />
+          <PWAUpdatePrompt />
           </AIChatProvider>
         </Router>
       </AuthProvider>

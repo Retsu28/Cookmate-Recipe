@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, BookOpen,
@@ -10,8 +10,54 @@ import { cn, getInitial } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { isAdminUser } from '@/services/authService';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { LayoutShellContext } from '@/context/LayoutShellContext';
+import { mealPlannerService } from '@/services/mealPlannerService';
+import { notificationService } from '@/services/notificationService';
 
-export const LayoutShellContext = createContext(false);
+const READ_PLANNER_KEY = 'cookmate.readPlannerNotifications';
+
+function getReadPlannerIds(): number[] {
+  try {
+    const stored = localStorage.getItem(READ_PLANNER_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function useUnreadNotifCount(userId?: number) {
+  const [count, setCount] = useState(0);
+  const location = useLocation();
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetch() {
+      if (!userId) { setCount(0); return; }
+      try {
+        const readIds = getReadPlannerIds();
+        const [upcomingRes, groceryRes, dbNotifs] = await Promise.all([
+          mealPlannerService.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }).catch(() => null),
+          mealPlannerService.getGroceryList().catch(() => null),
+          notificationService.getNotifications(userId).catch(() => []),
+        ]);
+        if (cancelled) return;
+        const plans = (upcomingRes as { plans?: import('@/services/mealPlannerService').MealPlan[] } | null)?.plans || [];
+        const groceryList = (groceryRes as { groceryList?: import('@/services/mealPlannerService').GroceryList } | null)?.groceryList;
+        let n = 0;
+        (dbNotifs as import('@/services/notificationService').Notification[]).forEach((notif) => { if (!notif.is_read) n += 1; });
+        plans.forEach((p) => { if (!readIds.includes(p.id)) n += 1; });
+        if (groceryList && groceryList.totalItems > 0 && !readIds.includes(-1)) n += 1;
+        setCount(n);
+      } catch {
+        // best-effort
+      }
+    }
+    fetch();
+    return () => { cancelled = true; };
+  }, [userId, location.pathname]);
+
+  return count;
+}
 
 /**
  * Tiny status dot rendered on the profile avatar:
@@ -55,6 +101,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const { user } = useAuth();
+  const unreadCount = useUnreadNotifCount(user?.id);
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';
   const profileAvatarUrl = resolveAvatarUrl(user?.avatar_url);
@@ -214,7 +261,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className="relative rounded-full bg-white p-2.5 text-stone-500 shadow-sm ring-1 ring-orange-100 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:bg-stone-800 dark:ring-stone-700"
             >
               <Bell size={20} />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-stone-800" />
+              {unreadCount > 0 && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-stone-800" />
+              )}
             </Link>
             <Link
               to="/profile"

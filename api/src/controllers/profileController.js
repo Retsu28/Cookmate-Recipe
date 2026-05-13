@@ -1,6 +1,9 @@
-const bcrypt = require('bcryptjs');
+﻿const bcrypt = require('bcryptjs');
+const logger = require('../config/logger');
 const fs = require('fs/promises');
+
 const path = require('path');
+
 const { pool } = require('../config/db');
 const { AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
 
@@ -72,7 +75,7 @@ exports.getProfile = async (req, res) => {
     }
     res.json({ profile: result.rows[0] });
   } catch (err) {
-    console.error('[profile/getProfile]', err);
+    logger.error('[profile/getProfile]', err);
     res.status(500).json({ error: 'Failed to fetch profile.' });
   }
 };
@@ -196,7 +199,7 @@ exports.updateProfile = async (req, res) => {
         .status(409)
         .json({ error: 'An account with this email already exists.' });
     }
-    console.error('[profile/updateProfile]', err);
+    logger.error('[profile/updateProfile]', err);
     res.status(500).json({ error: 'Failed to update profile.' });
   }
 };
@@ -250,7 +253,7 @@ exports.uploadAvatar = async (req, res) => {
     if (savedFilePath) {
       await fs.unlink(savedFilePath).catch(() => {});
     }
-    console.error('[profile/uploadAvatar]', err);
+    logger.error('[profile/uploadAvatar]', err);
     res.status(500).json({ error: 'Failed to upload avatar.' });
   }
 };
@@ -297,7 +300,8 @@ exports.deleteAccount = async (req, res) => {
     clearAuthCookie(res);
     res.status(200).json({ message: 'Account scheduled for deletion' });
   } catch (err) {
-    console.error('[profile/deleteAccount]', err);
+    logger.error('[profile/deleteAccount]', err);
     res.status(500).json({ error: 'Failed to delete account.' });
   }
 };
+

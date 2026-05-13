@@ -1,4 +1,5 @@
-const { pool } = require('../config/db');
+﻿const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 const ALLOWED_SETTINGS_KEYS = new Set(['notifications', 'appearance', 'privacy']);
 
@@ -55,7 +56,7 @@ exports.getSettings = async (req, res) => {
 
     res.status(200).json({ value: result.rows[0].settings_value });
   } catch (err) {
-    console.error('[settings/getSettings]', err);
+    logger.error('[settings/getSettings]', err);
     res.status(500).json({ error: 'Failed to fetch settings.' });
   }
 };
@@ -81,7 +82,8 @@ exports.saveSettings = async (req, res) => {
 
     res.status(200).json({ value: result.rows[0].settings_value });
   } catch (err) {
-    console.error('[settings/saveSettings]', err);
+    logger.error('[settings/saveSettings]', err);
     res.status(500).json({ error: 'Failed to save settings.' });
   }
 };
+

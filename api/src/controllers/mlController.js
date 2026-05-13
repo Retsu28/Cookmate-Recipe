@@ -1,5 +1,6 @@
-const { fork } = require('child_process');
+﻿const { fork } = require('child_process');
 const path = require('path');
+const logger = require('../config/logger');
 const { pool } = require('../config/db');
 
 const {
@@ -104,7 +105,7 @@ function removeBackgroundInWorker({ base64Data, mimeType }) {
     }, BG_REMOVAL_TIMEOUT_MS);
 
     child.stderr?.on('data', (chunk) => {
-      console.error('[ml/camera/remove-bg worker]', chunk.toString().trim());
+      logger.error('[ml/camera/remove-bg worker]', chunk.toString().trim());
     });
 
     child.on('message', (message) => {
@@ -154,7 +155,7 @@ exports.recommendByIngredients = async (req, res) => {
     const recommendations = await findRecipesByIngredients(ingredients);
     res.json({ recommendations });
   } catch (err) {
-    console.error('[ml/recommendByIngredients]', err);
+    logger.error('[ml/recommendByIngredients]', err);
     res.status(500).json({ error: 'Failed to get recommendations.' });
   }
 };
@@ -356,7 +357,7 @@ exports.createAiCameraSave = async (req, res) => {
     const hydratedAnalysis = await hydrateSavedAnalysisResult(save);
     return res.status(201).json(toAiCameraSaveDetail(save, hydratedAnalysis));
   } catch (err) {
-    console.error('[ml/ai-camera-saves/create]', err);
+    logger.error('[ml/ai-camera-saves/create]', err);
     return res.status(500).json({ error: 'Failed to save AI Camera result.' });
   }
 };
@@ -378,7 +379,7 @@ exports.listAiCameraSaves = async (req, res) => {
 
     return res.json({ saves: result.rows.map(toAiCameraSaveSummary) });
   } catch (err) {
-    console.error('[ml/ai-camera-saves/list]', err);
+    logger.error('[ml/ai-camera-saves/list]', err);
     return res.status(500).json({ error: 'Failed to load AI Camera saves.' });
   }
 };
@@ -405,7 +406,7 @@ exports.getAiCameraSave = async (req, res) => {
     const hydratedAnalysis = await hydrateSavedAnalysisResult(save);
     return res.json(toAiCameraSaveDetail(save, hydratedAnalysis));
   } catch (err) {
-    console.error('[ml/ai-camera-saves/get]', err);
+    logger.error('[ml/ai-camera-saves/get]', err);
     return res.status(500).json({ error: 'Failed to load AI Camera save.' });
   }
 };
@@ -430,7 +431,7 @@ exports.deleteAiCameraSave = async (req, res) => {
 
     return res.status(204).send();
   } catch (err) {
-    console.error('[ml/ai-camera-saves/delete]', err);
+    logger.error('[ml/ai-camera-saves/delete]', err);
     return res.status(500).json({ error: 'Failed to delete AI Camera save.' });
   }
 };
@@ -498,7 +499,7 @@ Rules:
 
     const { result, modelName, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
       if (queueInfo.queued) {
-        console.warn(`[ml/camera/analyze] ${AI_CAMERA_QUEUE_WARNING}`);
+        logger.warn(`[ml/camera/analyze] ${AI_CAMERA_QUEUE_WARNING}`);
       }
 
       const geminiResponse = await generateGeminiContent({
@@ -521,7 +522,7 @@ Rules:
     try {
       parsed = parseJsonFromModel(responseText);
     } catch (parseErr) {
-      console.error('[ml/camera/analyze] Failed to parse Gemini response:', responseText);
+      logger.error('[ml/camera/analyze] Failed to parse Gemini response:', responseText);
       return res.status(502).json({
         error: 'AI returned an invalid response. Please try again.',
         ...queueInfo,
@@ -553,7 +554,7 @@ Rules:
         knownIngredientMatches = lookup.matches;
         knownIngredientCount = lookup.knownIngredientCount;
       } catch (lookupErr) {
-        console.warn('[ml/camera/analyze] Ingredient lookup failed:', lookupErr.message);
+        logger.warn('[ml/camera/analyze] Ingredient lookup failed:', lookupErr.message);
       }
     }
 
@@ -574,7 +575,7 @@ Rules:
           await findRecipesByIngredients(matchableKnownIngredients, MAX_GEMINI_RAG_CANDIDATES)
         );
       } catch (dbErr) {
-        console.warn('[ml/camera/analyze] Recipe matching failed:', dbErr.message);
+        logger.warn('[ml/camera/analyze] Recipe matching failed:', dbErr.message);
         // Non-fatal: still return AI results without suggestions.
       }
     }
@@ -602,7 +603,7 @@ Rules:
         ragSelectedId = ragResult.selectedId;
 
         if (ragResult.noMatch) {
-          console.log('[ml/camera/analyze] RAG no_match:', {
+          logger.info('[ml/camera/analyze] RAG no_match:', {
             detectedIngredients: knownIngredientMatches,
             retrievedRecipeIds,
             reason: ragMatchReason,
@@ -627,7 +628,7 @@ Rules:
         ? 'ok'
         : 'no_database_match';
 
-    console.log('[ml/camera/analyze] RAG', {
+    logger.info('[ml/camera/analyze] RAG', {
       detectedIngredients: knownIngredientMatches,
       retrievedRecipeIds,
       finalRecipeIds,
@@ -662,7 +663,7 @@ Rules:
     });
   } catch (err) {
     const payload = geminiErrorPayload(err);
-    console.error('[ml/camera/analyze]', payload.error, err?.status ? `(status ${err.status})` : '');
+    logger.error('[ml/camera/analyze]', payload.error, err?.status ? `(status ${err.status})` : '');
     const { status, ...body } = payload;
     res.status(status).json(body);
   }
@@ -753,7 +754,7 @@ Rules:
 
     const { result, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
       if (queueInfo.queued) {
-        console.warn(`[ml/analyze-ingredients] ${AI_CAMERA_QUEUE_WARNING}`);
+        logger.warn(`[ml/analyze-ingredients] ${AI_CAMERA_QUEUE_WARNING}`);
       }
       const geminiResponse = await generateGeminiContent({
         genAI,
@@ -770,7 +771,7 @@ Rules:
     try {
       parsed = parseJsonFromModel(responseText);
     } catch (parseErr) {
-      console.error('[ml/analyze-ingredients] Failed to parse Gemini response:', responseText);
+      logger.error('[ml/analyze-ingredients] Failed to parse Gemini response:', responseText);
       return res.status(502).json({
         success: false,
         detectedIngredients: [],
@@ -831,7 +832,7 @@ Rules:
       const lookup = await findKnownIngredientMatches(ingredientNames, 15);
       verifiedIngredients = lookup.matches;
     } catch (lookupErr) {
-      console.warn('[ml/analyze-ingredients] Ingredient DB lookup failed:', lookupErr.message);
+      logger.warn('[ml/analyze-ingredients] Ingredient DB lookup failed:', lookupErr.message);
       verifiedIngredients = [...ingredientNames];
     }
 
@@ -862,7 +863,7 @@ Rules:
           matchPercentage: item.matchPercentage,
         }));
       } catch (dbErr) {
-        console.warn('[ml/analyze-ingredients] Recipe matching failed:', dbErr.message);
+        logger.warn('[ml/analyze-ingredients] Recipe matching failed:', dbErr.message);
       }
     }
 
@@ -887,7 +888,7 @@ Rules:
         ragSelectedId = ragResult.selectedId;
 
         if (ragResult.noMatch) {
-          console.log('[ml/analyze-ingredients] RAG no_match:', {
+          logger.info('[ml/analyze-ingredients] RAG no_match:', {
             detectedIngredients: verifiedIngredients,
             retrievedRecipeIds,
             reason: ragMatchReason,
@@ -903,7 +904,7 @@ Rules:
     }
 
     const finalRecipeIds = matchedRecipes.map((r) => Number(r.id)).filter(Number.isInteger);
-    console.log('[ml/analyze-ingredients] RAG', {
+    logger.info('[ml/analyze-ingredients] RAG', {
       detectedIngredients: verifiedIngredients,
       retrievedRecipeIds,
       finalRecipeIds,
@@ -933,7 +934,7 @@ Rules:
     });
   } catch (err) {
     const payload = geminiErrorPayload(err);
-    console.error('[ml/analyze-ingredients]', payload.error, err?.status ? `(status ${err.status})` : '');
+    logger.error('[ml/analyze-ingredients]', payload.error, err?.status ? `(status ${err.status})` : '');
     return res.status(payload.status).json({
       success: false,
       detectedIngredients: [],
@@ -975,7 +976,7 @@ exports.removeBackground = async (req, res) => {
   try {
     const { cutout, queuePosition } = await enqueueBackgroundRemoval(async ({ queuePosition }) => {
       if (queuePosition > 0) {
-        console.warn(`[ml/camera/remove-bg] ${BG_REMOVAL_QUEUE_WARNING}`);
+        logger.warn(`[ml/camera/remove-bg] ${BG_REMOVAL_QUEUE_WARNING}`);
       }
 
       return {
@@ -991,7 +992,7 @@ exports.removeBackground = async (req, res) => {
     });
   } catch (err) {
     const details = err?.message || String(err);
-    console.warn('[ml/camera/remove-bg]', details);
+    logger.warn('[ml/camera/remove-bg]', details);
     res.status(200).json({
       cutout: null,
       fallbackUsed: true,
@@ -1000,3 +1001,4 @@ exports.removeBackground = async (req, res) => {
     });
   }
 };
+

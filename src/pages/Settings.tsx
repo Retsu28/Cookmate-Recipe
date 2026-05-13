@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Bell, ChefHat, LogOut, PackageOpen, Paintbrush, Shield, User, type LucideIcon } from 'lucide-react';
+import { Bell, ChefHat, Heart, LogOut, PackageOpen, Paintbrush, Shield, User, type LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/context/AuthContext';
 import { SettingsPageSkeleton } from '@/components/SkeletonScreen';
@@ -8,10 +9,11 @@ import AccountSettings from '@/components/settings/AccountSettings';
 import AppearanceSettings from '@/components/settings/AppearanceSettings';
 import NotificationSettings from '@/components/settings/NotificationSettings';
 import PrivacySettings from '@/components/settings/PrivacySettings';
+import SavedRecipesSettings from '@/components/settings/SavedRecipesSettings';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { cn } from '@/lib/utils';
 
-type SettingsTabId = 'account' | 'notifications' | 'appearance' | 'privacy' | 'inventory';
+type SettingsTabId = 'account' | 'saved-recipes' | 'notifications' | 'appearance' | 'privacy' | 'inventory';
 
 type SettingsTab = {
   id: SettingsTabId;
@@ -29,6 +31,13 @@ const tabs: SettingsTab[] = [
     label: 'Account',
     description: 'Profile, email, password, and avatar',
     icon: User,
+  },
+  {
+    id: 'saved-recipes',
+    label: 'My Saved Recipes',
+    mobileLabel: 'Saved',
+    description: 'Your favorite and bookmarked recipes',
+    icon: Heart,
   },
   {
     id: 'notifications',
@@ -62,6 +71,7 @@ const tabs: SettingsTab[] = [
 
 function renderTabContent(activeTab: SettingsTabId) {
   if (activeTab === 'account') return <AccountSettings />;
+  if (activeTab === 'saved-recipes') return <SavedRecipesSettings />;
   if (activeTab === 'notifications') return <NotificationSettings />;
   if (activeTab === 'appearance') return <AppearanceSettings />;
   if (activeTab === 'privacy') return <PrivacySettings />;
@@ -130,17 +140,24 @@ export default function Settings() {
                       disabled={tab.disabled}
                       onClick={() => { if (!tab.disabled) setActiveTab(tab.id); }}
                       className={cn(
-                        'flex min-w-[80px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-center transition-all',
+                        'relative flex min-w-[80px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-center transition-colors',
                         active && !tab.disabled
-                          ? 'orange-gradient text-white shadow-lg shadow-orange-500/20'
+                          ? 'text-white'
                           : 'text-stone-600 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400',
                         tab.disabled && 'cursor-not-allowed opacity-55 hover:bg-transparent hover:text-stone-600 dark:hover:bg-transparent dark:hover:text-stone-300'
                       )}
                       aria-current={active ? 'page' : undefined}
                       title={tab.label}
                     >
-                      <Icon size={20} className="shrink-0" />
-                      <span className="whitespace-nowrap text-[11px] font-extrabold leading-tight">{shortLabel}</span>
+                      {active && !tab.disabled && (
+                        <motion.div
+                          layoutId="activeSettingsMobileTab"
+                          className="absolute inset-0 z-0 rounded-2xl orange-gradient shadow-lg shadow-orange-500/20"
+                          transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                        />
+                      )}
+                      <Icon size={20} className="relative z-10 shrink-0" />
+                      <span className="relative z-10 whitespace-nowrap text-[11px] font-extrabold leading-tight">{shortLabel}</span>
                     </button>
                   );
                 })}
@@ -173,21 +190,28 @@ export default function Settings() {
                     disabled={tab.disabled}
                     onClick={() => { if (!tab.disabled) setActiveTab(tab.id); }}
                     className={cn(
-                      'flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all',
+                      'relative flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors',
                       active && !tab.disabled
-                        ? 'orange-gradient text-white shadow-lg shadow-orange-500/20'
+                        ? 'text-white'
                         : 'text-stone-600 hover:bg-orange-50 hover:text-orange-700 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-orange-400',
                       tab.disabled && 'cursor-not-allowed opacity-55 hover:bg-transparent hover:text-stone-600 dark:hover:bg-transparent dark:hover:text-stone-300'
                     )}
                     aria-current={active ? 'page' : undefined}
                   >
-                    <Icon size={20} className="shrink-0" />
-                    <span className="min-w-0 flex-1">
+                    {active && !tab.disabled && (
+                      <motion.div
+                        layoutId="activeSettingsTab"
+                        className="absolute inset-0 z-0 rounded-2xl orange-gradient shadow-lg shadow-orange-500/20"
+                        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                      />
+                    )}
+                    <Icon size={20} className="relative z-10 shrink-0" />
+                    <span className="relative z-10 min-w-0 flex-1">
                       <span className="block text-sm font-extrabold">{tab.label}</span>
                       <span className={cn('mt-0.5 block text-[11px] font-semibold leading-snug', active && !tab.disabled ? 'text-white/80' : 'text-stone-400 dark:text-stone-500')}>{tab.description}</span>
                     </span>
                     {tab.badge && (
-                      <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
+                      <span className="relative z-10 shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
                         {tab.badge}
                       </span>
                     )}
@@ -207,7 +231,19 @@ export default function Settings() {
             </nav>
           </aside>
 
-          <section aria-live="polite" className="min-w-0">{renderTabContent(activeTab)}</section>
+          <section aria-live="polite" className="min-w-0">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {renderTabContent(activeTab)}
+              </motion.div>
+            </AnimatePresence>
+          </section>
         </div>
       </div>
     </Layout>

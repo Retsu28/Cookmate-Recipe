@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const BG_REMOVAL_INPUT_MAX_EDGE = Number(process.env.BG_REMOVAL_INPUT_MAX_EDGE || 768);
 const BG_REMOVAL_INPUT_QUALITY = Number(process.env.BG_REMOVAL_INPUT_QUALITY || 82);
 
@@ -127,28 +128,28 @@ process.once('message', async (payload) => {
     try {
       optimizedInput = await resizeInputForBackgroundRemoval(inputBuffer);
     } catch (resizeErr) {
-      console.warn('[remove-bg worker] Input resize skipped:', resizeErr.message);
+      logger.warn('[remove-bg worker] Input resize skipped:', resizeErr.message);
     }
 
     // ── Hybrid: try HF first, fallback to @imgly ──────────────────────────
     let resultBuffer;
     let strategyUsed = 'hf';
     try {
-      console.log('[remove-bg worker] Trying Hugging Face API...');
+      logger.info('[remove-bg worker] Trying Hugging Face API...');
       resultBuffer = await removeBackgroundViaHF(optimizedInput.buffer, optimizedInput.mimeType);
-      console.log('[remove-bg worker] HF API succeeded.');
+      logger.info('[remove-bg worker] HF API succeeded.');
     } catch (hfErr) {
-      console.warn('[remove-bg worker] HF API failed, falling back to local @imgly:', hfErr.message);
+      logger.warn('[remove-bg worker] HF API failed, falling back to local @imgly:', hfErr.message);
       strategyUsed = 'imgly';
       resultBuffer = await removeBackgroundViaImgly(optimizedInput.buffer, optimizedInput.mimeType);
-      console.log('[remove-bg worker] @imgly local succeeded.');
+      logger.info('[remove-bg worker] @imgly local succeeded.');
     }
 
     // White outline (jimp-compact) — same for both strategies
     try {
       resultBuffer = await addWhiteOutlineToPng(resultBuffer, 6);
     } catch (outlineErr) {
-      console.warn('[remove-bg worker] White outline failed:', outlineErr.message);
+      logger.warn('[remove-bg worker] White outline failed:', outlineErr.message);
     }
 
     process.send?.({

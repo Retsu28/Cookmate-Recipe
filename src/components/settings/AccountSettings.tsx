@@ -16,19 +16,17 @@ const skillLevels = ['Beginner', 'Intermediate', 'Advanced'];
 type AccountForm = {
   fullName: string;
   email: string;
-  bio: string;
   cookingSkillLevel: string;
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
 };
 
-type AccountBaseline = Pick<AccountForm, 'fullName' | 'email' | 'bio' | 'cookingSkillLevel'>;
+type AccountBaseline = Pick<AccountForm, 'fullName' | 'email' | 'cookingSkillLevel'>;
 
 const emptyForm: AccountForm = {
   fullName: '',
   email: '',
-  bio: '',
   cookingSkillLevel: 'Beginner',
   currentPassword: '',
   newPassword: '',
@@ -47,7 +45,6 @@ function baselineFromProfile(profile: UserProfile): AccountBaseline {
   return {
     fullName: profile.full_name || '',
     email: profile.email || '',
-    bio: profile.bio || '',
     cookingSkillLevel: profile.cooking_skill_level || 'Beginner',
   };
 }
@@ -70,7 +67,6 @@ export default function AccountSettings() {
   const [initial, setInitial] = useState<AccountBaseline>({
     fullName: user?.name || '',
     email: user?.email || '',
-    bio: '',
     cookingSkillLevel: 'Beginner',
   });
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatar_url || null);
@@ -141,7 +137,6 @@ export default function AccountSettings() {
     () =>
       normalizeFullName(form.fullName) !== normalizeFullName(initial.fullName) ||
       normalizeEmail(form.email) !== normalizeEmail(initial.email) ||
-      form.bio.trim() !== initial.bio.trim() ||
       form.cookingSkillLevel !== initial.cookingSkillLevel ||
       form.currentPassword.length > 0 ||
       form.newPassword.length > 0 ||
@@ -228,7 +223,6 @@ export default function AccountSettings() {
     const payload: AccountSettingsUpdate = {
       full_name: normalizeFullName(form.fullName),
       email: normalizeEmail(form.email),
-      bio: form.bio.trim(),
       cooking_skill_level: form.cookingSkillLevel,
     };
     if (securityChanging) payload.current_password = form.currentPassword;
@@ -320,6 +314,9 @@ export default function AccountSettings() {
           <p className="mt-3 whitespace-normal break-words text-xs font-medium leading-relaxed text-stone-500 dark:text-stone-400 sm:text-sm">
             Click your avatar to choose an image. The preview stays local until you click Save Settings.
           </p>
+          <p className="mt-1 text-xs font-semibold text-stone-400 dark:text-stone-500">
+            Cooking Skill &mdash; <span className="text-orange-500 dark:text-orange-400">{form.cookingSkillLevel || 'Not set'}</span>
+          </p>
           {avatarFile && (
             <Button type="button" variant="ghost" onClick={resetAvatarSelection} className="mt-4 h-9 px-3 text-xs font-bold uppercase tracking-widest">
               <X size={14} /> Remove selected photo
@@ -348,11 +345,6 @@ export default function AccountSettings() {
                   <input type="email" value={form.email} onChange={(e) => setField('email', e.target.value)} className={inputClass} placeholder="you@example.com" disabled={loading || saving} />
                 </label>
               </div>
-
-              <label className="block space-y-2">
-                <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">Bio</span>
-                <textarea value={form.bio} onChange={(e) => setField('bio', e.target.value)} className={cn(inputClass, 'min-h-[100px] resize-y py-3')} placeholder="A short note about your cooking style" disabled={loading || saving} />
-              </label>
 
               <div className="space-y-2">
                 <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-stone-400">Cooking Skill</span>

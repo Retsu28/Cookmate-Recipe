@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Upload, Search, Filter, Loader2, X } from 'lucide-react';
+import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Search, Filter, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
@@ -25,6 +25,8 @@ interface DbRecipe {
   tags: string[] | null;
   normalized_ingredients: string[] | null;
   image_url: string | null;
+  video_filename: string | null;
+  instruction_timestamps: { start: number; end: number }[] | null;
   is_featured: boolean;
   is_published: boolean;
   created_at: string;
@@ -38,12 +40,18 @@ interface IngredientRow {
 const emptyIngredientRow = (): IngredientRow => ({ name: '' });
 
 const emptyForm = {
-  title: '', description: '', instructions: '',
+  title: '', description: '',
   region_or_origin: '', category: '', difficulty: 'Easy',
   prep_time_minutes: '', cook_time_minutes: '', servings: '', calories: '',
   tags: '', normalized_ingredients: '', image_url: '',
   is_featured: false, is_published: true,
 };
+
+interface InstructionRow {
+  text: string;
+  startTime: string;
+  endTime: string;
+}
 
 export default function RecipeManagement() {
   const [recipes, setRecipes] = useState<DbRecipe[]>([]);
@@ -53,12 +61,11 @@ export default function RecipeManagement() {
   const [catFilter, setCatFilter] = useState('');
   const [diffFilter, setDiffFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [initialForm, setInitialForm] = useState(emptyForm);
   const [initialIngredientRows, setInitialIngredientRows] = useState<IngredientRow[]>([emptyIngredientRow()]);
-  const [csvText, setCsvText] = useState('');
-  const [importing, setImporting] = useState(false);
+  const [initialInstructionRows, setInitialInstructionRows] = useState<InstructionRow[]>([{ text: '', startTime: '', endTime: '', intervalTime: '' }]);
+  const [initialVideoFilename, setInitialVideoFilename] = useState<string | null>(null);
 
   const fetchRecipes = useCallback(async () => {
     setLoading(true);
@@ -93,6 +100,8 @@ export default function RecipeManagement() {
     setEditingId(null);
     setInitialForm(emptyForm);
     setInitialIngredientRows([emptyIngredientRow()]);
+    setInitialInstructionRows([{ text: '', startTime: '', endTime: '', intervalTime: '' }]);
+    setInitialVideoFilename(null);
     setShowForm(true);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
@@ -102,7 +111,6 @@ export default function RecipeManagement() {
     setInitialForm({
       title: r.title,
       description: r.description || '',
-      instructions: Array.isArray(r.instructions) ? r.instructions.join('\n') : '',
       region_or_origin: r.region_or_origin || '',
       category: r.category || '',
       difficulty: r.difficulty || 'Easy',
@@ -116,6 +124,21 @@ export default function RecipeManagement() {
       is_featured: r.is_featured,
       is_published: r.is_published,
     });
+    
+    // Set video filename
+    setInitialVideoFilename(r.video_filename || null);
+    
+    // Build instruction rows with timestamps
+    const instructions = r.instructions || [];
+    const timestamps = r.instruction_timestamps || [];
+    const instRows: InstructionRow[] = instructions.map((text, idx) => ({
+      text,
+      startTime: timestamps[idx]?.start?.toString() || '',
+      endTime: timestamps[idx]?.end?.toString() || '',
+      intervalTime: timestamps[idx]?.interval?.toString() || '',
+    }));
+    setInitialInstructionRows(instRows.length > 0 ? instRows : [{ text: '', startTime: '', endTime: '', intervalTime: '' }]);
+    
     // Fetch relational ingredients from the join table
     try {
       const detail = await api.get<{ recipe: any }>(`/api/recipes/${r.id}`);
@@ -134,33 +157,17 @@ export default function RecipeManagement() {
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
-  const handleSaveRecipe = useCallback(async (formData: any, ingredientRowsData: any[]) => {
+  const handleSaveRecipe = useCallback(async (formData: FormData) => {
     try {
-      // Build ingredients array from rows (filter empty names)
-      const ingredients = ingredientRowsData.filter((r) => r.name.trim()).map((r) => ({
-        name: r.name.trim(),
-      }));
-
-      // Auto-generate normalized_ingredients from ingredient names
-      const autoNormalized = ingredients.map((i) => i.name.toLowerCase());
-      const manualNormalized = formData.normalized_ingredients.split(';').map((t: string) => t.trim().toLowerCase()).filter(Boolean);
-      const mergedNormalized = [...new Set([...autoNormalized, ...manualNormalized])];
-
-      const body = {
-        ...formData,
-        instructions: formData.instructions.split('\n').map((s: string) => s.trim()).filter(Boolean),
-        tags: formData.tags.split(';').map((t: string) => t.trim()).filter(Boolean),
-        normalized_ingredients: mergedNormalized,
-        ingredients,
-      };
       if (editingId) {
-        await api.put(`/api/recipes/${editingId}`, body);
+        await api.putFormData(`/api/recipes/${editingId}`, formData);
         toast.success('Recipe updated.');
       } else {
-        await api.post('/api/recipes', body);
+        await api.postFormData('/api/recipes', formData);
         toast.success('Recipe created.');
       }
       setShowForm(false);
+      setInitialVideoFilename(null);
       fetchRecipes();
     } catch (err: any) {
       toast.error(err.message || 'Failed to save recipe.');
@@ -209,22 +216,6 @@ export default function RecipeManagement() {
       toast.error(err.message || 'Failed to toggle published.');
     }
   }, [fetchRecipes]);
-
-  const handleCsvImport = async () => {
-    if (!csvText.trim()) { toast.error('Paste CSV content first.'); return; }
-    setImporting(true);
-    try {
-      const data = await api.post<{ inserted: number; updated: number; skipped: number }>('/api/recipes/import-csv', { csvContent: csvText });
-      toast.success(`Import done: ${data.inserted} inserted, ${data.updated} updated, ${data.skipped} skipped.`);
-      setCsvText('');
-      setShowImport(false);
-      fetchRecipes();
-    } catch (err: any) {
-      toast.error(err.message || 'Import failed.');
-    } finally {
-      setImporting(false);
-    }
-  };
 
   const columns: AdminTableColumn<DbRecipe>[] = useMemo(() => [
     {
@@ -303,11 +294,13 @@ export default function RecipeManagement() {
       formRef={formRef}
       initialForm={initialForm}
       initialIngredientRows={initialIngredientRows}
+      initialInstructionRows={initialInstructionRows}
+      initialVideoFilename={initialVideoFilename}
       isEdit={!!editingId}
       onSave={handleSaveRecipe}
       onCancel={() => { setShowForm(false); setEditingId(null); }}
     />
-  ), [initialForm, initialIngredientRows, editingId, handleSaveRecipe]);
+  ), [initialForm, initialIngredientRows, initialInstructionRows, initialVideoFilename, editingId, handleSaveRecipe]);
 
   return (
     <div>
@@ -316,9 +309,6 @@ export default function RecipeManagement() {
         description={`Manage ${total} CookMate recipes. All actions are connected to the database.`}
         actions={
           <div className="flex gap-2">
-            <Button className="rounded-full border-orange-300 text-orange-700" variant="outline" onClick={() => setShowImport(!showImport)}>
-              <Upload size={16} /> Import CSV
-            </Button>
             <Button className="rounded-full bg-orange-500 px-5 font-bold text-white hover:bg-orange-600" onClick={openCreate}>
               <Plus size={16} /> Add recipe
             </Button>
@@ -346,21 +336,6 @@ export default function RecipeManagement() {
         </select>
       </div>
 
-      {/* CSV Import Panel */}
-      {showImport && (
-        <AdminSectionCard title="Import Recipes from CSV" description="Paste CSV content below. Must include recipe_name column.">
-          <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={8}
-            className="w-full rounded-xl border border-stone-200 p-4 font-mono text-xs text-stone-700 outline-none focus:border-orange-300"
-            placeholder="recipe_id,recipe_name,region_or_origin,category,ingredients,..." />
-          <div className="mt-3 flex justify-end gap-2">
-            <Button variant="outline" className="rounded-full" onClick={() => setShowImport(false)}>Cancel</Button>
-            <Button className="rounded-full bg-orange-500 text-white hover:bg-orange-600" onClick={handleCsvImport} disabled={importing}>
-              {importing ? <><Loader2 size={14} className="animate-spin" /> Importing...</> : 'Import'}
-            </Button>
-          </div>
-        </AdminSectionCard>
-      )}
-
       <AdminSectionCard
         title="Recipe Library"
         description={`${total} recipes from PostgreSQL database.`}
@@ -374,7 +349,7 @@ export default function RecipeManagement() {
             data={recipes}
             columns={columns}
             getRowKey={(recipe) => recipe.id}
-            emptyMessage="No recipes found. Import CSV or add a recipe."
+            emptyMessage="No recipes found. Add a recipe."
             expandedRowId={showForm ? editingId : null}
             renderExpandedRow={(recipe) => showForm && recipe.id === editingId ? renderForm() : null}
           />

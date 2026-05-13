@@ -1,4 +1,5 @@
-const { pool } = require('../config/db');
+﻿const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 exports.getInventory = async (req, res) => {
   try {
@@ -13,7 +14,8 @@ exports.getInventory = async (req, res) => {
     );
     res.json({ inventory: result.rows });
   } catch (err) {
-    console.error('[inventory/getInventory]', err);
+    logger.error('[inventory/getInventory]', err);
     res.status(500).json({ error: 'Failed to fetch inventory.' });
   }
 };
+

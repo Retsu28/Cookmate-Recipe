@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AICameraPageSkeleton, CameraAnalysisSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 type Phase = 'idle' | 'scanning' | 'selecting' | 'selected' | 'sticker' | 'done';
 
@@ -296,6 +297,7 @@ async function imageToThumbnail(url: string, maxEdge = 200): Promise<string> {
 }
 
 export default function AICamera() {
+  const isOnline = useOnlineStatus();
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -485,6 +487,11 @@ export default function AICamera() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isOnline) {
+      toast.error('You are offline', { description: 'AI Camera analysis requires an internet connection.' });
+      e.target.value = '';
+      return;
+    }
     if (cooldown > 0) {
       setError(`Please wait ${cooldown}s before analyzing another image.`);
       e.target.value = '';
@@ -703,6 +710,15 @@ export default function AICamera() {
       `}</style>
 
       <div className="mx-auto w-full max-w-6xl px-4 py-12 animate-fade-up sm:px-6 lg:px-8">
+        {!isOnline && (
+          <div className="mb-8 flex items-start gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-5 py-4 text-sm font-semibold text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/20 dark:text-orange-300">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-extrabold">Offline mode</p>
+              <p className="mt-0.5 font-medium">AI analysis and image upload are unavailable offline. Your saved results below are still accessible.</p>
+            </div>
+          </div>
+        )}
         <div className="text-center space-y-4 mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4 dark:bg-emerald-500/10 dark:border dark:border-emerald-500/20 dark:text-emerald-400">
             <Sparkles size={16} /> Powered by Gemini AI
@@ -714,9 +730,11 @@ export default function AICamera() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           {/* ════ Camera / Upload ════ */}
           <div className="w-full">
-            <div onClick={() => !image && fileInputRef.current?.click()} className={cn(
+            <div onClick={() => { if (!image && isOnline) fileInputRef.current?.click(); }} className={cn(
               "aspect-[4/5] sm:aspect-square w-full rounded-[2.5rem] overflow-hidden relative transition-all shadow-xl",
-              image ? "border-none shadow-stone-200/50 dark:shadow-black/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group dark:border-stone-700 dark:bg-stone-900/50 dark:hover:border-orange-500/60"
+              !isOnline && !image
+                ? "border-4 border-dashed border-orange-200 bg-orange-50/60 cursor-not-allowed flex flex-col items-center justify-center dark:border-orange-500/20 dark:bg-orange-950/10"
+                : image ? "border-none shadow-stone-200/50 dark:shadow-black/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group dark:border-stone-700 dark:bg-stone-900/50 dark:hover:border-orange-500/60"
             )}>
               {image ? (
                 <div className="relative w-full h-full overflow-hidden bg-stone-900">
@@ -832,6 +850,16 @@ export default function AICamera() {
                       </motion.div>
                     )}
                   </AnimatePresence>
+                </div>
+              ) : !isOnline ? (
+                <div className="text-center space-y-4 p-8 relative z-10">
+                  <div className="w-24 h-24 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mx-auto dark:bg-orange-950/30 dark:text-orange-500">
+                    <AlertTriangle size={42} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-stone-700 dark:text-stone-300">Offline mode</h3>
+                    <p className="mt-1 text-sm text-stone-400 dark:text-stone-500">Reconnect to upload and analyze images with AI.</p>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center space-y-6 p-8 relative z-10">

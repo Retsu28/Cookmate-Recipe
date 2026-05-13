@@ -1,8 +1,12 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
+const logger = require('../config/logger');
 const bcrypt = require('bcryptjs');
+
 const jwt = require('jsonwebtoken');
+
 const { pool } = require('../config/db');
 const { getJwtSecret, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
+const { issueRefreshToken, rotateRefreshToken, revokeRefreshToken, REFRESH_COOKIE_NAME } = require('../config/refreshToken');
 const { verifyGoogleIdToken } = require('../config/googleAuth');
 const { verifyFirebaseIdToken, getFirebaseAuth } = require('../config/firebaseAdmin');
 const { sendMail } = require('../config/mailer');
@@ -31,6 +35,7 @@ function toPublicUser(row) {
     avatar_url: row.avatar_url || null,
     notifications_enabled: row.notifications_enabled !== false,
     role: row.role === 'admin' ? 'admin' : 'user',
+    cooking_skill_level: row.cooking_skill_level || null,
   };
 }
 
@@ -132,6 +137,7 @@ exports.signup = async (req, res) => {
     const user = toPublicUser(insert.rows[0]);
     const token = signToken(user);
     setAuthCookie(res, token);
+    await issueRefreshToken(insert.rows[0].id, res);
     return res.status(201).json({ token, user });
   } catch (err) {
     if (err?.code === '23505') {
@@ -140,10 +146,13 @@ exports.signup = async (req, res) => {
         error: 'An account with this email already exists.',
       });
     }
-    console.error('[auth/signup] failed:', err);
+    logger.error('[auth/signup] failed:', err);
     return res.status(500).json({ error: 'Something went wrong creating your account.' });
   }
 };
+
+const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_LOCK_MINUTES = 15;
 
 exports.login = async (req, res) => {
   try {
@@ -158,7 +167,7 @@ exports.login = async (req, res) => {
 
     const normalizedEmail = normalizeEmail(email);
     const result = await pool.query(
-      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, password_hash FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, password_hash, failed_login_attempts, locked_until FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
       [normalizedEmail]
     );
 
@@ -167,17 +176,53 @@ exports.login = async (req, res) => {
     }
 
     const row = result.rows[0];
+
+    // Check account lockout
+    if (row.locked_until && new Date(row.locked_until) > new Date()) {
+      const minutesLeft = Math.ceil((new Date(row.locked_until) - new Date()) / 60000);
+      return res.status(429).json({
+        error: `Account temporarily locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? 's' : ''}.`,
+      });
+    }
+
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) {
+      const newAttempts = (row.failed_login_attempts || 0) + 1;
+      const shouldLock = newAttempts >= LOGIN_MAX_ATTEMPTS;
+      await pool.query(
+        `UPDATE users
+         SET failed_login_attempts = $1,
+             locked_until = $2
+         WHERE id = $3`,
+        [
+          shouldLock ? 0 : newAttempts,
+          shouldLock ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000) : null,
+          row.id,
+        ]
+      );
+      if (shouldLock) {
+        return res.status(429).json({
+          error: `Too many failed attempts. Account locked for ${LOGIN_LOCK_MINUTES} minutes.`,
+        });
+      }
       return res.status(401).json({ error: 'Incorrect email or password.' });
+    }
+
+    // Successful login — clear lockout counters
+    if (row.failed_login_attempts > 0 || row.locked_until) {
+      await pool.query(
+        'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
+        [row.id]
+      );
     }
 
     const user = toPublicUser(row);
     const token = signToken(user);
     setAuthCookie(res, token);
+    await issueRefreshToken(row.id, res);
     return res.json({ token, user });
   } catch (err) {
-    console.error('[auth/login] failed:', err);
+    logger.error('[auth/login] failed:', err);
     return res.status(500).json({ error: 'Something went wrong signing you in.' });
   }
 };
@@ -187,16 +232,43 @@ exports.me = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized.' });
 
   const result = await pool.query(
-    'SELECT id, email, full_name, avatar_url, notifications_enabled, role FROM users WHERE id = $1 LIMIT 1',
+    'SELECT id, email, full_name, avatar_url, notifications_enabled, role, cooking_skill_level FROM users WHERE id = $1 LIMIT 1',
     [userId]
   );
   if (result.rowCount === 0) return res.status(404).json({ error: 'User not found.' });
   return res.json({ user: toPublicUser(result.rows[0]) });
 };
 
-exports.logout = (_req, res) => {
+exports.logout = async (req, res) => {
+  const oldRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (oldRefreshToken) await revokeRefreshToken(oldRefreshToken);
   clearAuthCookie(res);
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' });
   return res.status(204).send();
+};
+
+exports.refresh = async (req, res) => {
+  const oldToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (!oldToken) return res.status(401).json({ error: 'No refresh token.' });
+  try {
+    const userId = await rotateRefreshToken(oldToken, res);
+    if (!userId) {
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' });
+      return res.status(401).json({ error: 'Refresh token invalid or expired.' });
+    }
+    const result = await pool.query(
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, cooking_skill_level FROM users WHERE id = $1 LIMIT 1',
+      [userId]
+    );
+    if (result.rowCount === 0) return res.status(401).json({ error: 'User not found.' });
+    const user = toPublicUser(result.rows[0]);
+    const token = signToken(user);
+    setAuthCookie(res, token);
+    return res.json({ token, user });
+  } catch (err) {
+    logger.error('[auth/refresh] failed:', err);
+    return res.status(500).json({ error: 'Failed to refresh token.' });
+  }
 };
 
 exports.passwordResetStatus = async (req, res) => {
@@ -227,13 +299,13 @@ exports.passwordResetStatus = async (req, res) => {
         });
       }
       if (isFirebaseAdminConfigError(err)) {
-        console.error('[auth/password-reset-status] Firebase Admin config failed:', err);
+        logger.error('[auth/password-reset-status] Firebase Admin config failed:', err);
         return res.status(500).json({
           error:
             'Firebase Admin is not configured correctly on the API server. Check api/.env or api/firebase-service-account.json.',
         });
       }
-      console.error('[auth/password-reset-status] Firebase lookup failed:', err);
+      logger.error('[auth/password-reset-status] Firebase lookup failed:', err);
       return res.status(500).json({ error: 'Could not verify this email with Firebase Auth.' });
     }
 
@@ -251,7 +323,7 @@ exports.passwordResetStatus = async (req, res) => {
 
     return res.json({ canReset: true });
   } catch (err) {
-    console.error('[auth/password-reset-status] failed:', err);
+    logger.error('[auth/password-reset-status] failed:', err);
     return res.status(500).json({ error: 'Could not verify this account for password reset.' });
   }
 };
@@ -276,7 +348,7 @@ exports.google = async (req, res) => {
     try {
       payload = await verifyGoogleIdToken(credential);
     } catch (err) {
-      console.warn('[auth/google] token verification failed:', err?.message);
+      logger.warn('[auth/google] token verification failed:', err?.message);
       return res.status(401).json({ error: 'Invalid Google sign-in.' });
     }
 
@@ -317,9 +389,10 @@ exports.google = async (req, res) => {
     const user = toPublicUser(row);
     const token = signToken(user);
     setAuthCookie(res, token);
+    await issueRefreshToken(row.id, res);
     return res.json({ token, user });
   } catch (err) {
-    console.error('[auth/google] failed:', err);
+    logger.error('[auth/google] failed:', err);
     return res.status(500).json({ error: 'Something went wrong signing you in with Google.' });
   }
 };
@@ -349,7 +422,7 @@ exports.firebase = async (req, res) => {
     try {
       decoded = await verifyFirebaseIdToken(idToken);
     } catch (err) {
-      console.warn('[auth/firebase] token verification failed:', err?.code || err?.message);
+      logger.warn('[auth/firebase] token verification failed:', err?.code || err?.message);
       if (isFirebaseAdminConfigError(err)) {
         return res.status(500).json({
           error:
@@ -458,9 +531,10 @@ exports.firebase = async (req, res) => {
     const user = toPublicUser(row);
     const token = signToken(user);
     setAuthCookie(res, token);
+    await issueRefreshToken(row.id, res);
     return res.json({ token, user, emailVerified });
   } catch (err) {
-    console.error('[auth/firebase] failed:', err);
+    logger.error('[auth/firebase] failed:', err);
     return res.status(500).json({ error: 'Something went wrong signing you in.' });
   }
 };
@@ -539,7 +613,7 @@ exports.forgotPassword = async (req, res) => {
 
     return res.json({ sent: true });
   } catch (err) {
-    console.error('[auth/forgot-password] failed:', err);
+    logger.error('[auth/forgot-password] failed:', err);
     return res.status(500).json({ error: 'Could not send the reset email. Please try again.' });
   }
 };
@@ -578,23 +652,30 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ error: 'This reset link has expired or already been used.' });
     }
 
-    const firebaseUser = await getFirebaseAuth().getUserByEmail(email);
-    await getFirebaseAuth().updateUser(firebaseUser.uid, { password });
-
-    await pool.query(
-      'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
-      [token.trim()]
-    );
-
+    // Always update the local password_hash first (works for all auth types)
     const newHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     await pool.query(
       'UPDATE users SET password_hash = $1 WHERE LOWER(BTRIM(email)) = $2',
       [newHash, email]
     );
 
+    // Best-effort Firebase password sync — skip gracefully if Admin SDK not configured
+    try {
+      const firebaseUser = await getFirebaseAuth().getUserByEmail(email);
+      await getFirebaseAuth().updateUser(firebaseUser.uid, { password });
+    } catch (fbErr) {
+      logger.warn('[auth/reset-password] Firebase sync skipped:', fbErr?.code || fbErr?.message);
+    }
+
+    await pool.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
+      [token.trim()]
+    );
+
     return res.json({ success: true });
   } catch (err) {
-    console.error('[auth/reset-password] failed:', err);
+    logger.error('[auth/reset-password] failed:', err);
     return res.status(500).json({ error: 'Could not reset your password. Please try again.' });
   }
 };
+

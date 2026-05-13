@@ -2,6 +2,7 @@ const { Router } = require('express');
 const http = require('http');
 const https = require('https');
 const requireAdmin = require('../middleware/requireAdmin');
+const logger = require('../config/logger');
 
 const router = Router();
 
@@ -73,7 +74,7 @@ function proxyToML(mlPath) {
   return async (req, res) => {
     const cbState = _cb.state();
     if (cbState === 'open') {
-      console.warn(`[mlAnalytics] Circuit OPEN — refusing request to ${mlPath}`);
+      logger.warn(`[mlAnalytics] Circuit OPEN — refusing request to ${mlPath}`);
       return res.status(503).json({
         error: 'ML service is temporarily unavailable (circuit open). Retry in a moment.',
         offline: true,
@@ -91,12 +92,12 @@ function proxyToML(mlPath) {
         return res.status(statusCode).set('Content-Type', 'application/json').send(body);
       } catch (err) {
         lastErr = err;
-        console.warn(`[mlAnalytics] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${mlPath}: ${err.message}`);
+        logger.warn(`[mlAnalytics] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${mlPath}: ${err.message}`);
       }
     }
 
     _cb.onFailure();
-    console.error(`[mlAnalytics] All retries exhausted for ${mlPath}:`, lastErr?.message);
+    logger.error(`[mlAnalytics] All retries exhausted for ${mlPath}:`, lastErr?.message);
     return res.status(503).json({
       error: 'ML service is currently unavailable.',
       offline: true,

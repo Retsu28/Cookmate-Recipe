@@ -1,4 +1,5 @@
-const { pool } = require('../config/db');
+﻿const { pool } = require('../config/db');
+const logger = require('../config/logger');
 const {
   PH_TIMEZONE,
   MEAL_TYPES,
@@ -479,7 +480,7 @@ async function recordGroceryGeneration(userId, itemCount) {
     );
   } catch (err) {
     if (err.code !== '42P01' && err.code !== '42P07') {
-      console.warn('[mealPlanner/groceryGeneration] metric skipped:', err.message);
+      logger.warn('[mealPlanner/groceryGeneration] metric skipped:', err.message);
     }
   }
 }
@@ -502,7 +503,7 @@ exports.getPlans = async (req, res) => {
 
     res.json({ plans: result.rows.map(toPlan) });
   } catch (err) {
-    console.error('[mealPlanner/getPlans]', err);
+    logger.error('[mealPlanner/getPlans]', err);
     res.status(500).json({ error: 'Failed to fetch meal plans.' });
   }
 };
@@ -576,7 +577,7 @@ exports.createPlan = async (req, res) => {
     });
     res.status(201).json({ plan });
   } catch (err) {
-    console.error('[mealPlanner/createPlan]', err);
+    logger.error('[mealPlanner/createPlan]', err);
     res.status(500).json({ error: 'Failed to save meal plan.' });
   }
 };
@@ -661,7 +662,7 @@ exports.updatePlan = async (req, res) => {
     });
     res.json({ plan });
   } catch (err) {
-    console.error('[mealPlanner/updatePlan]', err);
+    logger.error('[mealPlanner/updatePlan]', err);
     res.status(500).json({ error: 'Failed to update meal plan.' });
   }
 };
@@ -693,7 +694,7 @@ exports.deletePlan = async (req, res) => {
     });
     res.json({ success: true, id: planId });
   } catch (err) {
-    console.error('[mealPlanner/deletePlan]', err);
+    logger.error('[mealPlanner/deletePlan]', err);
     res.status(500).json({ error: 'Failed to remove meal plan.' });
   }
 };
@@ -733,7 +734,7 @@ exports.getPreferences = async (req, res) => {
       preferences: MEAL_TYPES.map((mealType) => toPreference(byType.get(mealType), mealType)),
     });
   } catch (err) {
-    console.error('[mealPlanner/getPreferences]', err);
+    logger.error('[mealPlanner/getPreferences]', err);
     res.status(500).json({ error: 'Failed to fetch meal preferences.' });
   }
 };
@@ -851,7 +852,7 @@ exports.updatePreferences = async (req, res) => {
       preferences: MEAL_TYPES.map((mealType) => toPreference(byType.get(mealType), mealType)),
     });
   } catch (err) {
-    console.error('[mealPlanner/updatePreferences]', err);
+    logger.error('[mealPlanner/updatePreferences]', err);
     res.status(500).json({ error: 'Failed to update meal preferences.' });
   }
 };
@@ -892,7 +893,7 @@ exports.getUpcoming = async (req, res) => {
       plans,
     });
   } catch (err) {
-    console.error('[mealPlanner/getUpcoming]', err);
+    logger.error('[mealPlanner/getUpcoming]', err);
     res.status(500).json({ error: 'Failed to fetch upcoming reminders.' });
   }
 };
@@ -902,7 +903,7 @@ exports.registerReminderToken = async (req, res) => {
     const token = await registerReminderToken(req.userId, req.body || {});
     res.status(201).json({ token });
   } catch (err) {
-    console.error('[mealPlanner/registerReminderToken]', err);
+    logger.error('[mealPlanner/registerReminderToken]', err);
     res.status(err.status || 500).json({ error: err.message || 'Failed to register reminder token.' });
   }
 };
@@ -912,7 +913,7 @@ exports.acknowledgeLocalSchedule = async (req, res) => {
     const schedule = await acknowledgeLocalSchedule(req.userId, req.body || {});
     res.status(201).json({ schedule });
   } catch (err) {
-    console.error('[mealPlanner/acknowledgeLocalSchedule]', err);
+    logger.error('[mealPlanner/acknowledgeLocalSchedule]', err);
     res.status(err.status || 500).json({ error: err.message || 'Failed to acknowledge local schedule.' });
   }
 };
@@ -949,7 +950,7 @@ exports.recordReminderLog = async (req, res) => {
 
     res.status(201).json({ success: true });
   } catch (err) {
-    console.error('[mealPlanner/recordReminderLog]', err);
+    logger.error('[mealPlanner/recordReminderLog]', err);
     res.status(500).json({ error: 'Failed to record reminder log.' });
   }
 };
@@ -976,7 +977,7 @@ exports.sendReminder = async (req, res) => {
     const result = await processDuePlannerReminders({ limit: Number(req.body?.limit || 20) });
     res.json(result);
   } catch (err) {
-    console.error('[mealPlanner/sendReminder]', err);
+    logger.error('[mealPlanner/sendReminder]', err);
     res.status(500).json({ error: 'Failed to process reminders.' });
   }
 };
@@ -1019,7 +1020,7 @@ exports.getGroceryList = async (req, res) => {
       generated_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[mealPlanner/getGroceryList]', err);
+    logger.error('[mealPlanner/getGroceryList]', err);
     res.status(500).json({ error: 'Failed to generate grocery list.' });
   }
 };
@@ -1175,7 +1176,7 @@ exports.getAdminMonitoring = async (_req, res) => {
       })),
     });
   } catch (err) {
-    console.error('[mealPlanner/getAdminMonitoring]', err);
+    logger.error('[mealPlanner/getAdminMonitoring]', err);
     res.status(500).json({ error: 'Failed to fetch meal planner monitoring.' });
   }
 };
@@ -1208,7 +1209,7 @@ exports.listSavedGroceryLists = async (req, res) => {
     );
     res.json({ saved: result.rows.map(toSavedGroceryRow) });
   } catch (err) {
-    console.error('[mealPlanner/listSavedGroceryLists]', err);
+    logger.error('[mealPlanner/listSavedGroceryLists]', err);
     if (err.code === '42P01') {
       return res.status(500).json({
         error:
@@ -1248,7 +1249,7 @@ exports.saveGroceryList = async (req, res) => {
 
     res.status(201).json({ saved: toSavedGroceryRow(insert.rows[0]) });
   } catch (err) {
-    console.error('[mealPlanner/saveGroceryList]', err);
+    logger.error('[mealPlanner/saveGroceryList]', err);
     if (err.code === '42P01') {
       return res.status(500).json({
         error:
@@ -1280,7 +1281,7 @@ exports.deleteSavedGroceryList = async (req, res) => {
 
     res.json({ success: true, id });
   } catch (err) {
-    console.error('[mealPlanner/deleteSavedGroceryList]', err);
+    logger.error('[mealPlanner/deleteSavedGroceryList]', err);
     if (err.code === '42P01') {
       return res.status(500).json({
         error:
@@ -1294,3 +1295,4 @@ exports.deleteSavedGroceryList = async (req, res) => {
 // Backward-compatible aliases for the older mobile client shape.
 exports.getPlan = exports.getPlans;
 exports.assignMeal = exports.createPlan;
+

@@ -97,7 +97,7 @@ export function AIChatWidget() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 320, damping: 26 } }}
             exit={{ opacity: 0, y: 20, scale: 0.95, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
-            className="mb-4 flex h-[500px] w-[calc(100vw-2rem)] max-w-96 flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl shadow-stone-950/20 sm:w-96"
+            className="mb-4 flex w-[calc(100vw-2rem)] max-w-96 flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl shadow-stone-950/20 sm:w-96 h-[60vh] sm:h-[500px] max-h-[480px] sm:max-h-[500px]"
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-orange-500 via-orange-600 to-orange-500 flex items-center justify-between p-4 text-white shadow-lg">

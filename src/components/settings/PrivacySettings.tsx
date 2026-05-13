@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, PackageOpen, ShieldCheck, Trash2, UserRoundCheck, type LucideIcon } from 'lucide-react';
+import { Eye, PackageOpen, ShieldCheck, Trash2, WifiOff, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import profileService from '@/services/profileService';
 import settingsService from '@/services/settingsService';
 
 type PrivacyPreferences = {
-  isProfilePublic: boolean;
   showKitchenInventory: boolean;
 };
 
 const defaultPreferences: PrivacyPreferences = {
-  isProfilePublic: false,
   showKitchenInventory: false,
 };
 
@@ -25,12 +24,6 @@ const rows: Array<{
   disabled?: boolean;
   badge?: string;
 }> = [
-  {
-    id: 'isProfilePublic',
-    title: 'Make profile public',
-    description: 'Allow other CookMate users to discover your cooking profile.',
-    icon: UserRoundCheck,
-  },
   {
     id: 'showKitchenInventory',
     title: 'Show kitchen inventory',
@@ -106,6 +99,7 @@ function normalizePreferences(value: Record<string, unknown>): PrivacyPreference
 export default function PrivacySettings() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const isOnline = useOnlineStatus();
   const [preferences, setPreferences] = useState<PrivacyPreferences>(defaultPreferences);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -200,6 +194,13 @@ export default function PrivacySettings() {
           </div>
         </div>
 
+        {!isOnline && (
+          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-4 py-3 text-sm font-semibold text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/20 dark:text-orange-300">
+            <WifiOff size={15} className="shrink-0" />
+            <span>Offline mode — privacy settings are read-only until you reconnect.</span>
+          </div>
+        )}
+
         <div className="grid gap-3">
           {rows.map((row) => (
             <ToggleRow
@@ -209,7 +210,7 @@ export default function PrivacySettings() {
               icon={row.icon}
               checked={preferences[row.id]}
               onChange={() => togglePreference(row.id)}
-              disabled={row.disabled}
+              disabled={row.disabled || !isOnline}
               badge={row.badge}
             />
           ))}
@@ -233,7 +234,7 @@ export default function PrivacySettings() {
         </div>
 
         <div className="mt-6 flex justify-end border-t border-orange-100 pt-6 dark:border-stone-700">
-          <Button type="button" onClick={savePreferences} disabled={loading || saving || !user?.id} className="h-12 rounded-2xl px-8 text-xs font-bold uppercase tracking-widest">
+          <Button type="button" onClick={savePreferences} disabled={loading || saving || !user?.id || !isOnline} className="h-12 rounded-2xl px-8 text-xs font-bold uppercase tracking-widest">
             {saving ? 'Saving...' : 'Save Privacy'}
           </Button>
         </div>

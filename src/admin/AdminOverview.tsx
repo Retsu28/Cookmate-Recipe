@@ -2,13 +2,12 @@ import { useState, useEffect } from 'react';
 import {
   Activity,
   BookOpen,
+  CalendarDays,
   Camera,
   ChefHat,
-  Heart,
   Loader2,
-  Server,
-  Smartphone,
-  Star,
+  MessageSquare,
+  Package,
   Users,
 } from 'lucide-react';
 import { AdminPageHeader } from './components/AdminPageHeader';
@@ -16,10 +15,6 @@ import { AdminSectionCard } from './components/AdminSectionCard';
 import { AdminStatCard } from './components/AdminStatCard';
 import { MetricBarList } from './components/MetricBarList';
 import { StatusBadge } from './components/StatusBadge';
-import {
-  systemStatuses,
-  weeklyPlannedMeals,
-} from './data/adminMockData';
 import api from '@/services/api';
 
 interface StatsData {
@@ -32,28 +27,46 @@ interface StatsData {
   topTags: { tag: string; count: string }[];
 }
 
-const statIcons = [BookOpen, Star, ChefHat, Heart, Smartphone, Server];
+interface WidgetData {
+  weeklyChart: { id: string; label: string; value: number; rawValue: number }[];
+  health: {
+    userCount: number;
+    recipeCount: number;
+    ingredientCount: number;
+    mealPlanCount: number;
+    aiScanCount: number;
+    reviewCount: number;
+  };
+  userStats: { totalUsers: number; newThisWeek: number };
+  reviewsToday: number;
+}
+
+const statIcons = [BookOpen, Users, Package, CalendarDays, Camera, MessageSquare];
 
 export default function AdminOverview() {
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [widgets, setWidgets] = useState<WidgetData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<StatsData>('/api/recipes/stats')
-      .then(setStats)
-      .catch(() => setStats(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get<StatsData>('/api/recipes/stats').catch(() => null),
+      api.get<WidgetData>('/api/admin/overview-widgets').catch(() => null),
+    ]).then(([s, w]) => {
+      setStats(s);
+      setWidgets(w);
+    }).finally(() => setLoading(false));
   }, []);
 
-  const healthItems = systemStatuses.slice(0, 4);
+  const h = widgets?.health;
 
-  const overviewStats = stats ? [
-    { id: 'recipes', label: 'Total recipes', value: String(stats.total), change: `${stats.published} published`, description: 'Philippine food recipes from PostgreSQL database', tone: 'success' as const },
-    { id: 'featured', label: 'Featured recipes', value: String(stats.featured), change: 'Curated selections', description: 'Recipes highlighted on homepage and mobile', tone: 'success' as const },
-    { id: 'categories', label: 'Categories', value: String(stats.categories.length), change: stats.categories.slice(0, 2).map(c => c.category).join(', '), description: 'Unique recipe categories from database', tone: 'info' as const },
-    { id: 'difficulties', label: 'Difficulty levels', value: String(stats.difficulties.length), change: stats.difficulties.map(d => `${d.difficulty}: ${d.count}`).join(', '), description: 'Distribution across Easy, Medium, Hard', tone: 'neutral' as const },
-    { id: 'tags', label: 'Top tags', value: String(stats.topTags.length), change: stats.topTags.slice(0, 3).map(t => t.tag).join(', '), description: 'Most common recipe tags', tone: 'info' as const },
-    { id: 'db', label: 'Database', value: 'Connected', change: 'PostgreSQL', description: 'Recipe data is stored in and served from PostgreSQL', tone: 'success' as const },
+  const overviewStats = stats && h ? [
+    { id: 'recipes',     label: 'Total recipes',    value: String(stats.total),               change: `${stats.published} published`,                           description: 'Philippine food recipes from PostgreSQL',          tone: 'success' as const },
+    { id: 'users',       label: 'Total users',       value: String(h.userCount),               change: `+${widgets!.userStats.newThisWeek} this week`,            description: 'Registered CookMate accounts',                     tone: 'info'    as const },
+    { id: 'ingredients', label: 'Ingredients',       value: String(h.ingredientCount),         change: 'In ingredients table',                                    description: 'Unique ingredients tracked in the database',       tone: 'neutral' as const },
+    { id: 'meal_plans',  label: 'Meal plans',        value: String(h.mealPlanCount),           change: 'All-time',                                                description: 'Total meal plans created by all users',            tone: 'success' as const },
+    { id: 'ai_scans',    label: 'AI camera saves',   value: String(h.aiScanCount),             change: 'All-time saves',                                          description: 'Total camera scan saves across all users',         tone: 'info'    as const },
+    { id: 'reviews',     label: 'Reviews',           value: String(h.reviewCount),             change: `${widgets!.reviewsToday} today`,                          description: 'User ratings and comments on recipes',             tone: h.reviewCount > 0 ? 'success' as const : 'neutral' as const },
   ] : [];
 
   const popularRecipes = stats ? stats.categories.slice(0, 6).map(c => ({
@@ -71,6 +84,15 @@ export default function AdminOverview() {
     tone: 'success' as const,
   })) : [];
 
+  const weeklyChart = widgets?.weeklyChart ?? [];
+
+  const healthRows = h ? [
+    { id: 'db',          name: 'PostgreSQL',         status: 'Connected',      description: `${h.recipeCount} recipes · ${h.userCount} users · ${h.ingredientCount} ingredients`,                  tone: 'success' as const },
+    { id: 'meal_plans',  name: 'Meal Planner',       status: `${h.mealPlanCount} plans`, description: `${h.mealPlanCount} total meal plans created`,                                               tone: h.mealPlanCount > 0 ? 'success' as const : 'neutral' as const },
+    { id: 'ai',          name: 'AI Camera saves',    status: `${h.aiScanCount} saves`,   description: `${h.aiScanCount} scans saved across all users`,                                              tone: h.aiScanCount > 0 ? 'success' as const : 'neutral' as const },
+    { id: 'reviews',     name: 'Reviews',            status: `${h.reviewCount} total`,   description: `${h.reviewCount} reviews · ${widgets?.reviewsToday ?? 0} submitted today`,                  tone: 'info'    as const },
+  ] : [];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -83,7 +105,7 @@ export default function AdminOverview() {
     <div>
       <AdminPageHeader
         title="Admin Dashboard"
-        description="Monitor CookMate recipes, categories, and content operations. All data below is live from the PostgreSQL database."
+        description="Monitor CookMate recipes, users, and content operations. All data is live from the PostgreSQL database."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -95,29 +117,34 @@ export default function AdminOverview() {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
         <AdminSectionCard
           title="Weekly Meal Planning"
-          description="Monitoring preview for planned meals. The architecture still marks deeper offline and favorites flows as planned."
+          description="Meals planned per day over the last 7 days — live from the database."
         >
-          <div className="grid grid-cols-7 items-end gap-3 pt-4">
-            {weeklyPlannedMeals.map((day) => (
-              <div key={day.id} className="flex flex-col items-center gap-2">
-                <div className="flex h-44 w-full items-end rounded-2xl bg-stone-100 p-1">
-                  <div
-                    className="w-full rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20"
-                    style={{ height: `${day.value}%` }}
-                  />
+          {weeklyChart.length === 0 ? (
+            <p className="py-8 text-center text-sm text-stone-400">No meal plans in the last 7 days.</p>
+          ) : (
+            <div className="grid grid-cols-7 items-end gap-3 pt-4">
+              {weeklyChart.map((day) => (
+                <div key={day.id} className="flex flex-col items-center gap-2">
+                  <span className="text-[10px] font-bold text-stone-400">{day.rawValue > 0 ? day.rawValue : ''}</span>
+                  <div className="flex h-44 w-full items-end rounded-2xl bg-stone-100 p-1">
+                    <div
+                      className="w-full rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 transition-all duration-500"
+                      style={{ height: `${day.value}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-stone-500">{day.label}</span>
                 </div>
-                <span className="text-xs font-extrabold uppercase tracking-wider text-stone-500">{day.label}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </AdminSectionCard>
 
         <AdminSectionCard
           title="System Health"
-          description="Architecture status for PWA, Gemini, and roadmap features."
+          description="Live counts from PostgreSQL — all data is real-time."
         >
           <div className="space-y-3">
-            {healthItems.map((item) => (
+            {healthRows.map((item) => (
               <div key={item.id} className="rounded-2xl border border-stone-100 bg-stone-50 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-bold text-stone-900">{item.name}</p>

@@ -13,14 +13,7 @@ const mealSlots = [
 ];
 
 function buildDateList() {
-  const today = new Date();
-  const dates = [];
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    dates.push(format(d, 'yyyy-MM-dd'));
-  }
-  return dates;
+  return [format(new Date(), 'yyyy-MM-dd')];
 }
 
 export default function EditPlanModal({ plan, colors, isDark, softBorder, isOnline, onClose, onSave }) {

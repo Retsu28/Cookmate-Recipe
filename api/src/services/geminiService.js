@@ -1,4 +1,5 @@
 const { cleanDisplayText } = require('./recipeMatcher');
+const logger = require('../config/logger');
 
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45000);
 const GEMINI_RAG_TIMEOUT_MS = Number(process.env.GEMINI_RAG_TIMEOUT_MS || 15000);
@@ -106,7 +107,7 @@ async function generateGeminiContent({ genAI, prompt, mimeType, base64Data }) {
     } catch (err) {
       lastError = err;
       if (shouldStopGeminiFallback(err)) throw err;
-      console.warn(`[ml/camera/analyze] Gemini model ${modelName} unavailable, trying fallback model.`);
+      logger.warn(`[ml/camera/analyze] Gemini model ${modelName} unavailable, trying fallback model.`);
     }
   }
 
@@ -221,11 +222,11 @@ Return shape:
     }
 
     if (lastError) {
-      console.warn('[ml/rag] Gemini grounding unavailable, falling back to DB ranking:', lastError.message);
+      logger.warn('[ml/rag] Gemini grounding unavailable, falling back to DB ranking:', lastError.message);
     }
     return null;
   } catch (err) {
-    console.warn('[ml/rag] Gemini grounding error, falling back to DB ranking:', err.message);
+    logger.warn('[ml/rag] Gemini grounding error, falling back to DB ranking:', err.message);
     return null;
   }
 }
@@ -240,7 +241,7 @@ Return shape:
  */
 async function generateChatResponse({ apiKey, systemPrompt, messages }) {
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error('GEMINI_CHAT_API_KEY not configured');
   }
 
   const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -292,7 +293,7 @@ async function generateChatResponse({ apiKey, systemPrompt, messages }) {
     } catch (err) {
       lastError = err;
       if (shouldStopGeminiFallback(err)) throw err;
-      console.warn(`[chat] Gemini model ${modelName} unavailable, trying fallback:`, err.message);
+      logger.warn(`[chat] Gemini model ${modelName} unavailable, trying fallback:`, err.message);
     }
   }
 

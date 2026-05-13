@@ -21,7 +21,6 @@ import SplashScreen from './src/components/SplashScreen';
 import {
   AccountSettingsSkeleton,
   CameraPermissionSkeleton,
-  ContentSkeleton,
   HomeContentSkeleton,
   MealPlannerContentSkeleton,
   NotificationsContentSkeleton,
@@ -41,6 +40,7 @@ const TRANSITION_SKELETON_MS = 450;
 // RecipeDetail, Notifications, AccountSettings) still get the skeleton overlay.
 const TAB_ROUTE_NAMES = new Set(['Home', 'Search', 'Recipes', 'Planner', 'Camera', 'Profile', 'Main']);
 const AUTH_ROUTE_NAMES = new Set(['Login', 'Signup']);
+const NO_SKELETON_ROUTES = new Set(['StartCookingSplash', 'CookingMode', 'Onboarding']);
 
 const transitionSkeletons = {
   AccountSettings: AccountSettingsSkeleton,
@@ -87,7 +87,9 @@ function SignOutSplash({ colors, isDark }) {
 }
 
 function NavigationTransitionSkeleton({ colors, routeName }) {
-  const Skeleton = transitionSkeletons[routeName] || ContentSkeleton;
+  const Skeleton = transitionSkeletons[routeName];
+
+  if (!Skeleton) return null;
 
   return (
     <View style={styles.transitionSkeleton} pointerEvents="auto">
@@ -141,7 +143,8 @@ function AppContent({ fontsLoaded }) {
     if (route?.key && previousRouteKey.current && route.key !== previousRouteKey.current) {
       // Tab switches are handled by TabSceneAnimator's focus-triggered fade —
       // skip the full-screen skeleton overlay so the transition stays smooth.
-      if (!TAB_ROUTE_NAMES.has(route.name) && !AUTH_ROUTE_NAMES.has(route.name)) {
+      // Also skip skeleton for StartCookingSplash and CookingMode.
+      if (!TAB_ROUTE_NAMES.has(route.name) && !AUTH_ROUTE_NAMES.has(route.name) && !NO_SKELETON_ROUTES.has(route.name)) {
         showTransitionSkeleton(route);
       }
     }
@@ -153,7 +156,6 @@ function AppContent({ fontsLoaded }) {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <ContentSkeleton colors={colors} />
       </View>
     );
   }
@@ -168,6 +170,29 @@ function AppContent({ fontsLoaded }) {
               theme={navigationTheme}
               onReady={handleNavigationReady}
               onStateChange={handleNavigationStateChange}
+              linking={{
+                prefixes: ['cookmate://', 'https://cookmate.app'],
+                config: {
+                  screens: {
+                    Onboarding: 'onboarding',
+                    Main: {
+                      screens: {
+                        Home: 'home',
+                        Search: 'search',
+                        Recipes: 'recipes',
+                        Planner: 'planner',
+                        Camera: 'camera',
+                        Profile: 'profile',
+                      },
+                    },
+                    RecipeDetail: 'recipe/:id',
+                    AllRecipes: 'all-recipes',
+                    Notifications: 'notifications',
+                    NotificationSettings: 'notification-settings',
+                    CookingMode: 'cooking/:id',
+                  },
+                },
+              }}
             >
               <AppNavigator />
               <StatusBar style={isDark ? 'light' : 'dark'} />

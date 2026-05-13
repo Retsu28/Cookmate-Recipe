@@ -111,11 +111,7 @@ function todayInputValue() {
 }
 
 function buildDateList() {
-  const dates = [];
-  for (let i = 0; i < 60; i++) {
-    dates.push(format(addDays(new Date(), i), 'yyyy-MM-dd'));
-  }
-  return dates;
+  return [format(new Date(), 'yyyy-MM-dd')];
 }
 
 function InlineDatePicker({ visible, selected, onSelect, onClose, colors }) {
@@ -331,6 +327,8 @@ export default function RecipeDetailScreen({ route, navigation }) {
           steps: r.instructions
             ? r.instructions.map((text, i) => ({ number: i + 1, text, time: null }))
             : r.steps || [],
+          video_filename: r.video_filename || null,
+          instruction_timestamps: r.instruction_timestamps || [],
           nutrition: r.nutrition || {
             calories: r.calories || 0,
             protein: r.protein_g ? `${r.protein_g}g` : '—',
@@ -651,7 +649,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
               Alert.alert('You are offline', OFFLINE_MESSAGE);
               return;
             }
-            navigation.navigate('CookingMode', { recipe });
+            navigation.navigate('StartCookingSplash', { recipe });
           }}
           activeOpacity={isOnline ? 0.7 : 0.9}
           style={[st.cookBtn, { backgroundColor: colors.primary, opacity: isOnline ? 1 : 0.5 }]}
@@ -692,14 +690,27 @@ export default function RecipeDetailScreen({ route, navigation }) {
               contentContainerStyle={st.modalScrollContent}
             >
               <View style={[st.modalCard, { backgroundColor: colors.surface }]}>
-            <View style={st.modalHeader}>
-              <Text style={[st.modalEyebrow, { color: colors.primary }]}>ADD TO MEAL PLANNER</Text>
+            {/* Header */}
+            <View style={[st.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={st.modalHeaderLeft}>
+                <View style={st.modalHeaderIcon}>
+                  <Ionicons name="calendar" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.modalEyebrow, { color: colors.primary }]}>ADD TO MEAL PLANNER</Text>
+                  <Text style={[st.modalTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
+                  {recipe.category ? (
+                    <Text style={[st.modalCategory, { color: colors.textMuted }]}>{recipe.category}</Text>
+                  ) : null}
+                </View>
+              </View>
               <TouchableOpacity onPress={() => setPlannerOpen(false)} style={st.modalClose}>
                 <Ionicons name="close" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            <Text style={[st.modalTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
 
+            {/* Body */}
+            <View style={st.modalBody}>
             <Text style={[st.modalLabel, { color: colors.textSubtle }]}>DATE</Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
@@ -807,13 +818,24 @@ export default function RecipeDetailScreen({ route, navigation }) {
               />
             </View>
 
-            <TouchableOpacity
-              onPress={savePlan}
-              disabled={planning}
-              style={[st.modalSaveBtn, { backgroundColor: colors.primary, opacity: planning ? 0.6 : 1 }]}
-            >
-              <Text style={st.modalSaveText}>{planning ? 'SAVING...' : 'SAVE PLAN'}</Text>
-            </TouchableOpacity>
+            </View>
+            {/* Footer */}
+            <View style={[st.modalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => setPlannerOpen(false)}
+                style={[st.modalCancelBtn, { borderColor: colors.border }]}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.modalCancelText, { color: colors.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={savePlan}
+                disabled={planning}
+                style={[st.modalSaveBtn, { backgroundColor: colors.primary, opacity: planning ? 0.6 : 1 }]}
+              >
+                <Text style={st.modalSaveText}>{planning ? 'SAVING...' : 'SAVE PLAN'}</Text>
+              </TouchableOpacity>
+            </View>
               </View>
             </ScrollView>
           </View>
@@ -888,17 +910,21 @@ const st = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)', paddingTop: 80 },
   modalScroll: { flex: 1 },
   modalScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
-  modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 32, paddingBottom: 48, gap: 14 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalCard: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 48, gap: 14 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  modalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  modalHeaderIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(249,115,22,0.18)' },
   modalEyebrow: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8 },
   modalClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, lineHeight: 27 },
+  modalTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 18, lineHeight: 24 },
+  modalCategory: { fontFamily: 'Geist_500Medium', fontSize: 13 },
+  modalBody: { paddingHorizontal: 20, paddingTop: 16, gap: 14 },
   modalLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.8, marginTop: 4 },
   modalInput: { height: 48, borderWidth: 1, paddingHorizontal: 14, fontFamily: 'Geist_700Bold', fontSize: 14 },
   mealTypeRow: { flexDirection: 'row', gap: 8 },
-  mealTypeBtn: { flex: 1, height: 46, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  mealTypeBtn: { flex: 1, height: 46, borderWidth: 1, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   mealTypeText: { fontFamily: 'Geist_700Bold', fontSize: 11 },
-  reminderBox: { borderWidth: 1, padding: 12, gap: 12 },
+  reminderBox: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 12 },
   reminderToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reminderToggleText: { fontFamily: 'Geist_700Bold', fontSize: 13 },
   switchTrack: { width: 44, height: 24, borderRadius: 12, padding: 3 },
@@ -909,6 +935,9 @@ const st = StyleSheet.create({
   timeInputRow: { flexDirection: 'row', gap: 8 },
   timePickerBtn: { flex: 1, height: 44, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   timePickerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12 },
-  modalSaveBtn: { height: 52, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
-  modalSaveText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 2, color: '#fff' },
+  modalFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, paddingHorizontal: 20, paddingTop: 14, borderTopWidth: 1, marginTop: 6 },
+  modalCancelBtn: { height: 46, borderWidth: 1, borderRadius: 23, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
+  modalCancelText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 0.5 },
+  modalSaveBtn: { height: 46, borderRadius: 23, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
+  modalSaveText: { fontFamily: 'Geist_700Bold', fontSize: 12, letterSpacing: 1.5, color: '#fff' },
 });

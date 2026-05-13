@@ -35,6 +35,15 @@ const oauthLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again in 15 minutes.' },
 });
 
+// Refresh token rotation — allows silent re-auth but still rate-limited
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,                   // 20 refreshes per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many token refresh attempts. Please try again later.' },
+});
+
 const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5,                    // 5 requests per IP per hour
@@ -49,6 +58,7 @@ router.post('/google', oauthLimiter, authController.google);
 router.post('/firebase', oauthLimiter, authController.firebase);
 router.get('/me', requireAuth, authController.me);
 router.post('/logout', authController.logout);
+router.post('/refresh', refreshLimiter, authController.refresh);
 router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPassword);
 router.post('/reset-password', forgotPasswordLimiter, authController.resetPassword);
 

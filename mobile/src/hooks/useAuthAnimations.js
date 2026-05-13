@@ -27,41 +27,40 @@ export function useAuthAnimations(fieldCount = 4, direction = 1) {
   const shakeX = useRef(new Animated.Value(0)).current;
   const entryDirection = direction >= 0 ? 1 : -1;
 
+  // Only run mount animation once on initial render
+  // Using empty dependency array to prevent re-running on every re-render
   useEffect(() => {
-    mount.stopAnimation();
-    shakeX.stopAnimation();
-    fields.forEach((value) => value.stopAnimation());
-
-    mount.setValue(0);
-    shakeX.setValue(0);
-    fields.forEach((value) => value.setValue(0));
-
-    Animated.parallel([
-      Animated.timing(mount, {
-        toValue: 1,
-        duration: 380,
-        easing: Easing.out(Easing.poly(4)),
-        useNativeDriver: true,
-      }),
-      Animated.stagger(
-        42,
-        fields.map((value) =>
-          Animated.timing(value, {
-            toValue: 1,
-            duration: 300,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          })
-        )
-      ),
-    ]).start();
+    // Small delay to ensure UI is ready
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(mount, {
+          toValue: 1,
+          duration: 380,
+          easing: Easing.out(Easing.poly(4)),
+          useNativeDriver: true,
+        }),
+        Animated.stagger(
+          42,
+          fields.map((value) =>
+            Animated.timing(value, {
+              toValue: 1,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            })
+          )
+        ),
+      ]).start();
+    }, 50);
 
     return () => {
+      clearTimeout(timer);
       mount.stopAnimation();
       shakeX.stopAnimation();
       fields.forEach((value) => value.stopAnimation());
     };
-  }, [fields, mount, shakeX]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const entranceTranslateX = mount.interpolate({
     inputRange: [0, 1],

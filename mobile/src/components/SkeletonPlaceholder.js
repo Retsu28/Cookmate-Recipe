@@ -109,15 +109,18 @@ export function HomeContentSkeleton({ colors }) {
       accessibilityRole="progressbar"
       accessibilityLabel="Loading home dashboard"
     >
+      {/* Header — mirrors HomeScreen header: logo + brand + notif + avatar */}
       <MobileHeaderSkeleton colors={colors} />
+
       <ScrollView
         style={st.flex1}
         contentContainerStyle={st.homeContent}
         showsVerticalScrollIndicator={false}
       >
-        <SkeletonBlock colors={colors} style={st.searchPill} />
+        {/* Hero carousel — square aspect ratio, borderRadius 28 */}
         <SkeletonBlock colors={colors} style={st.homeHero} />
 
+        {/* Quick Start — label + 2 side-by-side cards */}
         <View style={st.sectionGap}>
           <SkeletonBlock colors={colors} style={st.smallLabel} />
           <View style={st.quickRow}>
@@ -126,10 +129,11 @@ export function HomeContentSkeleton({ colors }) {
           </View>
         </View>
 
+        {/* Featured Recipes — section title + horizontal scroll of 3 cards */}
         <View style={st.sectionGap}>
           <SkeletonBlock colors={colors} style={st.sectionHeading} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {[0, 1, 2].map((item) => (
+            {[0, 1, 2, 3].map((item) => (
               <View key={item} style={st.recipeCardSkel}>
                 <SkeletonBlock colors={colors} style={st.recipeCardImage} />
                 <SkeletonBlock colors={colors} style={st.recipeCardTitle} />
@@ -139,29 +143,53 @@ export function HomeContentSkeleton({ colors }) {
           </ScrollView>
         </View>
 
+        {/* Info Cards — Seasonal + Cooking Skills side by side */}
         <View style={st.infoRow}>
-          <SkeletonBlock colors={colors} style={st.infoBlock} />
-          <SkeletonBlock colors={colors} style={st.infoBlock} />
-        </View>
-
-        <View style={st.sectionGap}>
-          <SkeletonBlock colors={colors} style={st.smallLabel} />
-          <View style={[st.mobilePanel, { borderColor: colors.border }]}>
-            {[0, 1, 2].map((item) => (
-              <View key={item} style={[st.mobilePanelRow, item < 2 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
-                <View style={st.listText}>
-                  <SkeletonBlock colors={colors} style={st.tinyLine} />
-                  <SkeletonBlock colors={colors} style={st.listLineWide} />
-                </View>
-                <SkeletonBlock colors={colors} style={st.dotBlock} />
-              </View>
-            ))}
-            <SkeletonBlock colors={colors} style={st.fullButtonBlock} />
+          <View style={[st.infoCardSkel, { backgroundColor: colors.surface }]}>
+            <SkeletonBlock colors={colors} style={st.infoCardTitle} />
+            <SkeletonBlock colors={colors} style={st.infoCardTitle} />
+            <SkeletonBlock colors={colors} style={st.infoCardLine} />
+            <SkeletonBlock colors={colors} style={st.infoCardLine} />
+            <SkeletonBlock colors={colors} style={st.infoCardLink} />
+          </View>
+          <View style={[st.infoCardSkel, { backgroundColor: colors.surface }]}>
+            <SkeletonBlock colors={colors} style={st.infoCardTitle} />
+            <SkeletonBlock colors={colors} style={st.infoCardTitle} />
+            <SkeletonBlock colors={colors} style={st.infoCardLine} />
+            <SkeletonBlock colors={colors} style={st.infoCardLine} />
+            <SkeletonBlock colors={colors} style={st.infoCardLink} />
           </View>
         </View>
 
+        {/* Today's Meal Plan — label + edit btn + 3 meal rows + button */}
         <View style={st.sectionGap}>
-          <SkeletonBlock colors={colors} style={st.smallLabel} />
+          <View style={st.homeSectionHeader}>
+            <SkeletonBlock colors={colors} style={st.smallLabel} />
+            <SkeletonBlock colors={colors} style={st.editBtnSkel} />
+          </View>
+          <View style={[st.mealPlanCardSkel, { borderColor: colors.border }]}>
+            {[0, 1, 2].map((item) => (
+              <View
+                key={item}
+                style={[st.mealRowSkel, item < 2 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}
+              >
+                <View style={st.listText}>
+                  <SkeletonBlock colors={colors} style={st.mealSlotLabelSkel} />
+                  <SkeletonBlock colors={colors} style={st.mealRecipeNameSkel} />
+                </View>
+                <SkeletonBlock colors={colors} style={st.mealDotSkel} />
+              </View>
+            ))}
+            <SkeletonBlock colors={colors} style={st.mealPlanBtnSkel} />
+          </View>
+        </View>
+
+        {/* Recent Recipes — label + view-all btn + 2 items (16/9 image + title + meta) */}
+        <View style={st.sectionGap}>
+          <View style={st.homeSectionHeader}>
+            <SkeletonBlock colors={colors} style={st.smallLabel} />
+            <SkeletonBlock colors={colors} style={st.viewAllBtnSkel} />
+          </View>
           {[0, 1].map((item) => (
             <View key={item} style={st.recentSkel}>
               <SkeletonBlock colors={colors} style={st.recentImage} />
@@ -171,15 +199,18 @@ export function HomeContentSkeleton({ colors }) {
           ))}
         </View>
 
-        <View style={st.darkPanel}>
-          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.18)" style={st.darkIcon} />
-          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.18)" style={st.darkTitle} />
-          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.1)" style={st.darkLineWide} />
-          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.1)" style={st.darkLine} />
-          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.16)" style={st.darkButton} />
+        {/* AI Cooking Assistant panel — orange bg, centered icon+title+desc+quote+button */}
+        <View style={st.aiPanelSkel}>
+          <View style={st.aiPanelHeaderSkel}>
+            <SkeletonBlock colors={colors} color="rgba(255,255,255,0.22)" style={st.aiIconSkel} />
+            <SkeletonBlock colors={colors} color="rgba(255,255,255,0.22)" style={st.aiTitleLineSkel} />
+            <SkeletonBlock colors={colors} color="rgba(255,255,255,0.22)" style={st.aiTitleLineShortSkel} />
+          </View>
+          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.14)" style={st.aiDescLineSkel} />
+          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.14)" style={st.aiDescLineShortSkel} />
+          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.14)" style={st.aiQuoteBoxSkel} />
+          <SkeletonBlock colors={colors} color="rgba(255,255,255,0.22)" style={st.aiBtnSkel} />
         </View>
-
-        <SkeletonBlock colors={colors} style={st.statsBlock} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -197,29 +228,32 @@ export function ProfileContentSkeleton({ colors }) {
         contentContainerStyle={st.profileContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile header card */}
-        <View style={[st.profileHeaderBlock, { backgroundColor: colors.surfaceAlt }]}>
-          <SkeletonBlock colors={colors} style={st.profileAvatarBlock} />
+        {/* Header card — mirrors headerCard: centered avatar + name + email + stats row */}
+        <View style={[st.profileHeaderCard, { backgroundColor: colors.surfaceAlt }]}>
+          <SkeletonBlock colors={colors} style={st.profileAvatarCircle} />
           <SkeletonBlock colors={colors} style={st.profileNameBlock} />
           <SkeletonBlock colors={colors} style={st.profileEmailBlock} />
-
-          <View style={[st.profileStatsBlock, { borderTopColor: colors.border }]}>
-            <View style={st.profileStatBlock}>
-              <SkeletonBlock colors={colors} style={st.profileStatNumberBlock} />
-              <SkeletonBlock colors={colors} style={st.profileStatLabelBlock} />
+          <View style={[st.profileStatsRow, { borderTopColor: colors.border }]}>
+            <View style={st.profileStatCol}>
+              <SkeletonBlock colors={colors} style={st.profileStatNum} />
+              <SkeletonBlock colors={colors} style={st.profileStatLabel} />
             </View>
           </View>
         </View>
 
-        {/* Tab row */}
-        <View style={[st.profileTabsBlock, { borderBottomColor: colors.border }]}>
-          {[0, 1, 2].map((item) => (
-            <SkeletonBlock key={item} colors={colors} style={st.profileTabBlock} />
+        {/* Tab row — 7 tabs, each with icon placeholder + label line */}
+        <View style={[st.profileTabRow, { borderBottomColor: colors.border }]}>
+          {[0, 1, 2, 3, 4, 5, 6].map((item) => (
+            <View key={item} style={st.profileTabCell}>
+              <SkeletonBlock colors={colors} style={st.profileTabIcon} />
+              <SkeletonBlock colors={colors} style={st.profileTabLabel} />
+            </View>
           ))}
         </View>
 
+        {/* Body — mirrors padding:16, gap:24, accountWrap gap:16 */}
         <View style={st.profileBodyBlock}>
-          {/* Account Form - Profile Details section */}
+          {/* Profile details section: icon+title+caption, username label+input, bio label+textarea, skill label + 3 skill btns */}
           <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={st.profileFormHeader}>
               <SkeletonBlock colors={colors} style={st.profileFormIcon} />
@@ -238,12 +272,12 @@ export function ProfileContentSkeleton({ colors }) {
             <SkeletonBlock colors={colors} style={st.profileSkillBtn} />
           </View>
 
-          {/* Email section */}
+          {/* Email section: icon+title+caption, email label+input */}
           <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={st.profileFormHeader}>
               <SkeletonBlock colors={colors} style={st.profileFormIcon} />
               <View style={st.listText}>
-                <SkeletonBlock colors={colors} style={{ width: 60, height: 17 }} />
+                <SkeletonBlock colors={colors} style={{ width: 60, height: 17, borderRadius: 10 }} />
                 <SkeletonBlock colors={colors} style={st.profileFormCaption} />
               </View>
             </View>
@@ -251,14 +285,14 @@ export function ProfileContentSkeleton({ colors }) {
             <SkeletonBlock colors={colors} style={st.profileFormInput} />
           </View>
 
-          {/* Password section */}
+          {/* Password section: eye-btn row + icon+title+caption, 3x label+input */}
           <View style={[st.profileFormSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={st.profilePasswordHeader}>
               <View style={{ flex: 1 }}>
                 <View style={st.profileFormHeader}>
                   <SkeletonBlock colors={colors} style={st.profileFormIcon} />
                   <View style={st.listText}>
-                    <SkeletonBlock colors={colors} style={{ width: 90, height: 17 }} />
+                    <SkeletonBlock colors={colors} style={{ width: 90, height: 17, borderRadius: 10 }} />
                     <SkeletonBlock colors={colors} style={st.profileFormCaption} />
                   </View>
                 </View>
@@ -274,33 +308,10 @@ export function ProfileContentSkeleton({ colors }) {
           </View>
 
           {/* Save + Discard buttons */}
-          <SkeletonBlock colors={colors} style={st.profileSaveBlock} />
-          <SkeletonBlock colors={colors} style={st.profileDiscardBlock} />
-
-          {/* Preferences section */}
-          <View style={st.profilePrefsSection}>
-            <SkeletonBlock colors={colors} style={st.smallLabel} />
-            <View style={[st.settingsListBlock, { borderColor: colors.border }]}>
-              {[0, 1, 2, 3].map((item) => (
-                <View
-                  key={item}
-                  style={[
-                    st.settingRowBlock,
-                    item < 3 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  ]}
-                >
-                  <View style={st.settingLeftBlock}>
-                    <SkeletonBlock colors={colors} style={st.settingIconBlock} />
-                    <SkeletonBlock colors={colors} style={st.settingLabelBlock} />
-                  </View>
-                  <SkeletonBlock colors={colors} style={item === 0 ? st.settingSwitchBlock : st.settingValueBlock} />
-                </View>
-              ))}
-            </View>
+          <View style={st.profileFooterActions}>
+            <SkeletonBlock colors={colors} style={st.profileSaveBlock} />
+            <SkeletonBlock colors={colors} style={st.profileDiscardBlock} />
           </View>
-
-          {/* Logout */}
-          <SkeletonBlock colors={colors} style={st.profileLogoutBlock} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -867,35 +878,46 @@ const st = StyleSheet.create({
   brandLine: { width: 118, height: 7 },
   mobileHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerIconCircle: { width: 36, height: 36, borderRadius: 18 },
-  homeContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100, gap: 20 },
-  searchPill: { width: '100%', height: 42, borderRadius: 999 },
+  homeContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120, gap: 20 },
   homeHero: { width: '100%', aspectRatio: 1, borderRadius: 28 },
   sectionGap: { gap: 10 },
-  smallLabel: { width: 120, height: 10, borderRadius: 0 },
+  smallLabel: { width: 100, height: 9, borderRadius: 4 },
   quickRow: { flexDirection: 'row', gap: 12 },
   quickBlock: { flex: 1, height: 52, borderRadius: 16 },
-  sectionHeading: { width: 160, height: 20 },
+  sectionHeading: { width: 160, height: 20, borderRadius: 6 },
   recipeCardSkel: { width: 180, marginRight: 12, gap: 8 },
   recipeCardImage: { width: '100%', height: 118, borderRadius: 16 },
-  recipeCardTitle: { width: '86%', height: 15 },
-  recipeCardMeta: { width: '58%', height: 11 },
-  infoRow: { flexDirection: 'row', gap: 12 },
-  infoBlock: { flex: 1, height: 150, borderRadius: 0 },
-  mobilePanel: { borderWidth: 1, padding: 16, borderRadius: 0 },
-  mobilePanelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
-  tinyLine: { width: 72, height: 8, borderRadius: 0 },
-  dotBlock: { width: 14, height: 14, borderRadius: 7 },
-  fullButtonBlock: { width: '100%', height: 46, borderRadius: 0, marginTop: 14 },
-  recentSkel: { marginBottom: 6 },
+  recipeCardTitle: { width: '86%', height: 15, borderRadius: 6 },
+  recipeCardMeta: { width: '58%', height: 11, borderRadius: 4 },
+  infoRow: { flexDirection: 'row', gap: 12, alignItems: 'stretch' },
+  infoCardSkel: { flex: 1, padding: 20, borderRadius: 24, gap: 8 },
+  infoCardTitle: { width: '70%', height: 16, borderRadius: 6 },
+  infoCardLine: { width: '100%', height: 11, borderRadius: 4 },
+  infoCardLink: { width: 70, height: 9, borderRadius: 4, marginTop: 6 },
+  homeSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  editBtnSkel: { width: 22, height: 22, borderRadius: 11 },
+  mealPlanCardSkel: { borderWidth: 1, paddingHorizontal: 16, borderRadius: 0 },
+  mealRowSkel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
+  mealSlotLabelSkel: { width: 56, height: 7, borderRadius: 3, marginBottom: 6 },
+  mealRecipeNameSkel: { width: '75%', height: 12, borderRadius: 4 },
+  mealDotSkel: { width: 16, height: 16, borderRadius: 8 },
+  mealPlanBtnSkel: { width: '100%', height: 48, borderRadius: 0, marginTop: 14, marginBottom: 0 },
+  viewAllBtnSkel: { width: 90, height: 26, borderRadius: 999 },
+  recentSkel: { marginBottom: 8 },
   recentImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 0, marginBottom: 8 },
-  recentTitle: { width: '78%', height: 14 },
-  recentMeta: { width: 94, height: 9, marginTop: 6 },
-  darkPanel: { backgroundColor: '#24160f', padding: 24, alignItems: 'center', gap: 12 },
-  darkIcon: { width: 36, height: 36, borderRadius: 0 },
-  darkTitle: { width: 120, height: 17 },
+  recentTitle: { width: '78%', height: 14, borderRadius: 5 },
+  recentMeta: { width: 94, height: 9, marginTop: 5, borderRadius: 3 },
+  aiPanelSkel: { backgroundColor: '#f97316', padding: 24, borderRadius: 32, alignItems: 'center', gap: 12 },
+  aiPanelHeaderSkel: { alignItems: 'center', gap: 10, marginBottom: 4 },
+  aiIconSkel: { width: 44, height: 44, borderRadius: 22 },
+  aiTitleLineSkel: { width: 130, height: 18, borderRadius: 6 },
+  aiTitleLineShortSkel: { width: 90, height: 18, borderRadius: 6 },
+  aiDescLineSkel: { width: '90%', height: 12, borderRadius: 4 },
+  aiDescLineShortSkel: { width: '72%', height: 12, borderRadius: 4 },
+  aiQuoteBoxSkel: { width: '100%', height: 56, borderRadius: 16 },
+  aiBtnSkel: { width: '100%', height: 52, borderRadius: 32 },
   darkLineWide: { width: '76%', height: 12 },
   darkLine: { width: '58%', height: 12 },
-  darkButton: { width: '100%', height: 44, borderRadius: 0 },
   statsBlockRound: { width: '100%', height: 100, borderRadius: 32 },
   // AllRecipes skeleton styles
   allRecipesContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120, gap: 14 },
@@ -940,21 +962,20 @@ const st = StyleSheet.create({
   notifSettingsInfoBox: { width: '100%', height: 52, borderRadius: 12 },
   notifSettingsSaveBtn: { width: '100%', height: 48, borderRadius: 12 },
   statsBlock: { width: '100%', height: 118, borderRadius: 0 },
-  profileContent: { paddingBottom: 100 },
-  profileHeaderBlock: { paddingTop: 32, paddingBottom: 24, alignItems: 'center' },
-  profileAvatarBlock: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
-  profileNameBlock: { width: 190, height: 24 },
-  profileEmailBlock: { width: 220, height: 14, marginTop: 8 },
-  profileStatsBlock: { flexDirection: 'row', width: '100%', marginTop: 20, paddingTop: 18, borderTopWidth: 1 },
-  profileStatBlock: { flex: 1, alignItems: 'center', gap: 7 },
-  profileStatNumberBlock: { width: 42, height: 24 },
-  profileStatLabelBlock: { width: 64, height: 8 },
-  profileActionRowBlock: { flexDirection: 'row', gap: 10, marginTop: 18, paddingHorizontal: 24 },
-  profileEditButtonBlock: { flex: 1, height: 44, borderRadius: 0 },
-  profileShareButtonBlock: { width: 44, height: 44, borderRadius: 0 },
-  profileTabsBlock: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 16 },
-  profileTabBlock: { flex: 1, height: 42, marginVertical: 7 },
-  profileBodyBlock: { padding: 16, gap: 24 },
+  profileContent: { paddingBottom: 120 },
+  profileHeaderCard: { paddingTop: 24, paddingBottom: 20, alignItems: 'center' },
+  profileAvatarCircle: { width: 90, height: 90, borderRadius: 45, marginBottom: 12 },
+  profileNameBlock: { width: 190, height: 22, borderRadius: 8 },
+  profileEmailBlock: { width: 210, height: 13, marginTop: 6, borderRadius: 6 },
+  profileStatsRow: { flexDirection: 'row', width: '100%', marginTop: 20, paddingTop: 18, borderTopWidth: 1 },
+  profileStatCol: { flex: 1, alignItems: 'center', gap: 7 },
+  profileStatNum: { width: 36, height: 22, borderRadius: 6 },
+  profileStatLabel: { width: 56, height: 7, borderRadius: 4 },
+  profileTabRow: { flexDirection: 'row', borderBottomWidth: 1 },
+  profileTabCell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 5 },
+  profileTabIcon: { width: 18, height: 18, borderRadius: 9 },
+  profileTabLabel: { width: 28, height: 8, borderRadius: 4 },
+  profileBodyBlock: { padding: 16, gap: 16 },
   profileEmptyBlock: { alignItems: 'center', paddingVertical: 40, gap: 12 },
   profileEmptyIconBlock: { width: 40, height: 40, borderRadius: 20 },
   profileEmptyTextBlock: { width: 240, height: 14 },
@@ -978,6 +999,7 @@ const st = StyleSheet.create({
   profileSkillBtn: { width: '100%', height: 42 },
   profilePasswordHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
   profileEyeBtn: { width: 40, height: 40, borderRadius: 10 },
+  profileFooterActions: { gap: 10, marginTop: 4 },
   profileSaveBlock: { width: '100%', height: 52, borderRadius: 10 },
   profileDiscardBlock: { width: '100%', height: 48, borderRadius: 10 },
   profilePrefsSection: { gap: 12, marginTop: 8 },

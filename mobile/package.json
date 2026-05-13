@@ -26,6 +26,7 @@
     "date-fns": "^4.1.0",
     "expo": "~55.0.17",
     "expo-auth-session": "~55.0.15",
+    "expo-av": "^16.0.8",
     "expo-camera": "~55.0.16",
     "expo-constants": "~55.0.15",
     "expo-crypto": "~55.0.14",

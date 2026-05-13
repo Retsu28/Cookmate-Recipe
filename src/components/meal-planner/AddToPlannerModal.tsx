@@ -30,8 +30,8 @@ export function AddToPlannerModal({
   return (
     <div
       className={scrollTracked
-        ? 'absolute inset-0 z-[90] flex items-start justify-center bg-stone-950/45 backdrop-blur-sm px-2 sm:px-4'
-        : 'fixed inset-0 z-[90] flex items-start justify-center bg-stone-950/45 backdrop-blur-sm px-2 sm:px-4'
+        ? 'absolute inset-0 z-[90] flex items-start justify-center bg-stone-950/70 backdrop-blur-sm px-4 py-8'
+        : 'fixed inset-x-0 bottom-0 top-0 z-[90] flex items-end justify-center bg-stone-950/70 backdrop-blur-sm px-4 md:left-64 md:top-20 md:items-center'
       }
       role="dialog"
       aria-modal="true"
@@ -40,35 +40,36 @@ export function AddToPlannerModal({
         if (event.target === event.currentTarget) onOpenChange(false);
       }}
     >
-      <div className="sticky top-4 w-full max-w-sm rounded-[1.5rem] border border-orange-100 bg-white shadow-2xl shadow-stone-950/20 sm:top-8 sm:rounded-[2rem] dark:border-stone-700 dark:bg-stone-900">
-        <div className="flex items-start justify-between gap-3 border-b border-orange-100 p-3 sm:gap-3 sm:p-4 dark:border-stone-700">
-          <div className="flex items-start gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-300">
-              <CalendarDays size={17} />
+      <div className={`w-full max-w-sm overflow-hidden rounded-t-[2rem] bg-stone-900 shadow-2xl shadow-stone-950/60 md:rounded-[2rem]${scrollTracked ? ' sticky top-8' : ''}`}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/20 text-orange-400">
+              <CalendarDays size={20} />
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">
                 Add to Meal Planner
               </p>
-              <h2 id="add-to-planner-title" className="mt-0.5 text-base font-extrabold leading-tight text-stone-900 dark:text-stone-100">
+              <h2 id="add-to-planner-title" className="mt-0.5 text-lg font-extrabold leading-tight text-white">
                 {recipe.title}
               </h2>
               {recipe.category ? (
-                <p className="mt-1 text-sm font-medium text-stone-500 dark:text-stone-400">{recipe.category}</p>
+                <p className="mt-0.5 text-sm font-medium text-stone-400">{recipe.category}</p>
               ) : null}
             </div>
           </div>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-full p-2 text-stone-400 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-stone-800 dark:hover:text-orange-300"
+            className="rounded-full p-1.5 text-stone-400 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close meal planner dialog"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="p-3 sm:p-4">
+        <div className="px-5 pb-2 pt-4">
           <AddToPlannerForm
             recipe={recipe}
             onCancel={() => onOpenChange(false)}

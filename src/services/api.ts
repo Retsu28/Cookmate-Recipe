@@ -10,6 +10,32 @@ const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL || '';
 const AUTH_TOKEN_KEY = 'cookmate.auth.token';
 
+let _refreshing: Promise<string | null> | null = null;
+
+async function attemptTokenRefresh(): Promise<string | null> {
+  if (_refreshing) return _refreshing;
+  _refreshing = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return null;
+      const data = await res.json() as { token?: string };
+      if (data?.token) {
+        try { localStorage.setItem(AUTH_TOKEN_KEY, data.token); } catch { /* noop */ }
+        return data.token;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      _refreshing = null;
+    }
+  })();
+  return _refreshing;
+}
+
 /**
  * Thin wrapper around fetch that:
  *  - prepends the API base URL
@@ -19,7 +45,8 @@ const AUTH_TOKEN_KEY = 'cookmate.auth.token';
  */
 async function request<T = unknown>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  _isRetry = false
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
@@ -36,9 +63,23 @@ async function request<T = unknown>(
     /* storage unavailable — continue without auth header */
   }
 
-  // Auto-set JSON content type for requests with bodies
-  if (options.body && !headers['Content-Type']) {
+  // Auto-set JSON content type for requests with bodies (skip for FormData)
+  if (options.body && !headers['Content-Type'] && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
+  }
+
+  // Attach CSRF token for state-mutating requests (double-submit cookie pattern)
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !headers['X-CSRF-Token']) {
+    try {
+      const csrfCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('cookmate.csrf='))
+        ?.split('=')[1];
+      if (csrfCookie) headers['X-CSRF-Token'] = csrfCookie;
+    } catch {
+      /* non-browser environment — skip */
+    }
   }
 
   const res = await fetch(url, { credentials: 'include', ...options, headers });
@@ -54,6 +95,17 @@ async function request<T = unknown>(
   }
 
   if (!res.ok) {
+    // Auto-refresh on 401 — skip for all /api/auth/* endpoints (me, refresh, login, etc.)
+    // to avoid infinite loops on public pages or normal unauthenticated states
+    if (res.status === 401 && !_isRetry && !endpoint.includes('/api/auth/')) {
+      const newToken = await attemptTokenRefresh();
+      if (newToken) {
+        return request<T>(endpoint, options, true);
+      }
+      // Refresh failed — clear stale token but do NOT force-redirect
+      // (let the AuthGate / router handle navigation naturally)
+      try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch { /* noop */ }
+    }
     const msg =
       data &&
       typeof data === 'object' &&
@@ -122,6 +174,21 @@ export const api = {
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
       headers,
+    }),
+
+  // FormData methods for file uploads (don't set Content-Type, let browser set it with boundary)
+  postFormData: <T = unknown>(endpoint: string, formData: FormData) =>
+    request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
+      // Don't set Content-Type header - browser will set it with correct multipart boundary
+    }),
+
+  putFormData: <T = unknown>(endpoint: string, formData: FormData) =>
+    request<T>(endpoint, {
+      method: 'PUT',
+      body: formData,
+      // Don't set Content-Type header - browser will set it with correct multipart boundary
     }),
 };
 

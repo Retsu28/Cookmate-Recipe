@@ -63,7 +63,60 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
+  (error) => Promise.reject(error)
+);
+
+// 401 response interceptor — silent JWT refresh + retry
+let _isRefreshing = false;
+let _refreshQueue = [];
+
+function processQueue(error, token = null) {
+  _refreshQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token)));
+  _refreshQueue = [];
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
+
+    if (status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/api/auth/refresh')) {
+      if (_isRefreshing) {
+        return new Promise((resolve, reject) => {
+          _refreshQueue.push({ resolve, reject });
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        });
+      }
+
+      originalRequest._retry = true;
+      _isRefreshing = true;
+
+      try {
+        const response = await axios.post(
+          `${API_URL}/api/auth/refresh`,
+          {},
+          { withCredentials: true, timeout: 15000 }
+        );
+        const newToken = response.data?.token;
+        if (newToken) {
+          await tokenStorage.setItem('userToken', newToken);
+          processQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+        throw new Error('No token in refresh response');
+      } catch (refreshErr) {
+        processQueue(refreshErr, null);
+        await tokenStorage.removeItem('userToken');
+        return Promise.reject(refreshErr);
+      } finally {
+        _isRefreshing = false;
+      }
+    }
+
     return Promise.reject(error);
   }
 );

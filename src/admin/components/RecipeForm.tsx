@@ -1,5 +1,5 @@
-import { useState, useEffect, memo } from 'react';
-import { Plus, X, Loader2 } from 'lucide-react';
+import { useState, useEffect, memo, useRef } from 'react';
+import { Plus, X, Loader2, Upload, Trash2, Play, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -7,26 +7,81 @@ interface IngredientRow {
   name: string;
 }
 
+interface InstructionRow {
+  text: string;
+  startTime: string; // in seconds
+  endTime: string;   // in seconds
+  intervalTime: string; // optional additional cooking time stored as seconds, input/display as MM:SS
+}
+
 const emptyIngredientRow = (): IngredientRow => ({ name: '' });
+const emptyInstructionRow = (): InstructionRow => ({ text: '', startTime: '', endTime: '', intervalTime: '' });
 
 interface RecipeFormProps {
   initialForm: any;
   initialIngredientRows: IngredientRow[];
-  onSave: (form: any, ingredientRows: IngredientRow[]) => Promise<void>;
+  initialInstructionRows?: InstructionRow[];
+  initialVideoFilename?: string | null;
+  onSave: (formData: FormData) => Promise<void>;
   onCancel: () => void;
   isEdit: boolean;
   formRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, isEdit, formRef }: RecipeFormProps) {
+function formatTimeInput(seconds: string): string {
+  if (!seconds) return '';
+  const secs = parseInt(seconds, 10);
+  if (isNaN(secs)) return seconds;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function parseTimeInput(value: string): string {
+  if (!value) return '';
+  // Handle MM:SS format
+  if (value.includes(':')) {
+    const [m, s] = value.split(':').map(v => parseInt(v.trim(), 10) || 0);
+    return String(m * 60 + s);
+  }
+  return value.replace(/\D/g, '');
+}
+
+function RecipeFormBase({ initialForm, initialIngredientRows, initialInstructionRows, initialVideoFilename, onSave, onCancel, isEdit, formRef }: RecipeFormProps) {
   const [form, setForm] = useState(initialForm);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>(initialIngredientRows);
+  const [instructionRows, setInstructionRows] = useState<InstructionRow[]>(
+    initialInstructionRows && initialInstructionRows.length > 0
+      ? initialInstructionRows
+      : [emptyInstructionRow()]
+  );
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [existingVideo, setExistingVideo] = useState<string | null>(initialVideoFilename || null);
+  const [removeExistingVideo, setRemoveExistingVideo] = useState(false);
   const [saving, setSaving] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setForm(initialForm);
     setIngredientRows(initialIngredientRows);
-  }, [initialForm, initialIngredientRows]);
+    setInstructionRows(
+      initialInstructionRows && initialInstructionRows.length > 0
+        ? initialInstructionRows
+        : [emptyInstructionRow()]
+    );
+    setExistingVideo(initialVideoFilename || null);
+    setRemoveExistingVideo(false);
+    setVideoFile(null);
+    setVideoPreviewUrl(null);
+  }, [initialForm, initialIngredientRows, initialInstructionRows, initialVideoFilename]);
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    };
+  }, [videoPreviewUrl]);
 
   const updateIngredientRow = (index: number, field: keyof IngredientRow, value: string) => {
     setIngredientRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
@@ -38,14 +93,108 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
     setIngredientRows((prev) => (prev.length <= 1 ? [emptyIngredientRow()] : prev.filter((_, i) => i !== index)));
   };
 
+  const updateInstructionRow = (index: number, field: keyof InstructionRow, value: string) => {
+    setInstructionRows((prev) => prev.map((row, i) => {
+      if (i !== index) return row;
+      if (field === 'startTime' || field === 'endTime' || field === 'intervalTime') {
+        return { ...row, [field]: parseTimeInput(value) };
+      }
+      return { ...row, [field]: value };
+    }));
+  };
+
+  const addInstructionRow = () => setInstructionRows((prev) => [...prev, emptyInstructionRow()]);
+
+  const removeInstructionRow = (index: number) => {
+    setInstructionRows((prev) => (prev.length <= 1 ? [emptyInstructionRow()] : prev.filter((_, i) => i !== index)));
+  };
+
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'video/mp4' && !file.name.endsWith('.mp4')) {
+        toast.error('Only MP4 video files are allowed');
+        return;
+      }
+      if (file.size > 30 * 1024 * 1024) {
+        toast.error('Video file size must be less than 30MB');
+        return;
+      }
+      setVideoFile(file);
+      setVideoPreviewUrl(URL.createObjectURL(file));
+      setRemoveExistingVideo(true); // Mark existing for replacement
+    }
+  };
+
+  const handleRemoveVideo = () => {
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl);
+    }
+    setVideoFile(null);
+    setVideoPreviewUrl(null);
+    setRemoveExistingVideo(true);
+    setExistingVideo(null);
+    if (videoInputRef.current) videoInputRef.current.value = '';
+  };
+
   const handleSaveClick = async () => {
     if (!form.title.trim()) {
       toast.error('Recipe title is required.');
       return;
     }
+
+    // Validate instruction rows have text
+    const validInstructions = instructionRows.filter(r => r.text.trim());
+    if (validInstructions.length === 0) {
+      toast.error('At least one instruction step is required.');
+      return;
+    }
+
     setSaving(true);
     try {
-      await onSave(form, ingredientRows);
+      const formData = new FormData();
+      
+      // Basic fields
+      formData.append('title', form.title.trim());
+      formData.append('description', form.description || '');
+      formData.append('prep_time_minutes', form.prep_time_minutes || '');
+      formData.append('cook_time_minutes', form.cook_time_minutes || '');
+      formData.append('servings', form.servings || '');
+      formData.append('calories', form.calories || '');
+      formData.append('difficulty', form.difficulty || 'Easy');
+      formData.append('region_or_origin', form.region_or_origin || '');
+      formData.append('category', form.category || '');
+      formData.append('tags', form.tags || '');
+      formData.append('normalized_ingredients', form.normalized_ingredients || '');
+      formData.append('image_url', form.image_url || '');
+      formData.append('is_featured', form.is_featured ? 'true' : 'false');
+      formData.append('is_published', form.is_published ? 'true' : 'false');
+
+      // Instructions array
+      const instructionsArray = validInstructions.map(r => r.text.trim());
+      formData.append('instructions', JSON.stringify(instructionsArray));
+
+      // Instruction timestamps
+      const timestampsArray = validInstructions.map(r => ({
+        start: parseInt(r.startTime, 10) || 0,
+        end: parseInt(r.endTime, 10) || 0,
+        interval: parseInt(r.intervalTime, 10) || 0
+      }));
+      formData.append('instruction_timestamps', JSON.stringify(timestampsArray));
+
+      // Ingredients
+      const ingredients = ingredientRows.filter(r => r.name.trim()).map(r => ({ name: r.name.trim() }));
+      formData.append('ingredients', JSON.stringify(ingredients));
+
+      // Video file
+      if (videoFile) {
+        formData.append('video', videoFile);
+      }
+      if (removeExistingVideo && !videoFile) {
+        formData.append('remove_video', 'true');
+      }
+
+      await onSave(formData);
     } finally {
       setSaving(false);
     }
@@ -220,17 +369,141 @@ function RecipeFormBase({ initialForm, initialIngredientRows, onSave, onCancel, 
           />
         </div>
 
+        {/* Video Upload */}
         <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
-            Instructions (one step per line)
+            Recipe Video (MP4, max 30MB)
           </label>
-          <textarea
-            value={form.instructions}
-            onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-            rows={4}
-            className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
-            placeholder="Step 1...\nStep 2..."
-          />
+          
+          {/* Existing or Preview Video */}
+          {(existingVideo && !removeExistingVideo) || videoPreviewUrl ? (
+            <div className="mb-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                  <Play size={20} className="text-orange-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-stone-700 truncate">
+                    {videoFile ? videoFile.name : existingVideo}
+                  </p>
+                  <p className="text-xs text-stone-400">
+                    {videoFile ? `${(videoFile.size / 1024 / 1024).toFixed(2)} MB` : 'Uploaded video'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveVideo}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              {videoPreviewUrl && (
+                <video
+                  src={videoPreviewUrl}
+                  controls
+                  className="w-full max-h-48 rounded-lg"
+                />
+              )}
+            </div>
+          ) : null}
+          
+          {/* Upload Button */}
+          <div className="flex items-center gap-3">
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,.mp4"
+              onChange={handleVideoChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-stone-200 bg-white text-sm font-medium text-stone-700 hover:border-orange-300 hover:text-orange-600 transition-colors"
+            >
+              <Upload size={16} />
+              {existingVideo || videoFile ? 'Replace Video' : 'Upload MP4 Video'}
+            </button>
+          </div>
+        </div>
+
+        {/* Per-line Instructions with Timestamps */}
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
+            Instructions with Video Timestamps
+          </label>
+          <p className="text-xs text-stone-400 mb-2">
+            Add each step with optional start/end times (MM:SS format, e.g. 0:30, 2:45). 
+            Interval = additional cooking time after video ends in MM:SS format (e.g. 5:00 = 5 minutes).
+          </p>
+          <div className="space-y-2">
+            {instructionRows.map((row, idx) => (
+              <div key={idx} className="flex items-start gap-2">
+                <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold mt-2 shrink-0">
+                  {idx + 1}
+                </span>
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <input
+                    value={row.text}
+                    onChange={(e) => updateInstructionRow(idx, 'text', e.target.value)}
+                    placeholder="Step description"
+                    className="sm:col-span-6 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+                  />
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-stone-400 mb-1 block">Start</label>
+                    <div className="flex items-center gap-1">
+                      <Clock size={12} className="text-stone-400 shrink-0" />
+                      <input
+                        value={formatTimeInput(row.startTime)}
+                        onChange={(e) => updateInstructionRow(idx, 'startTime', e.target.value)}
+                        placeholder="0:00"
+                        className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+                      />
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-stone-400 mb-1 block">End</label>
+                    <div className="flex items-center gap-1">
+                      <Clock size={12} className="text-stone-400 shrink-0" />
+                      <input
+                        value={formatTimeInput(row.endTime)}
+                        onChange={(e) => updateInstructionRow(idx, 'endTime', e.target.value)}
+                        placeholder="0:00"
+                        className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+                      />
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-stone-400 mb-1 block">Interval (opt.)</label>
+                    <div className="flex items-center gap-1">
+                      <Clock size={12} className="text-stone-400 shrink-0" />
+                      <input
+                        value={formatTimeInput(row.intervalTime)}
+                        onChange={(e) => updateInstructionRow(idx, 'intervalTime', e.target.value)}
+                        placeholder="0:00"
+                        className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeInstructionRow(idx)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors mt-1"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addInstructionRow}
+            className="mt-2 flex items-center gap-1 text-xs font-bold text-orange-500 hover:text-orange-600"
+          >
+            <Plus size={14} /> Add Instruction Step
+          </button>
         </div>
 
         <div className="flex items-center gap-6">

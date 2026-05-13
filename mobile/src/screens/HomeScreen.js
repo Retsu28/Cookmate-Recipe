@@ -15,7 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { plannerApi, recipeApi } from '../api/api';
+import { plannerApi, recipeApi, notificationApi } from '../api/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getMealPlansCached, offlineCache } from '../offline/cacheService';
 import OfflineIndicator from '../offline/OfflineIndicator';
 import OptimizedImage from '../components/OptimizedImage';
@@ -114,6 +115,7 @@ export default function HomeScreen({ navigation }) {
   const [homeSectionsLoading, setHomeSectionsLoading] = useState(true);
   const [homeSectionsError, setHomeSectionsError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
   const aiChatRef = useRef(null);
@@ -278,9 +280,37 @@ export default function HomeScreen({ navigation }) {
     }).start();
   }, [user?.id, loadMealPlans]);
 
+  const fetchUnreadCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      const READ_KEY = 'cookmate.readPlannerNotifications';
+      const [upcomingRes, groceryRes, dbNotifsRes, storedRaw] = await Promise.all([
+        plannerApi.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }).catch(() => null),
+        plannerApi.getGroceryList().catch(() => null),
+        notificationApi.getNotifications(user.id).catch(() => null),
+        AsyncStorage.getItem(READ_KEY).catch(() => null),
+      ]);
+      const readIds = storedRaw ? JSON.parse(storedRaw) : [];
+      const plans = upcomingRes?.data?.plans || [];
+      const groceryList = groceryRes?.data?.groceryList;
+      const dbNotifs = dbNotifsRes?.data?.notifications || [];
+      let count = 0;
+      dbNotifs.forEach((n) => { if (!n.is_read) count += 1; });
+      plans.forEach((p) => { if (!readIds.includes(p.id)) count += 1; });
+      if (groceryList && groceryList.totalItems > 0 && !readIds.includes(-1)) count += 1;
+      setUnreadCount(count);
+    } catch {
+      // best-effort — keep previous count
+    }
+  }, [user?.id]);
+
   useFocusEffect(
     useCallback(() => {
       loadMealPlans({ showLoader: false });
+      fetchUnreadCount();
 
       if (!user?.id) {
         setHomeSections((prev) =>
@@ -322,7 +352,7 @@ export default function HomeScreen({ navigation }) {
         active = false;
         clearTimeout(timer);
       };
-    }, [loadMealPlans, user?.id])
+    }, [loadMealPlans, fetchUnreadCount, user?.id])
   );
 
   const introStyle = {
@@ -382,7 +412,9 @@ export default function HomeScreen({ navigation }) {
             style={[s.iconBtn, { backgroundColor: colors.surfaceAlt }]}
           >
             <Ionicons name="notifications-outline" size={18} color={colors.textMuted} />
-            <View style={[s.notifDot, { backgroundColor: colors.primary, borderColor: colors.background }]} />
+            {unreadCount > 0 && (
+              <View style={[s.notifDot, { backgroundColor: colors.primary, borderColor: colors.background }]} />
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Profile')}

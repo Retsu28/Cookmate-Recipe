@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { WifiOff } from 'lucide-react';
 import api from '@/services/api';
 import { offlineCache } from '@/offline/cacheService';
 import { isOnlineNow } from '@/offline/network';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
 import { HomeSection } from './HomeSection';
 import { HomeRecipeCard } from './HomeRecipeCard';
@@ -17,6 +19,7 @@ const DEFAULT_DATA: HomeSectionsResponse = {
 
 export function HomeSections() {
   const { user } = useAuth();
+  const isOnline = useOnlineStatus();
   const [data, setData] = useState<HomeSectionsResponse>(DEFAULT_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,12 @@ export function HomeSections() {
 
   return (
     <div className="mt-12 space-y-12">
+      {!isOnline && (
+        <div className="flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-5 py-3 text-sm font-semibold text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/20 dark:text-orange-300">
+          <WifiOff size={16} className="shrink-0" />
+          <span>You're offline — showing cached recipes. Live data will reload when you reconnect.</span>
+        </div>
+      )}
       {error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50/70 px-5 py-4 text-sm text-red-700">
           {error}

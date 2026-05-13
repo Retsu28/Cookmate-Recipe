@@ -35,6 +35,7 @@ export interface AuthUser {
   avatar_url?: string | null;
   notifications_enabled?: boolean;
   role?: 'user' | 'admin';
+  cooking_skill_level?: string | null;
 }
 
 export interface AuthResult {
@@ -75,14 +76,43 @@ async function exchangeFirebaseUser(fbUser: FirebaseUser, name?: string): Promis
   return result;
 }
 
+const FIREBASE_ERRORS: Record<string, string> = {
+  'auth/invalid-credential':        'Invalid email or password. Please try again.',
+  'auth/user-not-found':            'Invalid email or password. Please try again.',
+  'auth/wrong-password':            'Invalid email or password. Please try again.',
+  'auth/email-already-in-use':      'An account with this email already exists.',
+  'auth/weak-password':             'Password must be at least 8 characters.',
+  'auth/invalid-email':             'Please enter a valid email address.',
+  'auth/user-disabled':             'This account has been disabled. Please contact support.',
+  'auth/too-many-requests':         'Too many attempts. Please wait a moment and try again.',
+  'auth/network-request-failed':    'Network error. Please check your connection and try again.',
+  'auth/popup-closed-by-user':      'Sign-in was cancelled. Please try again.',
+  'auth/cancelled-popup-request':   'Sign-in was cancelled. Please try again.',
+  'auth/account-exists-with-different-credential': 'An account already exists with this email using a different sign-in method.',
+  'auth/requires-recent-login':     'Please sign in again to continue.',
+  'auth/id-token-expired':          'Your session has expired. Please sign in again.',
+};
+
+function friendlyFirebaseError(err: unknown): Error {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  const msg = FIREBASE_ERRORS[code];
+  if (msg) return new Error(msg);
+  if (err instanceof Error && !err.message.startsWith('Firebase:')) return err;
+  return new Error('Unable to sign in. Please try again.');
+}
+
 export const authService = {
   /**
    * Sign in with Firebase Email/Password, then exchange the resulting
    * ID token for a CookMate backend session.
    */
   async login(email: string, password: string): Promise<AuthResult> {
-    const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
-    return exchangeFirebaseUser(cred.user);
+    try {
+      const cred = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      return exchangeFirebaseUser(cred.user);
+    } catch (err) {
+      throw friendlyFirebaseError(err);
+    }
   },
 
   /**
@@ -119,8 +149,12 @@ export const authService = {
    * exchange links/creates the PostgreSQL user.
    */
   async googleLogin(_credential?: string): Promise<AuthResult> {
-    const cred = await signInWithPopup(firebaseAuth, googleProvider);
-    return exchangeFirebaseUser(cred.user);
+    try {
+      const cred = await signInWithPopup(firebaseAuth, googleProvider);
+      return exchangeFirebaseUser(cred.user);
+    } catch (err) {
+      throw friendlyFirebaseError(err);
+    }
   },
 
   /**

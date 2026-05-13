@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarPlus, ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarPlus, ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight, Search, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Layout } from '../components/Layout';
-import { SearchResultsSkeleton } from '@/components/SkeletonScreen';
+import { SearchResultsSkeleton, RecipeCardSkeleton } from '@/components/SkeletonScreen';
 import api from '@/services/api';
+import { offlineCache } from '@/offline/cacheService';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { type PlannerRecipeSummary } from '@/components/meal-planner/AddToPlannerModal';
 import { AddToPlannerForm } from '@/components/meal-planner/AddToPlannerForm';
 
@@ -37,12 +39,18 @@ interface RecipeCategory {
 /*  Data fetching                                                      */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 24;
 
-async function fetchRecipesPage(offset: number) {
-  return api.get<{ recipes: Recipe[]; total: number }>(
-    `/api/recipes?published=true&limit=${PAGE_SIZE}&offset=${offset}&sort=title_asc`
-  );
+async function fetchRecipesPage(offset: number, category?: string | null, search?: string) {
+  const params = new URLSearchParams({
+    published: 'true',
+    limit: String(PAGE_SIZE),
+    offset: String(offset),
+    sort: 'title_asc',
+  });
+  if (category) params.set('category', category);
+  if (search?.trim()) params.set('search', search.trim());
+  return api.get<{ recipes: Recipe[]; total: number }>(`/api/recipes?${params}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -50,15 +58,31 @@ async function fetchRecipesPage(offset: number) {
 /* ------------------------------------------------------------------ */
 
 export default function AllRecipesPage() {
+  const isOnline = useOnlineStatus();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [plannerRecipe, setPlannerRecipe] = useState<PlannerRecipeSummary | null>(null);
 
   // Active category filter — null = show all
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedQuery(val), 300);
+  }, []);
 
   // Scroll arrows state
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -78,53 +102,95 @@ export default function AllRecipesPage() {
     el.scrollBy({ left: dir === 'left' ? -260 : 260, behavior: 'smooth' });
   };
 
+  // Sentinel ref for IntersectionObserver infinite scroll
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+
+  // Load first page whenever filters change
   useEffect(() => {
     let cancelled = false;
-
     setLoading(true);
     setError(null);
-    const loadRecipes = async () => {
-      try {
-        const firstPage = await fetchRecipesPage(0);
-        if (cancelled) return;
+    setFromCache(false);
+    setRecipes([]);
 
-        const allRecipes = [...(firstPage.recipes || [])];
-        const expectedTotal = firstPage.total || allRecipes.length;
-
-        while (!cancelled && allRecipes.length < expectedTotal) {
-          const nextPage = await fetchRecipesPage(allRecipes.length);
-          const nextRecipes = nextPage.recipes || [];
-
-          if (nextRecipes.length === 0) break;
-          allRecipes.push(...nextRecipes);
-        }
-
-        if (cancelled) return;
-        setRecipes(allRecipes);
-        setTotal(expectedTotal);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load all recipes.');
-        setRecipes([]);
-        setTotal(0);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    loadRecipes();
-    api
-      .get<{ categories: RecipeCategory[] }>('/api/recipes/categories')
+    fetchRecipesPage(0, activeCategory, debouncedQuery)
       .then((data) => {
-        if (!cancelled) setCategories(data.categories || []);
+        if (cancelled) return;
+        const fetched = data.recipes || [];
+        setRecipes(fetched);
+        setTotal(data.total || fetched.length);
+        setHasMore(fetched.length < (data.total || fetched.length));
+        // Pre-warm detail cache so recipes are viewable offline
+        offlineCache.recipes.upsertMany(fetched).catch(() => {});
       })
-      .catch(() => {
-        if (!cancelled) setCategories([]);
-      });
+      .catch(async (err: unknown) => {
+        if (cancelled) return;
+        // Offline fallback — serve IndexedDB cached recipes
+        try {
+          const rows = await offlineCache.recipes.getAll({ limit: 500 });
+          const cached = rows.map((r) => r.data).filter(Boolean) as unknown as Recipe[];
+          const filtered = activeCategory
+            ? cached.filter((r) => r.category === activeCategory)
+            : cached;
+          const searched = debouncedQuery.trim()
+            ? filtered.filter((r) => r.title?.toLowerCase().includes(debouncedQuery.trim().toLowerCase()))
+            : filtered;
+          if (!cancelled && searched.length > 0) {
+            setRecipes(searched);
+            setTotal(searched.length);
+            setHasMore(false);
+            setFromCache(true);
+            return;
+          }
+        } catch { /* ignore */ }
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load recipes.');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
+  }, [activeCategory, debouncedQuery]);
+
+  // Load more pages
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const data = await fetchRecipesPage(recipes.length, activeCategory, debouncedQuery);
+      const fetched = data.recipes || [];
+      setRecipes((prev) => {
+        const newList = [...prev, ...fetched];
+        setHasMore(newList.length < (data.total || newList.length));
+        return newList;
+      });
+      // Pre-warm detail cache for newly loaded recipes
+      offlineCache.recipes.upsertMany(fetched).catch(() => {});
+    } catch {
+      // silently fail — user can scroll back up to retry
+    } finally {
+      setLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [recipes.length, activeCategory, debouncedQuery, hasMore]);
+
+  // IntersectionObserver on sentinel to trigger loadMore
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) loadMore(); },
+      { rootMargin: '200px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMore]);
+
+  // Categories
+  useEffect(() => {
+    api.get<{ categories: RecipeCategory[] }>('/api/recipes/categories')
+      .then((data) => setCategories(data.categories || []))
+      .catch(() => setCategories([]));
   }, []);
 
   // Re-check scroll arrows whenever categories load
@@ -133,15 +199,7 @@ export default function AllRecipesPage() {
     return () => clearTimeout(timeout);
   }, [categories]);
 
-  /* ---- Derived filtered list ---- */
-  const filteredRecipes = useMemo(() => {
-    if (!activeCategory) return recipes;
-    return recipes.filter(
-      (r) => r.category?.toLowerCase() === activeCategory.toLowerCase()
-    );
-  }, [recipes, activeCategory]);
-
-  const filteredCount = filteredRecipes.length;
+  const filteredCount = recipes.length;
 
   return (
     <Layout>
@@ -157,7 +215,7 @@ export default function AllRecipesPage() {
           <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400">
             Fresh from the database
           </p>
-          <div className="flex flex-col justify-between gap-4 border-b border-orange-100 pb-6 sm:flex-row sm:items-end dark:border-stone-700">
+        <div className="flex flex-col justify-between gap-4 border-b border-orange-100 pb-6 sm:flex-row sm:items-end dark:border-stone-700">
             <div>
               <h1 className="text-5xl font-extrabold tracking-tight text-stone-900 md:text-6xl dark:text-stone-100">
                 All Recipes
@@ -178,6 +236,18 @@ export default function AllRecipesPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Offline / cache notice ──────────────────────────── */}
+        {(!isOnline || fromCache) && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50/80 px-5 py-3 text-sm font-semibold text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/20 dark:text-orange-300">
+            <WifiOff size={16} className="shrink-0" />
+            <span>
+              {fromCache
+                ? 'Offline mode — showing cached recipes. Search and category filters apply on cached data only.'
+                : 'You\'re offline — showing cached recipes. Reconnect to see the full up-to-date list.'}
+            </span>
+          </div>
+        )}
 
         {/* ── Category Filter Chips (scrollable) ─────────────── */}
         {categories.length > 0 ? (
@@ -344,6 +414,26 @@ export default function AllRecipesPage() {
           </section>
         ) : null}
 
+        {/* Search bar */}
+        <div className="relative mb-2">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search recipes..."
+            className="w-full rounded-full border border-stone-200 bg-white py-3 pl-11 pr-4 text-sm text-stone-800 shadow-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100 dark:placeholder:text-stone-500 dark:focus:border-orange-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setDebouncedQuery(''); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
         {/* ── Recipe Grid ────────────────────────────────────── */}
         {loading ? (
           <SearchResultsSkeleton />
@@ -351,12 +441,14 @@ export default function AllRecipesPage() {
           <div className="rounded-2xl border border-red-100 bg-red-50/70 px-5 py-4 text-sm text-red-700">
             {error}
           </div>
-        ) : filteredRecipes.length === 0 ? (
+        ) : recipes.length === 0 ? (
           <div className="flex items-center gap-3 rounded-2xl border border-dashed border-orange-200 bg-orange-50/40 px-5 py-8 text-stone-500 dark:border-stone-700 dark:bg-stone-800/40 dark:text-stone-400">
             <ChefHat size={20} className="text-orange-400 dark:text-orange-500" />
             <p className="text-sm">
               {activeCategory
                 ? `No recipes found in "${activeCategory}". Try another category.`
+                : debouncedQuery
+                ? `No recipes match "${debouncedQuery}".`
                 : 'No published recipes are available yet.'}
             </p>
           </div>
@@ -365,98 +457,102 @@ export default function AllRecipesPage() {
             <div className="mb-8 flex items-center justify-between border-b border-orange-100 pb-2 dark:border-stone-700">
               <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
                 {activeCategory
-                  ? `${activeCategory} (${filteredCount} Recipes)`
-                  : `Recipe Library (${total} Recipes)`}
+                  ? `${activeCategory} (${filteredCount} shown of ${total})`
+                  : `Recipe Library (${filteredCount} shown of ${total})`}
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-              <AnimatePresence mode="popLayout">
-                {filteredRecipes.map((recipe, index) => {
-                  const computedTime =
-                    recipe.total_time_minutes ??
-                    ((recipe.prep_time_minutes || 0) + (recipe.cook_time_minutes || 0));
-                  const time = computedTime > 0 ? computedTime : null;
-                  const meta = recipe.category || recipe.region_or_origin || 'Philippine Cuisine';
 
-                  return (
-                    <motion.div
-                      key={recipe.id}
-                      layout
-                      initial={{ opacity: 0, y: 14 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.32, delay: Math.min(index, 12) * 0.04 }}
-                    >
-                      <div className="group flex flex-col">
-                        <Link to={`/recipe/${recipe.id}`} className="block cursor-pointer">
-                          <div className="relative mb-4 aspect-square w-full overflow-hidden rounded-3xl bg-orange-100 dark:bg-stone-800">
-                            {recipe.image_url ? (
-                              <img
-                                src={recipe.image_url}
-                                alt={recipe.title}
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-orange-300">
-                                <ChefHat size={48} />
-                              </div>
-                            )}
-                            {time ? (
-                              <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700 shadow-sm dark:bg-stone-800 dark:text-orange-400">
-                                <Clock size={11} />
-                                {time} MIN
-                              </div>
-                            ) : null}
+            <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+              {recipes.map((recipe) => {
+                const computedTime =
+                  recipe.total_time_minutes ??
+                  ((recipe.prep_time_minutes || 0) + (recipe.cook_time_minutes || 0));
+                const time = computedTime > 0 ? computedTime : null;
+                const meta = recipe.category || recipe.region_or_origin || 'Philippine Cuisine';
+
+                return (
+                  <div key={recipe.id} className="group flex flex-col">
+                    <Link to={`/recipe/${recipe.id}`} className="block cursor-pointer">
+                      <div className="relative mb-4 aspect-square w-full overflow-hidden rounded-3xl bg-orange-100 dark:bg-stone-800">
+                        {recipe.image_url ? (
+                          <img
+                            src={recipe.image_url}
+                            alt={recipe.title}
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-orange-300">
+                            <ChefHat size={48} />
                           </div>
-                          <h4 className="mb-2 pr-4 text-lg font-bold uppercase leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
-                            {recipe.title}
-                          </h4>
-                          <p className="text-sm text-stone-500 dark:text-stone-400">
-                            {meta} &middot; {recipe.difficulty || 'Any level'}
-                          </p>
-                        </Link>
-                        
-                        {plannerRecipe?.id !== recipe.id && (
-                          <button
-                            type="button"
-                            onClick={() => setPlannerRecipe({
-                              id: recipe.id,
-                              title: recipe.title,
-                              image_url: recipe.image_url,
-                              category: recipe.category,
-                            })}
-                            className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-orange-200 bg-white px-4 text-[10px] font-extrabold uppercase tracking-widest text-orange-700 shadow-sm transition-all hover:border-orange-300 hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400 dark:hover:bg-stone-700"
-                          >
-                            <CalendarPlus size={15} />
-                            Add to Meal Planner
-                          </button>
                         )}
-                        
-                        <AnimatePresence>
-                          {plannerRecipe?.id === recipe.id && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden"
-                            >
-                              <AddToPlannerForm
-                                recipe={plannerRecipe}
-                                onCancel={() => setPlannerRecipe(null)}
-                                onPlanned={() => setPlannerRecipe(null)}
-                              />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                        {time ? (
+                          <div className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-700 shadow-sm dark:bg-stone-800 dark:text-orange-400">
+                            <Clock size={11} />
+                            {time} MIN
+                          </div>
+                        ) : null}
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+                      <h4 className="mb-2 pr-4 text-lg font-bold uppercase leading-tight text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
+                        {recipe.title}
+                      </h4>
+                      <p className="text-sm text-stone-500 dark:text-stone-400">
+                        {meta} &middot; {recipe.difficulty || 'Any level'}
+                      </p>
+                    </Link>
+
+                    {plannerRecipe?.id !== recipe.id && (
+                      <button
+                        type="button"
+                        onClick={() => setPlannerRecipe({
+                          id: recipe.id,
+                          title: recipe.title,
+                          image_url: recipe.image_url,
+                          category: recipe.category,
+                        })}
+                        className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-orange-200 bg-white px-4 text-[10px] font-extrabold uppercase tracking-widest text-orange-700 shadow-sm transition-all hover:border-orange-300 hover:bg-orange-50 dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400 dark:hover:bg-stone-700"
+                      >
+                        <CalendarPlus size={15} />
+                        Add to Meal Planner
+                      </button>
+                    )}
+
+                    <AnimatePresence>
+                      {plannerRecipe?.id === recipe.id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <AddToPlannerForm
+                            recipe={plannerRecipe}
+                            onCancel={() => setPlannerRecipe(null)}
+                            onPlanned={() => setPlannerRecipe(null)}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+
+              {/* Per-card skeletons while loading more */}
+              {loadingMore && Array.from({ length: 4 }).map((_, i) => (
+                <RecipeCardSkeleton key={`skel-${i}`} />
+              ))}
             </div>
+
+            {/* Sentinel — triggers loadMore when scrolled into view */}
+            <div ref={sentinelRef} className="mt-8 h-1" />
+
+            {!hasMore && recipes.length > 0 && (
+              <p className="mt-6 text-center text-xs font-bold uppercase tracking-widest text-stone-400 dark:text-stone-600">
+                All {total} recipes loaded
+              </p>
+            )}
           </div>
         )}
       </div>

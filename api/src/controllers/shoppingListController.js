@@ -1,4 +1,5 @@
-const { pool } = require('../config/db');
+﻿const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 exports.generate = async (req, res) => {
   try {
@@ -13,7 +14,8 @@ exports.generate = async (req, res) => {
     );
     res.json({ items: result.rows });
   } catch (err) {
-    console.error('[shoppingList/generate]', err);
+    logger.error('[shoppingList/generate]', err);
     res.status(500).json({ error: 'Failed to generate shopping list.' });
   }
 };
+

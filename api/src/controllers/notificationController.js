@@ -1,4 +1,5 @@
-const { pool } = require('../config/db');
+﻿const { pool } = require('../config/db');
+const logger = require('../config/logger');
 
 exports.getByUser = async (req, res) => {
   try {
@@ -12,7 +13,7 @@ exports.getByUser = async (req, res) => {
     );
     res.json({ notifications: result.rows });
   } catch (err) {
-    console.error('[notifications/getByUser]', err);
+    logger.error('[notifications/getByUser]', err);
     res.status(500).json({ error: 'Failed to fetch notifications.' });
   }
 };
@@ -40,7 +41,7 @@ exports.markAsRead = async (req, res) => {
 
     res.json({ notification: result.rows[0] });
   } catch (err) {
-    console.error('[notifications/markAsRead]', err);
+    logger.error('[notifications/markAsRead]', err);
     res.status(500).json({ error: 'Failed to mark notification as read.' });
   }
 };
@@ -63,7 +64,7 @@ exports.markAllAsRead = async (req, res) => {
 
     res.json({ markedAsRead: result.rowCount });
   } catch (err) {
-    console.error('[notifications/markAllAsRead]', err);
+    logger.error('[notifications/markAllAsRead]', err);
     res.status(500).json({ error: 'Failed to mark all notifications as read.' });
   }
 };
@@ -90,7 +91,8 @@ exports.deleteNotification = async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('[notifications/deleteNotification]', err);
+    logger.error('[notifications/deleteNotification]', err);
     res.status(500).json({ error: 'Failed to delete notification.' });
   }
 };
+
