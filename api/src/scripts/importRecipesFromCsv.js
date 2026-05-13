@@ -27,7 +27,17 @@ const CSV_PATH = path.resolve(
   '..',
   'database',
   'seeds',
-  'philippine_food_recipes_100.csv'
+  'filipino_recipes_final20.csv'
+);
+
+const NUTRITION_CSV_PATH = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'database',
+  'seeds',
+  'filipino_recipes_nutrition.csv'
 );
 
 const MIGRATIONS_DIR = path.resolve(
@@ -48,10 +58,17 @@ function safeInt(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Convert a string to a safe decimal, or null. */
+function safeDecimal(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const n = parseFloat(val);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Generate a stable image URL from a recipe title. */
 function imageUrlFromTitle(title) {
-  const seed = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  return `https://picsum.photos/seed/${seed}/800/600`;
+  const query = encodeURIComponent(`filipino food ${title}`);
+  return `https://source.unsplash.com/800x600/?${query}`;
 }
 
 /** Split a semicolon-or-comma-delimited string into a trimmed array. */
@@ -114,7 +131,7 @@ async function main() {
     migClient.release();
   }
 
-  // 1. Read & parse CSV
+  // 1. Read & parse main recipes CSV
   if (!fs.existsSync(CSV_PATH)) {
     console.error(`❌ CSV file not found at:\n   ${CSV_PATH}`);
     process.exit(1);
@@ -128,8 +145,29 @@ async function main() {
     relax_column_count: true,
   });
 
-  console.log(`📄 Parsed ${rows.length} rows from CSV`);
+  console.log(`📄 Parsed ${rows.length} rows from recipes CSV`);
   console.log(`   ${CSV_PATH}`);
+
+  // 1b. Read & parse nutrition CSV and build lookup map
+  const nutritionMap = new Map();
+  if (fs.existsSync(NUTRITION_CSV_PATH)) {
+    const nutritionRaw = fs.readFileSync(NUTRITION_CSV_PATH, 'utf-8');
+    const nutritionRows = parse(nutritionRaw, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+    for (const nRow of nutritionRows) {
+      const rid = (nRow.recipe_id || '').trim();
+      if (rid) {
+        nutritionMap.set(rid, nRow);
+      }
+    }
+    console.log(`📊 Parsed ${nutritionRows.length} rows from nutrition CSV`);
+    console.log(`   ${NUTRITION_CSV_PATH}`);
+  } else {
+    console.log(`⚠️  Nutrition CSV not found, will use recipe CSV calories_estimate only`);
+  }
   console.log('');
 
   // 2. Counters
@@ -165,7 +203,6 @@ async function main() {
         const cookTime = safeInt(row.cook_time_minutes);
         const totalTime = (prepTime != null && cookTime != null) ? prepTime + cookTime : null;
         const servings = safeInt(row.servings);
-        const calories = safeInt(row.calories_estimate);
         const difficulty = (row.difficulty || '').trim() || null;
         const regionOrOrigin = (row.region_or_origin || '').trim() || null;
         const category = (row.category || '').trim() || null;
@@ -175,6 +212,16 @@ async function main() {
         const normalizedIngredients = splitList(row.normalized_ingredients || row.ingredients, ';')
           .map(s => s.trim().toLowerCase())
           .filter(Boolean);
+
+        // ── Get nutrition values (prefer nutrition CSV, fallback to recipe CSV) ──
+        const nRow = nutritionMap.get(sourceRecipeId);
+        const servingSize = nRow ? (nRow.serving_size || '').trim() || null : null;
+        const calories = nRow ? safeInt(nRow.calories_kcal) : safeInt(row.calories_estimate);
+        const proteinG = nRow ? safeDecimal(nRow.protein_g) : null;
+        const carbsG = nRow ? safeDecimal(nRow.carbs_g) : null;
+        const fatG = nRow ? safeDecimal(nRow.fat_g) : null;
+        const sodiumMg = nRow ? safeInt(nRow.sodium_mg) : null;
+        const fiberG = nRow ? safeDecimal(nRow.fiber_g) : null;
 
         // Featured: first 15 recipes from CSV
         const isFeatured = idx < 15;
@@ -187,12 +234,12 @@ async function main() {
           `INSERT INTO recipes (
               source_recipe_id, title, description, instructions,
               prep_time_minutes, cook_time_minutes, total_time_minutes,
-              servings, calories, difficulty,
-              region_or_origin, category, tags,
+              servings, serving_size, calories, protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
+              difficulty, region_or_origin, category, tags,
               normalized_ingredients, image_url,
               is_featured, is_published, updated_at
            )
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,TRUE,CURRENT_TIMESTAMP)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,TRUE,CURRENT_TIMESTAMP)
            ON CONFLICT ((LOWER(BTRIM(title))))
            DO UPDATE SET
               source_recipe_id      = COALESCE(EXCLUDED.source_recipe_id, recipes.source_recipe_id),
@@ -202,13 +249,19 @@ async function main() {
               cook_time_minutes     = EXCLUDED.cook_time_minutes,
               total_time_minutes    = EXCLUDED.total_time_minutes,
               servings              = EXCLUDED.servings,
+              serving_size          = EXCLUDED.serving_size,
               calories              = EXCLUDED.calories,
+              protein_g             = EXCLUDED.protein_g,
+              carbs_g               = EXCLUDED.carbs_g,
+              fat_g                 = EXCLUDED.fat_g,
+              sodium_mg             = EXCLUDED.sodium_mg,
+              fiber_g               = EXCLUDED.fiber_g,
               difficulty            = EXCLUDED.difficulty,
               region_or_origin      = EXCLUDED.region_or_origin,
               category              = EXCLUDED.category,
               tags                  = EXCLUDED.tags,
               normalized_ingredients = EXCLUDED.normalized_ingredients,
-              image_url             = EXCLUDED.image_url,
+              image_url             = COALESCE(NULLIF(recipes.image_url, ''), EXCLUDED.image_url),
               is_featured           = EXCLUDED.is_featured,
               is_published          = TRUE,
               updated_at            = CURRENT_TIMESTAMP
@@ -222,7 +275,13 @@ async function main() {
             cookTime,
             totalTime,
             servings,
+            servingSize,
             calories,
+            proteinG,
+            carbsG,
+            fatG,
+            sodiumMg,
+            fiberG,
             difficulty,
             regionOrOrigin,
             category,

@@ -10,6 +10,7 @@ const ML_SERVICE_HOST = process.env.ML_SERVICE_HOST || 'localhost';
 const isLocalHost = ML_SERVICE_HOST === 'localhost' || ML_SERVICE_HOST === '127.0.0.1';
 const useHttps = process.env.ML_SERVICE_HTTPS === 'true' || (!isLocalHost && process.env.ML_SERVICE_HTTPS !== 'false');
 const ML_SERVICE_PORT = parseInt(process.env.ML_SERVICE_PORT || (useHttps ? '443' : '8001'), 10);
+const ML_API_KEY = process.env.ML_API_KEY || '';
 const transport = useHttps ? https : http;
 
 const TIMEOUT_MS   = 15_000;
@@ -41,12 +42,16 @@ const _cb = {
  */
 function _rawRequest(mlPath) {
   return new Promise((resolve, reject) => {
+    const headers = { Accept: 'application/json' };
+    if (ML_API_KEY) {
+      headers['X-ML-API-Key'] = ML_API_KEY;
+    }
     const options = {
       hostname: ML_SERVICE_HOST,
       port: ML_SERVICE_PORT,
       path: `/ml${mlPath}`,
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers,
     };
 
     const req = transport.request(options, (proxyRes) => {

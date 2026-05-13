@@ -6,6 +6,7 @@ const cloudinary = require('../config/cloudinary');
 const recipeController = require('../controllers/recipeController');
 const requireAdmin = require('../middleware/requireAdmin');
 const { requireAuth } = require('../middleware/requireAuth');
+const { auditLog } = require('../middleware/auditLog');
 
 const MAX_VIDEO_SIZE = 30 * 1024 * 1024; // 30MB
 
@@ -113,12 +114,12 @@ router.get('/recommended-for-meal', recipeController.getRecommendedForMeal);
 router.get('/stats', requireAdmin, recipeController.getStats);
 
 // Admin routes with file upload
-router.post('/', requireAdmin, parseVideoUpload, recipeController.createRecipe);
-router.post('/import-csv', requireAdmin, recipeController.importCsv);
-router.put('/:id', requireAdmin, parseVideoUpload, recipeController.updateRecipe);
-router.delete('/:id', requireAdmin, recipeController.deleteRecipe);
-router.patch('/:id/featured', requireAdmin, recipeController.toggleFeatured);
-router.patch('/:id/published', requireAdmin, recipeController.togglePublished);
+router.post('/', requireAdmin, auditLog('create_recipe', 'recipe'), parseVideoUpload, recipeController.createRecipe);
+router.post('/import-csv', requireAdmin, auditLog('import_csv', 'recipe'), recipeController.importCsv);
+router.put('/:id', requireAdmin, auditLog('update_recipe', 'recipe'), parseVideoUpload, recipeController.updateRecipe);
+router.delete('/:id', requireAdmin, auditLog('delete_recipe', 'recipe'), recipeController.deleteRecipe);
+router.patch('/:id/featured', requireAdmin, auditLog('toggle_featured', 'recipe'), recipeController.toggleFeatured);
+router.patch('/:id/published', requireAdmin, auditLog('toggle_published', 'recipe'), recipeController.togglePublished);
 
 // Record a recipe view for the authenticated user
 router.post('/:id/view', requireAuth, recipeController.recordView);

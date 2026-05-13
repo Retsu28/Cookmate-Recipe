@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Edit3, Plus, Star, Trash2, Eye, EyeOff, Search, Filter, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -21,12 +22,18 @@ interface DbRecipe {
   cook_time_minutes: number | null;
   total_time_minutes: number | null;
   servings: number | null;
+  serving_size: string | null;
   calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  sodium_mg: number | null;
+  fiber_g: number | null;
   tags: string[] | null;
   normalized_ingredients: string[] | null;
   image_url: string | null;
   video_filename: string | null;
-  instruction_timestamps: { start: number; end: number }[] | null;
+  instruction_timestamps: { start: number; end: number; interval?: number }[] | null;
   is_featured: boolean;
   is_published: boolean;
   created_at: string;
@@ -42,7 +49,8 @@ const emptyIngredientRow = (): IngredientRow => ({ name: '' });
 const emptyForm = {
   title: '', description: '',
   region_or_origin: '', category: '', difficulty: 'Easy',
-  prep_time_minutes: '', cook_time_minutes: '', servings: '', calories: '',
+  prep_time_minutes: '', cook_time_minutes: '', servings: '', serving_size: '',
+  calories: '', protein_g: '', carbs_g: '', fat_g: '', sodium_mg: '', fiber_g: '',
   tags: '', normalized_ingredients: '', image_url: '',
   is_featured: false, is_published: true,
 };
@@ -51,6 +59,7 @@ interface InstructionRow {
   text: string;
   startTime: string;
   endTime: string;
+  intervalTime: string;
 }
 
 export default function RecipeManagement() {
@@ -62,6 +71,7 @@ export default function RecipeManagement() {
   const [diffFilter, setDiffFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [initialForm, setInitialForm] = useState(emptyForm);
   const [initialIngredientRows, setInitialIngredientRows] = useState<IngredientRow[]>([emptyIngredientRow()]);
   const [initialInstructionRows, setInitialInstructionRows] = useState<InstructionRow[]>([{ text: '', startTime: '', endTime: '', intervalTime: '' }]);
@@ -71,7 +81,7 @@ export default function RecipeManagement() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set('limit', '50');
+      params.set('limit', '20');
       if (search) params.set('search', search);
       if (catFilter) params.set('category', catFilter);
       if (diffFilter) params.set('difficulty', diffFilter);
@@ -117,7 +127,13 @@ export default function RecipeManagement() {
       prep_time_minutes: r.prep_time_minutes?.toString() || '',
       cook_time_minutes: r.cook_time_minutes?.toString() || '',
       servings: r.servings?.toString() || '',
+      serving_size: r.serving_size || '',
       calories: r.calories?.toString() || '',
+      protein_g: r.protein_g?.toString() || '',
+      carbs_g: r.carbs_g?.toString() || '',
+      fat_g: r.fat_g?.toString() || '',
+      sodium_mg: r.sodium_mg?.toString() || '',
+      fiber_g: r.fiber_g?.toString() || '',
       tags: Array.isArray(r.tags) ? r.tags.join('; ') : '',
       normalized_ingredients: Array.isArray(r.normalized_ingredients) ? r.normalized_ingredients.join('; ') : '',
       image_url: r.image_url || '',
@@ -175,8 +191,14 @@ export default function RecipeManagement() {
     }
   }, [editingId, fetchRecipes]);
 
-  const handleDelete = useCallback(async (id: number, title: string) => {
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+  const handleDelete = useCallback((id: number, title: string) => {
+    setDeleteTarget({ id, title });
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    const { id, title } = deleteTarget;
+    setDeleteTarget(null);
     try {
       await api.delete(`/api/recipes/${id}`);
       toast.success(`"${title}" deleted.`);
@@ -184,7 +206,7 @@ export default function RecipeManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete.');
     }
-  }, [fetchRecipes]);
+  }, [deleteTarget, fetchRecipes]);
 
   const handleToggleFeatured = useCallback(async (id: number) => {
     // Check if already at featured limit (8 max)
@@ -193,8 +215,8 @@ export default function RecipeManagement() {
     const isCurrentlyFeatured = recipe?.is_featured ?? false;
     
     // Only check limit when trying to feature (not when unfeaturing)
-    if (!isCurrentlyFeatured && featuredCount >= 8) {
-      toast.error('Maximum 8 featured recipes allowed. Unfeature another recipe first.');
+    if (!isCurrentlyFeatured && featuredCount >= 15) {
+      toast.error('Maximum 15 featured recipes allowed. Unfeature another recipe first.');
       return;
     }
     
@@ -304,6 +326,16 @@ export default function RecipeManagement() {
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete recipe?"
+        description={`"${deleteTarget?.title ?? ''}" will be permanently removed from the database. This cannot be undone.`}
+        confirmLabel="Delete recipe"
+        tone="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <AdminPageHeader
         title="Recipe Management"
         description={`Manage ${total} CookMate recipes. All actions are connected to the database.`}

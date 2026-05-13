@@ -231,12 +231,17 @@ exports.me = async (req, res) => {
   const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Unauthorized.' });
 
-  const result = await pool.query(
-    'SELECT id, email, full_name, avatar_url, notifications_enabled, role, cooking_skill_level FROM users WHERE id = $1 LIMIT 1',
-    [userId]
-  );
-  if (result.rowCount === 0) return res.status(404).json({ error: 'User not found.' });
-  return res.json({ user: toPublicUser(result.rows[0]) });
+  try {
+    const result = await pool.query(
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, cooking_skill_level FROM users WHERE id = $1 LIMIT 1',
+      [userId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'User not found.' });
+    return res.json({ user: toPublicUser(result.rows[0]) });
+  } catch (err) {
+    logger.error('[auth/me] failed:', err);
+    return res.status(500).json({ error: 'Failed to load user profile.' });
+  }
 };
 
 exports.logout = async (req, res) => {

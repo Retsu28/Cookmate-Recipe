@@ -37,10 +37,13 @@ interface DbRecipe {
   total_time_minutes: number | null;
   difficulty: string | null;
   servings: number | null;
+  serving_size: string | null;
   calories: number | null;
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  sodium_mg: number | null;
+  fiber_g: number | null;
   region_or_origin: string | null;
   category: string | null;
   tags: string[] | null;
@@ -359,24 +362,104 @@ export default function RecipeDetail() {
           {/* Sticky Sidebar (Desktop) */}
           <div className="hidden lg:block lg:w-1/3">
             <div className="sticky top-24 space-y-6">
-              <Card className="overflow-hidden rounded-[2rem] border-orange-100 bg-white shadow-xl shadow-orange-100/60 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none">
-                <div className="bg-stone-50 p-6 border-b border-stone-100 flex items-center gap-3 dark:bg-stone-800 dark:border-stone-700">
-                  <Flame size={24} className="text-orange-500" />
-                  <h3 className="font-bold text-xl text-stone-900 dark:text-stone-100">Nutrition per serving</h3>
+              <Card className="overflow-hidden rounded-[2rem] border-orange-100 bg-white shadow-xl shadow-orange-100/60 dark:border-stone-700 dark:bg-stone-800 dark:shadow-none p-0">
+                <div className="bg-gradient-to-r from-orange-500 to-orange-400 p-6 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Flame size={22} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white">Nutrition Facts</h3>
+                    <p className="text-orange-100 text-sm">{recipe.serving_size || 'Per serving'}</p>
+                  </div>
                 </div>
                 <CardContent className="p-6">
-                  <div className="space-y-4">
+                  {/* Calories - Highlighted */}
+                  <div className="mb-6 pb-6 border-b border-stone-100 dark:border-stone-700">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-black text-orange-500">{recipe.calories ?? '—'}</span>
+                      <span className="text-stone-500 font-medium dark:text-stone-400">kcal</span>
+                    </div>
+                    <p className="text-sm text-stone-400 mt-1 dark:text-stone-500">Calories per serving</p>
+                  </div>
+
+                  {/* Macronutrients Grid */}
+                  <div className="grid grid-cols-2 gap-4">
                     {[
-                      { label: 'Calories', value: recipe.calories ?? '—' },
-                      { label: 'Protein', value: recipe.protein_g ? `${recipe.protein_g}g` : '—' },
-                      { label: 'Carbs', value: recipe.carbs_g ? `${recipe.carbs_g}g` : '—' },
-                      { label: 'Fat', value: recipe.fat_g ? `${recipe.fat_g}g` : '—' },
+                      { 
+                        label: 'Protein', 
+                        value: recipe.protein_g ? `${recipe.protein_g}g` : '—',
+                        color: 'bg-blue-500',
+                        percent: recipe.protein_g ? Math.min((recipe.protein_g / 50) * 100, 100) : 0,
+                        icon: '💪'
+                      },
+                      { 
+                        label: 'Carbs', 
+                        value: recipe.carbs_g ? `${recipe.carbs_g}g` : '—',
+                        color: 'bg-amber-500',
+                        percent: recipe.carbs_g ? Math.min((recipe.carbs_g / 100) * 100, 100) : 0,
+                        icon: '🌾'
+                      },
+                      { 
+                        label: 'Fat', 
+                        value: recipe.fat_g ? `${recipe.fat_g}g` : '—',
+                        color: 'bg-rose-500',
+                        percent: recipe.fat_g ? Math.min((recipe.fat_g / 40) * 100, 100) : 0,
+                        icon: '🥑'
+                      },
+                      { 
+                        label: 'Fiber', 
+                        value: recipe.fiber_g ? `${recipe.fiber_g}g` : '—',
+                        color: 'bg-emerald-500',
+                        percent: recipe.fiber_g ? Math.min((recipe.fiber_g / 10) * 100, 100) : 0,
+                        icon: '🌿'
+                      },
                     ].map((stat) => (
-                      <div key={stat.label} className="flex items-center justify-between">
-                        <span className="text-stone-500 font-medium dark:text-stone-400">{stat.label}</span>
-                        <span className="font-bold text-stone-900 dark:text-stone-100">{stat.value}</span>
+                      <div key={stat.label} className="p-3 rounded-2xl bg-stone-50 dark:bg-stone-700/50">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{stat.icon}</span>
+                          <span className="text-xs font-semibold text-stone-500 uppercase dark:text-stone-400">{stat.label}</span>
+                        </div>
+                        <div className="flex items-baseline gap-1 mb-2">
+                          <span className="text-xl font-bold text-stone-900 dark:text-stone-100">{stat.value}</span>
+                        </div>
+                        {stat.percent > 0 && (
+                          <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden dark:bg-stone-600">
+                            <div 
+                              className={`h-full ${stat.color} rounded-full`}
+                              style={{ width: `${stat.percent}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
+                  </div>
+
+                  {/* Sodium - Full width with warning */}
+                  <div className="mt-4 p-4 rounded-2xl bg-stone-50 dark:bg-stone-700/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🧂</span>
+                        <div>
+                          <span className="text-xs font-semibold text-stone-500 uppercase block dark:text-stone-400">Sodium</span>
+                          <span className="text-lg font-bold text-stone-900 dark:text-stone-100">
+                            {recipe.sodium_mg ? `${recipe.sodium_mg}mg` : '—'}
+                          </span>
+                        </div>
+                      </div>
+                      {recipe.sodium_mg && recipe.sodium_mg > 1000 && (
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-lg dark:bg-amber-900/30 dark:text-amber-400">
+                          High
+                        </span>
+                      )}
+                    </div>
+                    {recipe.sodium_mg && (
+                      <div className="mt-2 h-1.5 bg-stone-200 rounded-full overflow-hidden dark:bg-stone-600">
+                        <div 
+                          className={`h-full rounded-full ${recipe.sodium_mg > 1000 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                          style={{ width: `${Math.min((recipe.sodium_mg / 2300) * 100, 100)}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -555,6 +638,7 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: Gu
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       // Layer two harmonics for a metallic bell tone
       const frequencies = [1046.5, 2093]; // C6 + C7
+      let endedCount = 0;
       frequencies.forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -568,7 +652,7 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: Gu
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 1.8);
-        osc.onended = () => ctx.close();
+        osc.onended = () => { if (++endedCount === frequencies.length) ctx.close(); };
       });
     } catch {}
   }, [showIntervalComplete]);

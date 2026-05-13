@@ -4,6 +4,7 @@ const path = require('path');
 const { pool } = require('../config/db');
 const { verifyAuthToken, AUTH_COOKIE_NAME } = require('../middleware/requireAuth');
 const { sendMail } = require('../config/mailer');
+const { writeAuditLog } = require('../middleware/auditLog');
 
 /**
  * Notify all users via email about a new recipe (single BCC email)
@@ -167,7 +168,7 @@ async function syncRecipeIngredients(recipeId, ingredients) {
 const RECIPE_COLS = `
   id, source_recipe_id, title, description, instructions,
   difficulty, prep_time_minutes, cook_time_minutes, total_time_minutes,
-  servings, calories,
+  servings, serving_size, calories, protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
   region_or_origin, category, tags, normalized_ingredients,
   image_url, is_featured, is_published, author_id,
   video_filename, instruction_timestamps,
@@ -178,7 +179,7 @@ const RECIPE_COLS = `
 // Supports ?limit, ?offset, ?category, ?difficulty, ?search, ?featured, ?published, ?tag
 exports.getAll = async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 200);
     const offset = parseInt(req.query.offset) || 0;
     const conditions = [];
     const params = [];
@@ -244,12 +245,12 @@ exports.getFeatured = async (_req, res) => {
     const result = await pool.query(
       `SELECT ${RECIPE_COLS} FROM recipes
        WHERE is_featured = true AND is_published = true
-       ORDER BY created_at DESC LIMIT 10`
+       ORDER BY created_at DESC LIMIT 15`
     );
-    // Fallback: if no featured recipes yet, return the newest 10
+    // Fallback: if no featured recipes yet, return the newest 15
     if (result.rowCount === 0) {
       const fallback = await pool.query(
-        `SELECT ${RECIPE_COLS} FROM recipes WHERE is_published = true ORDER BY created_at DESC LIMIT 10`
+        `SELECT ${RECIPE_COLS} FROM recipes WHERE is_published = true ORDER BY created_at DESC LIMIT 15`
       );
       return res.json({ recipes: fallback.rows });
     }
@@ -298,7 +299,7 @@ exports.getCategories = async (_req, res) => {
 // history. It is empty when there is no authenticated user or no history.
 exports.getHomeSections = async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 8, 12);
+    const limit = Math.min(parseInt(req.query.limit) || 8, 20);
     const userId = getOptionalUserId(req);
 
     // Recipes are considered Filipino if region_or_origin is set (the seeded
@@ -473,7 +474,8 @@ exports.createRecipe = async (req, res) => {
   try {
     const {
       title, description, instructions,
-      prep_time_minutes, cook_time_minutes, servings, calories,
+      prep_time_minutes, cook_time_minutes, servings, serving_size, calories,
+      protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
@@ -507,13 +509,13 @@ exports.createRecipe = async (req, res) => {
       `INSERT INTO recipes (
           title, description, instructions,
           prep_time_minutes, cook_time_minutes, total_time_minutes,
-          servings, calories,
+          servings, serving_size, calories, protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
           difficulty, region_or_origin, category, tags,
           normalized_ingredients,
           image_url, is_featured, is_published, author_id, updated_at,
           video_filename, instruction_timestamps
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,CURRENT_TIMESTAMP,$19,$20)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,CURRENT_TIMESTAMP,$24,$25)
        RETURNING *`,
       [
         title.trim(),
@@ -523,7 +525,13 @@ exports.createRecipe = async (req, res) => {
         cookTime,
         totalTime,
         parseInt(servings) || null,
+        serving_size || null,
         parseInt(calories) || null,
+        parseFloat(protein_g) || null,
+        parseFloat(carbs_g) || null,
+        parseFloat(fat_g) || null,
+        parseInt(sodium_mg) || null,
+        parseFloat(fiber_g) || null,
         difficulty || null,
         region_or_origin || null,
         category || null,
@@ -544,6 +552,9 @@ exports.createRecipe = async (req, res) => {
     }
 
     const createdRecipe = result.rows[0];
+
+    // Write audit log
+    await writeAuditLog(req, { entityId: createdRecipe.id, metadata: { title: createdRecipe.title } });
 
     res.status(201).json({ recipe: createdRecipe });
 
@@ -566,7 +577,8 @@ exports.updateRecipe = async (req, res) => {
     const { id } = req.params;
     const {
       title, description, instructions,
-      prep_time_minutes, cook_time_minutes, servings, calories,
+      prep_time_minutes, cook_time_minutes, servings, serving_size, calories,
+      protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
@@ -618,10 +630,11 @@ exports.updateRecipe = async (req, res) => {
     const updates = [
       'title = $1', 'description = $2', 'instructions = $3',
       'prep_time_minutes = $4', 'cook_time_minutes = $5', 'total_time_minutes = $6',
-      'servings = $7', 'calories = $8',
-      'difficulty = $9', 'region_or_origin = $10', 'category = $11', 'tags = $12',
-      'normalized_ingredients = $13',
-      'image_url = $14', 'is_featured = $15', 'is_published = $16',
+      'servings = $7', 'serving_size = $8', 'calories = $9',
+      'protein_g = $10', 'carbs_g = $11', 'fat_g = $12', 'sodium_mg = $13', 'fiber_g = $14',
+      'difficulty = $15', 'region_or_origin = $16', 'category = $17', 'tags = $18',
+      'normalized_ingredients = $19',
+      'image_url = $20', 'is_featured = $21', 'is_published = $22',
       'updated_at = CURRENT_TIMESTAMP'
     ];
     const params = [
@@ -632,7 +645,13 @@ exports.updateRecipe = async (req, res) => {
       cookTime,
       totalTime,
       parseInt(servings) || null,
+      serving_size || null,
       parseInt(calories) || null,
+      parseFloat(protein_g) || null,
+      parseFloat(carbs_g) || null,
+      parseFloat(fat_g) || null,
+      parseInt(sodium_mg) || null,
+      parseFloat(fiber_g) || null,
       difficulty || null,
       region_or_origin || null,
       category || null,
@@ -668,6 +687,9 @@ exports.updateRecipe = async (req, res) => {
       await syncRecipeIngredients(id, ingredients);
     }
 
+    // Write audit log
+    await writeAuditLog(req, { entityId: id, metadata: { title: result.rows[0].title } });
+
     res.json({ recipe: result.rows[0] });
   } catch (err) {
     logger.error('[recipes/updateRecipe]', err);
@@ -686,6 +708,8 @@ exports.deleteRecipe = async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Recipe not found.' });
     }
+    // Write audit log
+    await writeAuditLog(req, { entityId: parseInt(id, 10), metadata: { title: result.rows[0].title } });
     res.json({ message: 'Recipe deleted.', recipe: result.rows[0] });
   } catch (err) {
     logger.error('[recipes/deleteRecipe]', err);
@@ -729,6 +753,9 @@ exports.toggleFeatured = async (req, res) => {
       [id]
     );
 
+    // Write audit log
+    await writeAuditLog(req, { entityId: parseInt(id, 10), metadata: { title: result.rows[0].title, is_featured: result.rows[0].is_featured } });
+
     res.json({ recipe: result.rows[0] });
   } catch (err) {
     logger.error('[recipes/toggleFeatured]', err);
@@ -747,6 +774,8 @@ exports.togglePublished = async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Recipe not found.' });
     }
+    // Write audit log
+    await writeAuditLog(req, { entityId: parseInt(id, 10), metadata: { title: result.rows[0].title, is_published: result.rows[0].is_published } });
     res.json({ recipe: result.rows[0] });
   } catch (err) {
     logger.error('[recipes/togglePublished]', err);
@@ -915,6 +944,9 @@ exports.importCsv = async (req, res) => {
     }
 
     res.json({ message: 'CSV import completed.', inserted, updated, skipped, total: rows.length });
+
+    // Write audit log
+    await writeAuditLog(req, { metadata: { inserted, updated, skipped, total: rows.length } });
 
     // Notify users about new recipes if any were inserted, exclude the admin who uploaded
     if (inserted > 0 && insertedRecipes.length > 0) {

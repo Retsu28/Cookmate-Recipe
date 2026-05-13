@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Loader2, MessageSquare, Search, Star, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -45,6 +46,7 @@ export default function ReviewsFeedback() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [minRating, setMinRating] = useState<number | ''>('');
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const fetchReviews = useCallback(async () => {
     setLoading(true);
@@ -66,8 +68,10 @@ export default function ReviewsFeedback() {
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this review? This cannot be undone.')) return;
+  const handleDeleteConfirm = useCallback(async () => {
+    if (deleteTarget === null) return;
+    const id = deleteTarget;
+    setDeleteTarget(null);
     try {
       await api.delete(`/api/admin/reviews/${id}`);
       toast.success('Review deleted.');
@@ -76,7 +80,7 @@ export default function ReviewsFeedback() {
     } catch (err: any) {
       toast.error(err.message || 'Delete failed.');
     }
-  };
+  }, [deleteTarget]);
 
   const filtered = reviews.filter((r) =>
     r.recipe_title.toLowerCase().includes(search.toLowerCase()) ||
@@ -117,7 +121,7 @@ export default function ReviewsFeedback() {
     {
       header: 'Actions',
       render: (r) => (
-        <Button variant="ghost" size="sm" className="rounded-full text-red-500 hover:text-red-600" onClick={() => handleDelete(r.id)}>
+        <Button variant="ghost" size="sm" className="rounded-full text-red-500 hover:text-red-600" onClick={() => setDeleteTarget(r.id)}>
           <Trash2 size={13} />
         </Button>
       ),
@@ -126,6 +130,16 @@ export default function ReviewsFeedback() {
 
   return (
     <div>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete review?"
+        description="This will permanently remove the review. This cannot be undone."
+        confirmLabel="Delete review"
+        tone="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <AdminPageHeader
         title="Reviews & Feedback"
         description={`Moderate ${total} user reviews and ratings across all recipes.`}

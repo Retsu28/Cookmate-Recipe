@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { AdminSectionCard } from '../components/AdminSectionCard';
 import { AdminTable, type AdminTableColumn } from '../components/AdminTable';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import api from '@/services/api';
 
 interface Ingredient {
@@ -31,6 +32,7 @@ export default function IngredientManagement() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<IngredientForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
   const fetchIngredients = useCallback(async () => {
     setLoading(true);
@@ -83,8 +85,10 @@ export default function IngredientManagement() {
     }
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
+    setDeleteTarget(null);
     try {
       await api.delete(`/api/ingredients/${id}`);
       toast.success(`"${name}" deleted.`);
@@ -92,7 +96,7 @@ export default function IngredientManagement() {
     } catch (err: any) {
       toast.error(err.message || 'Delete failed.');
     }
-  };
+  }, [deleteTarget]);
 
   const columns: AdminTableColumn<Ingredient>[] = [
     {
@@ -127,7 +131,7 @@ export default function IngredientManagement() {
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => openEdit(i)}>
             <Pencil size={13} /> Edit
           </Button>
-          <Button variant="ghost" size="sm" className="rounded-full text-red-500 hover:text-red-600" onClick={() => handleDelete(i.id, i.name)}>
+          <Button variant="ghost" size="sm" className="rounded-full text-red-500 hover:text-red-600" onClick={() => setDeleteTarget({ id: i.id, name: i.name })}>
             <Trash2 size={13} />
           </Button>
         </div>
@@ -137,6 +141,16 @@ export default function IngredientManagement() {
 
   return (
     <div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete ingredient?"
+        description={`"${deleteTarget?.name ?? ''}" will be permanently removed. Recipes using it will lose this ingredient link.`}
+        confirmLabel="Delete ingredient"
+        tone="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <AdminPageHeader
         title="Ingredient Management"
         description={`Manage ${ingredients.length} ingredients — names, categories, images, and recipe usage.`}

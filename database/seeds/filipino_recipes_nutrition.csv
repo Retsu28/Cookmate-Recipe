@@ -1,0 +1,21 @@
+recipe_id,recipe_name,serving_size,calories_kcal,protein_g,carbs_g,fat_g,sodium_mg,fiber_g
+R001,Chicken Adobo,1 cup (240g),310,28,6,18,980,0.3
+R003,Adobong Puti,1 cup (230g),285,27,4,17,620,0.2
+R004,Sinigang na Baboy,1 bowl (350g),280,22,10,16,870,2.5
+R005,Sinigang na Hipon,1 bowl (320g),160,18,9,4,780,2.3
+R009,Bulalo,1 bowl (400g),420,35,12,25,760,1.8
+R010,Kare-Kare,1 cup (280g),390,30,14,24,640,3.2
+R011,Bicol Express,3/4 cup (180g),420,18,6,36,810,1.0
+R012,Laing,3/4 cup (170g),310,10,12,25,720,2.8
+R013,Pinakbet,1 cup (220g),180,10,14,9,680,4.5
+R016,Pancit Canton,1 cup (250g),320,18,38,9,890,2.1
+R017,Pancit Bihon,1 cup (240g),290,15,42,6,760,1.8
+R019,Lumpiang Shanghai,3 pieces (90g),210,12,14,11,480,0.8
+R021,Chicken Inasal,1 piece (200g),280,32,5,14,560,0.2
+R027,Chicken Afritada,1 cup (260g),270,24,16,11,710,2.4
+R031,Beef Tapa,1 serving (120g),290,26,8,16,920,0.2
+R034,Arroz Caldo,1 bowl (350g),260,16,32,7,680,0.8
+R035,Goto,1 bowl (350g),240,14,30,7,720,0.6
+R037,Tortang Talong,1 piece (180g),190,10,8,13,390,2.6
+R045,Chopsuey,1 cup (230g),150,12,12,5,610,3.4
+R050,Embutido,1 slice (130g),280,16,14,18,640,0.9

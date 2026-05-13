@@ -39,7 +39,7 @@ interface RecipeCategory {
 /*  Data fetching                                                      */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 20;
 
 async function fetchRecipesPage(offset: number, category?: string | null, search?: string) {
   const params = new URLSearchParams({

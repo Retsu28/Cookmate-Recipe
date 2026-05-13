@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Activity,
+  AlertTriangle,
   BookOpen,
   CalendarDays,
   Camera,
@@ -47,14 +48,19 @@ export default function AdminOverview() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [widgets, setWidgets] = useState<WidgetData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     Promise.all([
       api.get<StatsData>('/api/recipes/stats').catch(() => null),
       api.get<WidgetData>('/api/admin/overview-widgets').catch(() => null),
     ]).then(([s, w]) => {
-      setStats(s);
-      setWidgets(w);
+      if (s === null && w === null) {
+        setError(true);
+      } else {
+        setStats(s);
+        setWidgets(w);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -97,6 +103,28 @@ export default function AdminOverview() {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 size={32} className="animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <AdminPageHeader
+          title="Admin Dashboard"
+          description="Monitor CookMate recipes, users, and content operations."
+        />
+        <div className="flex flex-col items-center gap-4 rounded-[2rem] border border-red-200 bg-red-50 p-10 text-center">
+          <AlertTriangle size={36} className="text-red-500" />
+          <p className="text-lg font-extrabold text-stone-900">Failed to load dashboard data</p>
+          <p className="text-sm text-stone-500">The API server may be down or unreachable. Check that the Express server is running on port 5000 and try refreshing.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 rounded-full border border-red-200 bg-white px-5 py-2 text-sm font-bold text-red-600 shadow-sm transition hover:bg-red-50"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

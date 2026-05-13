@@ -160,7 +160,13 @@ function RecipeFormBase({ initialForm, initialIngredientRows, initialInstruction
       formData.append('prep_time_minutes', form.prep_time_minutes || '');
       formData.append('cook_time_minutes', form.cook_time_minutes || '');
       formData.append('servings', form.servings || '');
+      formData.append('serving_size', form.serving_size || '');
       formData.append('calories', form.calories || '');
+      formData.append('protein_g', form.protein_g || '');
+      formData.append('carbs_g', form.carbs_g || '');
+      formData.append('fat_g', form.fat_g || '');
+      formData.append('sodium_mg', form.sodium_mg || '');
+      formData.append('fiber_g', form.fiber_g || '');
       formData.append('difficulty', form.difficulty || 'Easy');
       formData.append('region_or_origin', form.region_or_origin || '');
       formData.append('category', form.category || '');
@@ -313,6 +319,75 @@ function RecipeFormBase({ initialForm, initialIngredientRows, initialInstruction
             onChange={(e) => setForm({ ...form, calories: e.target.value })}
             className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
           />
+        </div>
+
+        {/* Nutrition Section */}
+        <div className="sm:col-span-2">
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-stone-400">Serving Size</label>
+          <input
+            type="text"
+            value={form.serving_size}
+            onChange={(e) => setForm({ ...form, serving_size: e.target.value })}
+            placeholder="e.g., 1 cup (240g)"
+            className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-stone-400">
+            Nutrition per Serving (optional)
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-400">Protein (g)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.protein_g}
+                onChange={(e) => setForm({ ...form, protein_g: e.target.value })}
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-400">Carbs (g)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.carbs_g}
+                onChange={(e) => setForm({ ...form, carbs_g: e.target.value })}
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-400">Fat (g)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.fat_g}
+                onChange={(e) => setForm({ ...form, fat_g: e.target.value })}
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-400">Sodium (mg)</label>
+              <input
+                type="number"
+                value={form.sodium_mg}
+                onChange={(e) => setForm({ ...form, sodium_mg: e.target.value })}
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-400">Fiber (g)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.fiber_g}
+                onChange={(e) => setForm({ ...form, fiber_g: e.target.value })}
+                className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-300"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="sm:col-span-2">

@@ -2,7 +2,7 @@
 const { pool } = require('../config/db');
 const logger = require('../config/logger');
 const requireAdmin = require('../middleware/requireAdmin');
-const { writeAuditLog } = require('../middleware/auditLog');
+const { writeAuditLog, auditLog } = require('../middleware/auditLog');
 
 const router = Router();
 
@@ -144,36 +144,49 @@ router.get('/ai-camera-saves', requireAdmin, async (req, res) => {
   }
 });
 
-// GET all users for admin dashboard
-router.get('/users', async (req, res) => {
+// GET all users for admin dashboard (paginated)
+router.get('/users', requireAdmin, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        id, 
-        email, 
-        full_name, 
-        cooking_skill_level, 
-        role, 
-        created_at, 
-        updated_at
-      FROM users
-      ORDER BY created_at DESC
-    `);
-    
-    // Transform to match AdminUser interface in frontend roughly
+    const limit  = Math.min(Math.max(parseInt(req.query.limit  || '20', 10), 1), 100);
+    const page   = Math.max(parseInt(req.query.page || '0', 10), 0);
+    const offset = page * limit;
+
+    const [result, countResult] = await Promise.all([
+      pool.query(`
+        SELECT 
+          u.id, 
+          u.email, 
+          u.full_name, 
+          u.cooking_skill_level, 
+          u.role, 
+          u.created_at, 
+          u.updated_at,
+          u.deleted_at,
+          COUNT(DISTINCT rv.recipe_id)::int AS recipes_viewed,
+          COUNT(DISTINCT acs.id)::int AS ai_scans
+        FROM users u
+        LEFT JOIN recipe_viewed rv ON rv.user_id = u.id
+        LEFT JOIN ai_camera_saves acs ON acs.user_id = u.id
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]),
+      pool.query('SELECT COUNT(*)::int AS total FROM users'),
+    ]);
+
     const users = result.rows.map(row => ({
       id: row.id.toString(),
       name: row.full_name || 'Unnamed User',
       email: row.email,
       skillLevel: row.cooking_skill_level || 'Beginner',
-      recipesViewed: Math.floor(Math.random() * 50), // Mocked for now
-      aiScans: Math.floor(Math.random() * 20),       // Mocked for now
+      recipesViewed: row.recipes_viewed || 0,
+      aiScans: row.ai_scans || 0,
       lastActive: new Date(row.updated_at).toLocaleDateString(),
-      status: 'Active',                              // Mocked for now
+      status: row.deleted_at ? 'Deleted' : 'Active',
       role: row.role
     }));
 
-    res.json({ users });
+    res.json({ users, total: countResult.rows[0].total, page, limit });
   } catch (err) {
     logger.error('[admin/users] failed:', err);
     res.status(500).json({ error: 'Failed to fetch users.' });
@@ -181,9 +194,13 @@ router.get('/users', async (req, res) => {
 });
 
 // Update user role or delete user? (Optional, but good for "make it functionality")
-router.delete('/users/:id', async (req, res) => {
+router.delete('/users/:id', requireAdmin, auditLog('delete_user', 'user'), async (req, res) => {
   try {
-    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, full_name, email', [req.params.id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    await writeAuditLog(req, { entityId: parseInt(req.params.id, 10), metadata: { name: result.rows[0].full_name, email: result.rows[0].email } });
     res.json({ success: true });
   } catch (err) {
     logger.error('[admin/users/delete] failed:', err);
@@ -191,7 +208,7 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
-router.put('/users/:id', async (req, res) => {
+router.put('/users/:id', requireAdmin, auditLog('update_user', 'user'), async (req, res) => {
   try {
     const { id } = req.params;
     const { full_name, email, role, cooking_skill_level } = req.body;
@@ -204,7 +221,7 @@ router.put('/users/:id', async (req, res) => {
            cooking_skill_level = COALESCE($4, cooking_skill_level),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $5
-       RETURNING id`,
+       RETURNING id, full_name, email, role`,
       [full_name, email, role, cooking_skill_level, id]
     );
 
@@ -212,6 +229,7 @@ router.put('/users/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    await writeAuditLog(req, { entityId: parseInt(id, 10), metadata: { name: result.rows[0].full_name, email: result.rows[0].email, role: result.rows[0].role } });
     res.json({ success: true });
   } catch (err) {
     logger.error('[admin/users/update] failed:', err);
@@ -387,8 +405,38 @@ router.delete('/reviews/:id', requireAdmin, async (req, res) => {
 
 // ─── Audit Log ────────────────────────────────────────────────────────────
 router.get('/audit-log', requireAdmin, async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+
+  // Filters
+  const { action, entity_type, admin, date_from, date_to } = req.query;
+
+  const conditions = [];
+  const params = [];
+
+  if (action) {
+    params.push(action);
+    conditions.push(`al.action = $${params.length}`);
+  }
+  if (entity_type) {
+    params.push(entity_type);
+    conditions.push(`al.entity_type = $${params.length}`);
+  }
+  if (admin) {
+    params.push(`%${admin}%`);
+    conditions.push(`(u.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
+  }
+  if (date_from) {
+    params.push(date_from);
+    conditions.push(`al.created_at >= $${params.length}::date`);
+  }
+  if (date_to) {
+    params.push(date_to);
+    conditions.push(`al.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
   try {
     const [rows, count] = await Promise.all([
       pool.query(
@@ -396,16 +444,176 @@ router.get('/audit-log', requireAdmin, async (req, res) => {
                 u.full_name AS admin_name, u.email AS admin_email
          FROM admin_audit_log al
          LEFT JOIN users u ON u.id = al.admin_id
+         ${whereClause}
          ORDER BY al.created_at DESC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
       ),
-      pool.query('SELECT COUNT(*)::int AS total FROM admin_audit_log'),
+      pool.query(`SELECT COUNT(*)::int AS total FROM admin_audit_log al LEFT JOIN users u ON u.id = al.admin_id ${whereClause}`, params),
     ]);
     res.json({ logs: rows.rows, total: count.rows[0].total });
   } catch (err) {
     logger.error('[admin/audit-log] failed:', err);
     res.status(500).json({ error: 'Failed to fetch audit log.' });
+  }
+});
+
+// ─── Reports ──────────────────────────────────────────────────────────────
+router.get('/reports', requireAdmin, async (req, res) => {
+  try {
+    const [popularResult, mostPlannedResult, activityResult] = await Promise.all([
+      // Most viewed recipes (by unique user views)
+      pool.query(`
+        SELECT r.id, r.title,
+               COUNT(rv.user_id)::int AS view_count
+        FROM recipe_viewed rv
+        JOIN recipes r ON r.id = rv.recipe_id
+        GROUP BY r.id, r.title
+        ORDER BY view_count DESC
+        LIMIT 6
+      `),
+      // Most planned recipes (as a proxy for search intent)
+      pool.query(`
+        SELECT r.id, r.title,
+               COUNT(mp.id)::int AS plan_count
+        FROM meal_plans mp
+        JOIN recipes r ON r.id = mp.recipe_id
+        GROUP BY r.id, r.title
+        ORDER BY plan_count DESC
+        LIMIT 6
+      `),
+      // User activity counts
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM recipe_viewed)      AS recipe_views,
+          (SELECT COUNT(*)::int FROM meal_plans)          AS meal_plans,
+          (SELECT COUNT(*)::int FROM ai_camera_saves)     AS ai_scans,
+          (SELECT COUNT(*)::int FROM users)               AS total_users
+      `),
+    ]);
+
+    const totalViews = popularResult.rows.reduce((s, r) => s + r.view_count, 0) || 1;
+    const totalPlans = mostPlannedResult.rows.reduce((s, r) => s + r.plan_count, 0) || 1;
+    const act = activityResult.rows[0] || {};
+
+    const popularRecipes = popularResult.rows.map((r) => ({
+      id: String(r.id),
+      label: r.title,
+      value: Math.round((r.view_count / totalViews) * 100),
+      detail: `${r.view_count} views`,
+    }));
+
+    const mostPlanned = mostPlannedResult.rows.map((r) => ({
+      id: String(r.id),
+      label: r.title,
+      value: Math.round((r.plan_count / totalPlans) * 100),
+      detail: `${r.plan_count} meal plans`,
+    }));
+
+    const maxActivity = Math.max(
+      Number(act.recipe_views || 0),
+      Number(act.meal_plans || 0),
+      Number(act.ai_scans || 0),
+      Number(act.total_users || 0),
+      1
+    );
+
+    const userActivity = [
+      { id: 'browse',  label: 'Recipe browsing',  value: Math.round((Number(act.recipe_views || 0) / maxActivity) * 100), detail: `${act.recipe_views || 0} total views` },
+      { id: 'planner', label: 'Meal planner',      value: Math.round((Number(act.meal_plans || 0) / maxActivity) * 100),   detail: `${act.meal_plans || 0} total plans` },
+      { id: 'camera',  label: 'AI camera',         value: Math.round((Number(act.ai_scans || 0) / maxActivity) * 100),     detail: `${act.ai_scans || 0} scans saved` },
+      { id: 'users',   label: 'Registered users',  value: Math.round((Number(act.total_users || 0) / maxActivity) * 100),  detail: `${act.total_users || 0} accounts` },
+    ];
+
+    res.json({ popularRecipes, mostPlanned, userActivity });
+  } catch (err) {
+    logger.error('[admin/reports] failed:', err);
+    res.status(500).json({ error: 'Failed to fetch reports data.' });
+  }
+});
+
+// ─── System Health ─────────────────────────────────────────────────────────
+router.get('/system-health', requireAdmin, async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users)           AS user_count,
+        (SELECT COUNT(*)::int FROM recipes)         AS recipe_count,
+        (SELECT COUNT(*)::int FROM ingredients)     AS ingredient_count,
+        (SELECT COUNT(*)::int FROM meal_plans)      AS meal_plan_count,
+        (SELECT COUNT(*)::int FROM ai_camera_saves) AS ai_scan_count,
+        (SELECT COUNT(*)::int FROM reviews)         AS review_count,
+        (SELECT COUNT(*)::int FROM admin_audit_log) AS audit_log_count
+    `);
+    const latencyMs = Date.now() - t0;
+    const h = result.rows[0] || {};
+
+    res.json({
+      db: {
+        ok: true,
+        latencyMs,
+        counts: {
+          users: h.user_count,
+          recipes: h.recipe_count,
+          ingredients: h.ingredient_count,
+          mealPlans: h.meal_plan_count,
+          aiScans: h.ai_scan_count,
+          reviews: h.review_count,
+          auditLog: h.audit_log_count,
+        },
+      },
+      api: { ok: true },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    const latencyMs = Date.now() - t0;
+    logger.error('[admin/system-health] failed:', err);
+    res.json({
+      db: { ok: false, latencyMs, counts: null },
+      api: { ok: true },
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ─── Notifications unread count / stats ────────────────────────────────────
+router.get('/notifications/unread-count', requireAdmin, async (req, res) => {
+  try {
+    const [reviewsResult, usersResult] = await Promise.all([
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM reviews
+           WHERE created_at >= NOW() - INTERVAL '24 hours') AS new_reviews,
+          (SELECT COUNT(*)::int FROM users
+           WHERE created_at >= NOW() - INTERVAL '24 hours') AS new_users
+      `),
+      pool.query(`
+        SELECT COUNT(*)::int AS pending_deletions
+        FROM users
+        WHERE deleted_at IS NOT NULL
+          AND deletion_scheduled_at IS NOT NULL
+          AND deletion_scheduled_at > NOW()
+      `).catch(() => ({ rows: [{ pending_deletions: 0 }] })),
+    ]);
+
+    const row = reviewsResult.rows[0] || {};
+    const newReviews  = Number(row.new_reviews || 0);
+    const newUsers    = Number(row.new_users || 0);
+    const pendingDel  = Number((usersResult.rows[0] || {}).pending_deletions || 0);
+    const count       = newReviews + pendingDel + newUsers;
+
+    res.json({
+      count,
+      stats: {
+        newReviews,
+        pendingDeletions: pendingDel,
+        newUsers,
+      },
+    });
+  } catch (err) {
+    logger.error('[admin/notifications/unread-count] failed:', err);
+    res.json({ count: 0, stats: { newReviews: 0, pendingDeletions: 0, newUsers: 0 } });
   }
 });
 
