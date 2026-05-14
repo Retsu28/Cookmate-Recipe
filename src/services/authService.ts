@@ -46,6 +46,20 @@ export interface AuthResult {
   user: AuthUser;
 }
 
+export interface MfaRequiredResult {
+  mfaRequired: true;
+  mfaUserId: number;
+}
+
+export class MfaRequiredError extends Error {
+  mfaUserId: number;
+  constructor(userId: number) {
+    super('MFA_REQUIRED');
+    this.name = 'MfaRequiredError';
+    this.mfaUserId = userId;
+  }
+}
+
 export function isAdminUser(user: AuthUser | null | undefined): boolean {
   return user?.role === 'admin' || user?.email?.trim().toLowerCase() === ADMIN_EMAIL;
 }
@@ -70,11 +84,14 @@ function persist(result: AuthResult) {
  */
 async function exchangeFirebaseUser(fbUser: FirebaseUser, name?: string): Promise<AuthResult> {
   const idToken = await fbUser.getIdToken(true);
-  const data = await api.post<AuthResult>('/api/auth/firebase', {
+  const data = await api.post<AuthResult | MfaRequiredResult>('/api/auth/firebase', {
     idToken,
     name: name || fbUser.displayName || undefined,
   });
-  const result = { ...data, user: normalizeUser(data.user) };
+  if ((data as MfaRequiredResult).mfaRequired) {
+    throw new MfaRequiredError((data as MfaRequiredResult).mfaUserId);
+  }
+  const result = { ...(data as AuthResult), user: normalizeUser((data as AuthResult).user) };
   persist(result);
   return result;
 }

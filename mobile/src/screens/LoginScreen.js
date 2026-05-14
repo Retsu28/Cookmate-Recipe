@@ -17,11 +17,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { authService } from '../services/authService';
+import { authService, MfaRequiredError } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
-import AuthVideoBackground from '../components/AuthVideoBackground';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -76,6 +75,11 @@ export default function LoginScreen({ navigation }) {
       // AppNavigator will auto-swap from AuthStack to AppStack
       // once isAuthenticated flips to true — no manual navigation needed.
     } catch (err) {
+      if (err instanceof MfaRequiredError) {
+        // MFA is enabled — redirect to verification screen
+        navigation.navigate('MFAVerification', { mfaUserId: err.mfaUserId });
+        return;
+      }
       setError(err?.message || 'Unable to sign in. Please try again.');
       triggerShake();
     } finally {
@@ -85,7 +89,6 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView
@@ -198,7 +201,11 @@ export default function LoginScreen({ navigation }) {
                 <View style={styles.dividerLine} />
               </View>
 
-              <GoogleSignInButton label="Sign in with Google" onError={setError} />
+              <GoogleSignInButton
+                label="Sign in with Google"
+                onError={setError}
+                onMfaRequired={(userId) => navigation.navigate('MFAVerification', { mfaUserId: userId })}
+              />
 
               <View style={styles.footer}>
                 <Text style={styles.footerText}>New to CookMate?</Text>

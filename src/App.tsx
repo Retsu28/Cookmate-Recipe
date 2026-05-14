@@ -23,6 +23,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import MFAVerify from './pages/MFAVerify';
 
 // Core user pages — bundled directly so they are always accessible offline
 // (no separate chunk fetch required when the app shell is cached)
@@ -110,6 +111,7 @@ export default function App() {
                 <Route path="signup" element={<Signup />} />
                 <Route path="forgot-password" element={<ForgotPassword />} />
                 <Route path="reset-password" element={<ResetPassword />} />
+                <Route path="mfa-verify" element={<MFAVerify />} />
               </Route>
 
               {/* Protected routes — AuthGate redirects to /login if signed out */}

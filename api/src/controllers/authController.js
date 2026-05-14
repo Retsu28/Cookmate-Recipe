@@ -167,7 +167,7 @@ exports.login = async (req, res) => {
 
     const normalizedEmail = normalizeEmail(email);
     const result = await pool.query(
-      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, password_hash, failed_login_attempts, locked_until FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, password_hash, failed_login_attempts, locked_until, mfa_enabled FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
       [normalizedEmail]
     );
 
@@ -214,6 +214,11 @@ exports.login = async (req, res) => {
         'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
         [row.id]
       );
+    }
+
+    // MFA gate — return 202 so the client redirects to the verification screen
+    if (row.mfa_enabled) {
+      return res.status(202).json({ mfaRequired: true, mfaUserId: row.id });
     }
 
     const user = toPublicUser(row);
@@ -468,7 +473,7 @@ exports.firebase = async (req, res) => {
     // 1) Try by firebase_uid (returning user already linked).
     let row;
     const byUid = await pool.query(
-      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid FROM users WHERE firebase_uid = $1 LIMIT 1',
+      'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid, mfa_enabled FROM users WHERE firebase_uid = $1 LIMIT 1',
       [firebaseUid]
     );
     if (byUid.rowCount > 0) {
@@ -481,7 +486,7 @@ exports.firebase = async (req, res) => {
     } else {
       // 2) Match an existing legacy account by email and link it.
       const byEmail = await pool.query(
-        'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
+        'SELECT id, email, full_name, avatar_url, notifications_enabled, role, firebase_uid, mfa_enabled FROM users WHERE LOWER(BTRIM(email)) = $1 LIMIT 1',
         [normalizedEmail]
       );
       if (byEmail.rowCount > 0) {
@@ -531,6 +536,11 @@ exports.firebase = async (req, res) => {
         }
         row = inserted.rows[0];
       }
+    }
+
+    // MFA gate — return 202 so the client redirects to the verification screen
+    if (row.mfa_enabled) {
+      return res.status(202).json({ mfaRequired: true, mfaUserId: row.id });
     }
 
     const user = toPublicUser(row);

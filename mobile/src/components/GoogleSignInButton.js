@@ -27,7 +27,7 @@ import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/authService';
+import { authService, MfaRequiredError } from '../services/authService';
 import { useAppTheme } from '../context/ThemeContext';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -123,7 +123,7 @@ function getGoogleErrorMessage(err, statusCodes = {}) {
   return err?.message || 'Google sign-in failed. Please try again.';
 }
 
-export default function GoogleSignInButton({ label = 'Continue with Google', onError }) {
+export default function GoogleSignInButton({ label = 'Continue with Google', onError, onMfaRequired }) {
   const { login } = useAuth();
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -238,6 +238,10 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
         await handleExpoGoProxySignIn();
       }
     } catch (err) {
+      if (err instanceof MfaRequiredError) {
+        onMfaRequired?.(err.mfaUserId);
+        return;
+      }
       const moduleStatusCodes = nativeGoogleSignInModule?.statusCodes;
       const message = getGoogleErrorMessage(err, moduleStatusCodes);
       if (message) onError?.(message);

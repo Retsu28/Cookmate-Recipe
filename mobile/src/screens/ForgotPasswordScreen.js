@@ -18,7 +18,6 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
-import AuthVideoBackground from '../components/AuthVideoBackground';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,7 +69,6 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView

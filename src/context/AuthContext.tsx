@@ -40,6 +40,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<AuthUser>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<AuthUser>;
+  loginWithSession: (user: AuthUser, token: string) => void;
   logout: () => Promise<void>;
 }
 
@@ -109,6 +110,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return res.user;
   }, []);
 
+  const loginWithSession = useCallback((sessionUser: AuthUser, token: string) => {
+    try {
+      localStorage.setItem('cookmate.auth.token', token);
+      localStorage.setItem('cookmate.auth.user', JSON.stringify(sessionUser));
+    } catch { /* noop */ }
+    setUser(sessionUser);
+    if (sessionUser.id) restoreAppearance(sessionUser.id);
+    setShowPostLoginSplash(true);
+  }, []);
+
   const logout = useCallback(async () => {
     setIsLoggingOut(true);
     setShowLogoutSplash(true);
@@ -149,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       signup,
       loginWithGoogle,
+      loginWithSession,
       logout,
     }),
     [
@@ -163,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       signup,
       loginWithGoogle,
+      loginWithSession,
       logout,
     ]
   );

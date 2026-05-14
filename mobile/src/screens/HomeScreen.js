@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -112,6 +112,8 @@ export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const [featuredRecipes, setFeaturedRecipes] = useState(fallbackFeatured);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const carouselIndexRef = useRef(0);
+  const featuredLenRef = useRef(fallbackFeatured.length);
   const carouselTimerRef = useRef(null);
   // Per-element stagger animations for text content
   const badgeAnim   = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
@@ -144,7 +146,7 @@ export default function HomeScreen({ navigation }) {
     ? (user.avatar_url.startsWith('http') ? user.avatar_url : `${apiBaseUrl}${user.avatar_url}`)
     : null;
 
-  const cardStyle = {
+  const cardStyle = useMemo(() => ({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -154,7 +156,7 @@ export default function HomeScreen({ navigation }) {
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: isDark ? 0 : 2,
-  };
+  }), [colors, isDark]);
 
   const loadMealPlans = useCallback(async ({ showLoader = true } = {}) => {
     if (showLoader) setPlannedMealsLoading(true);
@@ -168,7 +170,7 @@ export default function HomeScreen({ navigation }) {
     }
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setHomeSectionsLoading(true);
     setHomeSectionsError(null);
     try {
@@ -226,7 +228,7 @@ export default function HomeScreen({ navigation }) {
       setRefreshing(false);
       setHomeSectionsLoading(false);
     }
-  };
+  }, []);
 
   const goToSlide = useCallback((idx) => {
     // 1. Stagger OUT: each element exits with a slight delay (badge → title → desc → btn)
@@ -238,7 +240,8 @@ export default function HomeScreen({ navigation }) {
     );
 
     Animated.parallel(outAnims).start(() => {
-      // 2. Swap the active index (image and text will now reference new recipe)
+      // 2. Swap the active index via both state (for render) and ref (for timer)
+      carouselIndexRef.current = idx;
       setCarouselIndex(idx);
 
       // 3. Stagger IN: elements fly up in sequence (badge first, button last)
@@ -250,23 +253,29 @@ export default function HomeScreen({ navigation }) {
       );
       Animated.parallel(inAnims).start();
     });
-  }, [carouselIndex]); // textElems ref is stable — no need in deps
+  }, []); // textElems ref is stable; no state deps needed
 
   const goNext = useCallback(() => {
-    if (featuredRecipes.length < 2) return;
-    goToSlide((carouselIndex + 1) % featuredRecipes.length);
-  }, [carouselIndex, featuredRecipes.length, goToSlide]);
+    const len = featuredLenRef.current;
+    if (len < 2) return;
+    goToSlide((carouselIndexRef.current + 1) % len);
+  }, [goToSlide]);
 
   const goPrev = useCallback(() => {
-    if (featuredRecipes.length < 2) return;
-    goToSlide((carouselIndex - 1 + featuredRecipes.length) % featuredRecipes.length);
-  }, [carouselIndex, featuredRecipes.length, goToSlide]);
+    const len = featuredLenRef.current;
+    if (len < 2) return;
+    goToSlide((carouselIndexRef.current - 1 + len) % len);
+  }, [goToSlide]);
+
+  useEffect(() => {
+    featuredLenRef.current = featuredRecipes.length;
+  }, [featuredRecipes.length]);
 
   useEffect(() => {
     if (featuredRecipes.length < 2) return;
     carouselTimerRef.current = setInterval(goNext, 4500);
     return () => { if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); };
-  }, [featuredRecipes.length, goNext]);
+  }, [goNext]);
 
   useEffect(() => {
     fetchData();
@@ -276,7 +285,7 @@ export default function HomeScreen({ navigation }) {
       duration: 420,
       useNativeDriver: true,
     }).start();
-  }, [user?.id, loadMealPlans]);
+  }, [user?.id, fetchData, loadMealPlans]);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user?.id) {
@@ -353,16 +362,11 @@ export default function HomeScreen({ navigation }) {
     }, [loadMealPlans, fetchUnreadCount, user?.id])
   );
 
+  const introTranslateY = useRef(
+    introAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] })
+  ).current;
   const introStyle = {
-    opacity: 1,
-    transform: [
-      {
-        translateY: introAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [18, 0],
-        }),
-      },
-    ],
+    transform: [{ translateY: introTranslateY }],
   };
 
   const onRefresh = () => {

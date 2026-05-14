@@ -48,12 +48,23 @@ async function clearStoredSession() {
  * Exchange the current Firebase user for a CookMate backend session.
  * Forces a fresh ID token so the latest email_verified claim is sent.
  */
+export class MfaRequiredError extends Error {
+  constructor(userId) {
+    super('MFA_REQUIRED');
+    this.name = 'MfaRequiredError';
+    this.mfaUserId = userId;
+  }
+}
+
 async function exchangeFirebaseUser(fbUser, name) {
   const idToken = await fbUser.getIdToken(true);
-  const { data } = await api.post('/api/auth/firebase', {
+  const { data, status } = await api.post('/api/auth/firebase', {
     idToken,
     name: name || fbUser.displayName || undefined,
   });
+  if (status === 202 && data.mfaRequired) {
+    throw new MfaRequiredError(data.mfaUserId);
+  }
   const result = { token: data.token, user: data.user };
   await persist(result);
   return result;

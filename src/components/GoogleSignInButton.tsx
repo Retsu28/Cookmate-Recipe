@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { isAdminUser } from '@/services/authService';
+import { isAdminUser, MfaRequiredError } from '@/services/authService';
 
 interface Props {
   /** Affects the button label only. */
@@ -44,6 +44,10 @@ export function GoogleSignInButton({ text = 'continue_with', onError }: Props) {
       const user = await loginWithGoogle('');
       navigate(isAdminUser(user) ? '/admin' : from, { replace: true });
     } catch (err) {
+      if (err instanceof MfaRequiredError) {
+        navigate('/mfa-verify', { state: { mfaUserId: err.mfaUserId }, replace: true });
+        return;
+      }
       const code = (err as { code?: string } | null)?.code;
       // Don't surface user-cancelled popups as errors.
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {

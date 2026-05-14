@@ -21,7 +21,6 @@ import { authService } from '../services/authService';
 import { useAuthAnimations } from '../hooks/useAuthAnimations';
 import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
-import AuthVideoBackground from '../components/AuthVideoBackground';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -130,7 +129,6 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <AuthVideoBackground />
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView

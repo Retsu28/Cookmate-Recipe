@@ -25,7 +25,7 @@ import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { useAppTheme } from '../context/ThemeContext';
-import { profileApi, settingsApi, recipeApi, apiBaseUrl } from '../api/api';
+import { profileApi, settingsApi, recipeApi, mfaApi, apiBaseUrl } from '../api/api';
 import OptimizedImage from '../components/OptimizedImage';
 import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
@@ -257,6 +257,82 @@ export default function ProfileScreen({ navigation }) {
     weeklyDigest: form.weeklyDigest,
   });
   
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
+  const [mfaDisableLoading, setMfaDisableLoading] = useState(false);
+
+  // Fetch MFA status from DB whenever: user changes, tab switches to privacy, or screen regains focus
+  const fetchMfaStatus = React.useCallback(() => {
+    if (!user?.id) {
+      setMfaEnabled(false);
+      return;
+    }
+    if (activeTab !== 'privacy') return;
+    let cancelled = false;
+    setMfaStatusLoading(true);
+    mfaApi.getStatus()
+      .then((res) => {
+        if (!cancelled) setMfaEnabled(res.data?.mfa_enabled === true);
+      })
+      .catch(() => { if (!cancelled) setMfaEnabled(false); })
+      .finally(() => { if (!cancelled) setMfaStatusLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, user?.id]);
+
+  // Run on tab switch or user change
+  useEffect(() => {
+    fetchMfaStatus();
+  }, [fetchMfaStatus]);
+
+  // Run every time the screen regains focus (handles back-navigation from MFASetupScreen)
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchMfaStatus();
+    }, [fetchMfaStatus])
+  );
+
+  const handleMfaToggle = () => {
+    if (mfaEnabled) {
+      // Disable flow: prompt for code then disable
+      Alert.prompt(
+        'Disable Two-Factor Authentication',
+        'Enter the 6-digit code from your authenticator app to confirm.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable MFA',
+            style: 'destructive',
+            onPress: async (code) => {
+              if (!code || !/^\d{6}$/.test(code.trim())) {
+                Alert.alert('Invalid Code', 'Please enter a valid 6-digit code.');
+                return;
+              }
+              setMfaDisableLoading(true);
+              try {
+                await mfaApi.disable(code.trim());
+                setMfaEnabled(false);
+                Alert.alert('MFA Disabled', 'Two-Factor Authentication has been turned off.');
+              } catch (err) {
+                Alert.alert('Error', err?.response?.data?.error || 'Failed to disable MFA. Please try again.');
+              } finally {
+                setMfaDisableLoading(false);
+              }
+            },
+          },
+        ],
+        'plain-text',
+        '',
+        'number-pad'
+      );
+    } else {
+      // Enable flow: go to setup screen
+      navigation.navigate('MFASetup', {
+        onEnabled: () => setMfaEnabled(true),
+      });
+    }
+  };
+
   // Check for unsaved changes
   const hasUnsavedAppearance = draftTheme !== appliedTheme || draftFontSize !== appliedFontSize;
   const hasUnsavedNotifications = 
@@ -1166,6 +1242,63 @@ export default function ProfileScreen({ navigation }) {
                   </View>
                 </View>
 
+                {/* Two-Factor Authentication */}
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <SectionHeader
+                    icon="lock-closed-outline"
+                    title="Two-Factor Authentication"
+                    caption="Add an extra layer of security to your account."
+                    colors={colors}
+                  />
+
+                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
+                    <View style={st.settingLeft}>
+                      <View style={[st.mfaIconWrap, { backgroundColor: mfaEnabled ? colors.primarySoft : colors.surfaceAlt }]}>
+                        <Ionicons
+                          name={mfaEnabled ? 'shield-checkmark' : 'shield-outline'}
+                          size={18}
+                          color={mfaEnabled ? colors.primary : colors.textMuted}
+                        />
+                      </View>
+                      <View>
+                        <Text style={[st.settingLabel, { color: colors.text }]}>Authenticator App (TOTP)</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          {mfaStatusLoading ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                          ) : (
+                            <View style={[
+                              st.mfaStatusBadge,
+                              { backgroundColor: mfaEnabled ? '#dcfce7' : colors.surfaceAlt }
+                            ]}>
+                              <View style={[
+                                st.mfaStatusDot,
+                                { backgroundColor: mfaEnabled ? '#16a34a' : colors.textSubtle }
+                              ]} />
+                              <Text style={[
+                                st.mfaStatusText,
+                                { color: mfaEnabled ? '#16a34a' : colors.textMuted }
+                              ]}>
+                                {mfaEnabled ? 'Enabled' : 'Disabled'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                    {mfaDisableLoading ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Switch
+                        value={mfaEnabled}
+                        onValueChange={handleMfaToggle}
+                        disabled={mfaStatusLoading || mfaDisableLoading}
+                        trackColor={{ false: colors.border, true: colors.primary }}
+                        thumbColor={'#ffffff'}
+                      />
+                    )}
+                  </View>
+                </View>
+
                 <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <SectionHeader
                     icon="document-text-outline"
@@ -1346,4 +1479,8 @@ const st = StyleSheet.create({
   miniLabel: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 2 },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
   badgeText: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 0.5, textTransform: 'uppercase' },
+  mfaIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  mfaStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  mfaStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  mfaStatusText: { fontFamily: 'Geist_600SemiBold', fontSize: 11 },
 });

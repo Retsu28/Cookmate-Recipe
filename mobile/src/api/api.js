@@ -205,4 +205,12 @@ export const chatApi = {
   getHistory: () => api.get('/api/chat/history'),
 };
 
+export const mfaApi = {
+  getStatus: () => api.get('/api/mfa/status'),
+  setup: () => api.post('/api/mfa/setup'),
+  enable: (secret, token) => api.post('/api/mfa/enable', { secret, token }),
+  disable: (token) => api.post('/api/mfa/disable', { token }),
+  verify: (userId, token) => api.post('/api/mfa/verify', { userId, token }),
+};
+
 export default api;

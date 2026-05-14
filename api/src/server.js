@@ -30,6 +30,16 @@ async function startServer() {
     logger.warn({ err }, 'Admin bootstrap skipped — run database/schema.sql then restart.');
   }
 
+  // Ensure MFA columns exist (idempotent migration)
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret TEXT;
+    `);
+  } catch (err) {
+    logger.warn({ err }, '[server] MFA column migration skipped');
+  }
+
   // Ensure last_active_at column exists (idempotent migration)
   try {
     await pool.query(`
@@ -96,7 +106,7 @@ async function startServer() {
   // (POST/PUT/PATCH/DELETE) must echo it back in the X-CSRF-Token header.
   const CSRF_COOKIE = 'cookmate.csrf';
   const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-  const CSRF_SKIP_PATHS = new Set(['/api/auth/firebase', '/api/auth/google', '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/health']);
+  const CSRF_SKIP_PATHS = new Set(['/api/auth/firebase', '/api/auth/google', '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/health', '/api/mfa/verify']);
 
   app.use((req, res, next) => {
     // Always issue a fresh CSRF token cookie if missing

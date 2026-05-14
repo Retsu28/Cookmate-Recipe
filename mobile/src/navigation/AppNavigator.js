@@ -6,6 +6,7 @@ import BottomTabNavigator from './BottomTabNavigator';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { ContentSkeleton } from '../components/SkeletonPlaceholder';
+import AuthVideoBackground from '../components/AuthVideoBackground';
 
 // Protected stack screens
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
@@ -21,6 +22,8 @@ import SavedRecipesScreen from '../screens/SavedRecipesScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import MFAVerificationScreen from '../screens/MFAVerificationScreen';
+import MFASetupScreen from '../screens/MFASetupScreen';
 
 const Stack = createStackNavigator();
 
@@ -64,6 +67,7 @@ function authCardStyleInterpolator({ current, next, layouts }) {
 function AuthStack() {
   return (
     <View style={styles.authRoot}>
+      <AuthVideoBackground />
       <View style={styles.authNavigatorLayer}>
         <Stack.Navigator
           initialRouteName="Login"
@@ -84,6 +88,7 @@ function AuthStack() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="MFAVerification" component={MFAVerificationScreen} />
         </Stack.Navigator>
       </View>
     </View>
@@ -189,6 +194,7 @@ function AppStack({ colors }) {
       <Stack.Screen name="StartCookingSplash" component={StartCookingSplashScreen} options={sharedOptions} />
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={sharedOptions} />
       <Stack.Screen name="SavedRecipes" component={SavedRecipesScreen} options={sharedOptions} />
+      <Stack.Screen name="MFASetup" component={MFASetupScreen} options={sharedOptions} />
     </Stack.Navigator>
   );
 }

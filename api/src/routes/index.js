@@ -12,6 +12,7 @@ const chatRoutes = require('./chat');
 const mlRoutes = require('./ml');
 const mlAnalyticsRoutes = require('./mlAnalytics');
 const adminRoutes = require('./admin');
+const mfaRoutes = require('./mfa');
 
 const router = Router();
 
@@ -33,5 +34,6 @@ router.use('/chat', chatRoutes);
 router.use('/ml', mlRoutes);
 router.use('/ml-analytics', mlAnalyticsRoutes);
 router.use('/admin', adminRoutes);
+router.use('/mfa', mfaRoutes);
 
 module.exports = router;

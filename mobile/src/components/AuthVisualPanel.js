@@ -32,7 +32,7 @@ function buildFloaters(count = 10) {
   return items;
 }
 
-const FLOATERS = buildFloaters();
+const FLOATERS = buildFloaters(6);
 
 // ── Animated floating icon ──────────────────────────────────────────
 function FloatingIcon({ icon, size, left, top, delay, duration, opacity, color }) {

@@ -4,7 +4,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
-import { isAdminUser } from '@/services/authService';
+import { isAdminUser, MfaRequiredError } from '@/services/authService';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -72,6 +72,10 @@ export default function Login() {
       const signedInUser = await login(email.trim(), password);
       navigate(isAdminUser(signedInUser) ? '/admin' : from, { replace: true });
     } catch (err) {
+      if (err instanceof MfaRequiredError) {
+        navigate('/mfa-verify', { state: { mfaUserId: err.mfaUserId }, replace: true });
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Unable to sign in. Please try again.';
       setError(msg);
     } finally {

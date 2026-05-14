@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, PackageOpen, ShieldCheck, Trash2, WifiOff, type LucideIcon } from 'lucide-react';
+import { Eye, KeyRound, PackageOpen, ShieldCheck, Trash2, WifiOff, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import profileService from '@/services/profileService';
 import settingsService from '@/services/settingsService';
+import { mfaService } from '@/services/mfaService';
+import MFASetupModal from '@/components/MFASetupModal';
+import MFADisableModal from '@/components/MFADisableModal';
 
 type PrivacyPreferences = {
   showKitchenInventory: boolean;
@@ -85,10 +88,6 @@ function ToggleRow({ title, description, checked, icon: Icon, onChange, disabled
 
 function normalizePreferences(value: Record<string, unknown>): PrivacyPreferences {
   return {
-    isProfilePublic:
-      typeof value.isProfilePublic === 'boolean'
-        ? value.isProfilePublic
-        : defaultPreferences.isProfilePublic,
     showKitchenInventory:
       typeof value.showKitchenInventory === 'boolean'
         ? value.showKitchenInventory
@@ -102,12 +101,28 @@ export default function PrivacySettings() {
   const isOnline = useOnlineStatus();
   const [preferences, setPreferences] = useState<PrivacyPreferences>(defaultPreferences);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  // MFA state
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
+  const [showMfaSetup, setShowMfaSetup] = useState(false);
+  const [showMfaDisable, setShowMfaDisable] = useState(false);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [currentPassword, setCurrentPassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Load MFA status
+  useEffect(() => {
+    if (!user?.id) return;
+    setMfaStatusLoading(true);
+    mfaService.getStatus()
+      .then((data) => setMfaEnabled(data.mfa_enabled))
+      .catch(() => {})
+      .finally(() => setMfaStatusLoading(false));
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -133,21 +148,6 @@ export default function PrivacySettings() {
 
   const togglePreference = (id: keyof PrivacyPreferences) => {
     setPreferences((current) => ({ ...current, [id]: !current[id] }));
-  };
-
-  const savePreferences = async () => {
-    if (!user?.id) return;
-
-    setSaving(true);
-    try {
-      const saved = await settingsService.saveSettings(String(user.id), 'privacy', preferences);
-      setPreferences(normalizePreferences(saved));
-      toast.success('Privacy settings saved.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save privacy settings.');
-    } finally {
-      setSaving(false);
-    }
   };
 
   const openDeleteModal = () => {
@@ -201,7 +201,57 @@ export default function PrivacySettings() {
           </div>
         )}
 
+        {/* Two-Factor Authentication */}
+        <div className="mb-4">
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400">Two-Factor Authentication</h3>
+          <div className={`flex w-full items-start justify-between gap-4 rounded-2xl border p-4 transition-all ${
+            mfaEnabled
+              ? 'border-orange-200 bg-orange-50/70 dark:border-orange-500/30 dark:bg-orange-950/20'
+              : 'border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-800/50'
+          }`}>
+            <span className="flex min-w-0 items-start gap-3">
+              <span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${
+                mfaEnabled ? 'bg-orange-100 text-orange-600' : 'bg-stone-100 text-stone-500'
+              }`}>
+                <KeyRound className="size-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className="block text-base font-extrabold text-stone-900 dark:text-stone-100">Authenticator App (TOTP)</span>
+                  {mfaEnabled && (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-green-700 dark:bg-green-950/50 dark:text-green-300">
+                      Enabled
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 block text-sm font-medium leading-relaxed text-stone-500 dark:text-stone-400">
+                  {mfaEnabled
+                    ? 'Your account is protected with Google Authenticator or Authy.'
+                    : 'Require a 6-digit code from your authenticator app at every sign-in.'}
+                </span>
+              </span>
+            </span>
+            {mfaStatusLoading ? (
+              <div className="mt-1 w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin shrink-0" />
+            ) : (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={mfaEnabled}
+                onClick={() => mfaEnabled ? setShowMfaDisable(true) : setShowMfaSetup(true)}
+                disabled={!isOnline}
+                className={`mt-1 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  mfaEnabled ? 'bg-orange-500' : 'bg-stone-200 dark:bg-stone-700'
+                }`}
+              >
+                <span className={`size-5 rounded-full bg-white shadow-sm transition-transform ${mfaEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="grid gap-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Visibility</h3>
           {rows.map((row) => (
             <ToggleRow
               key={row.id}
@@ -233,11 +283,6 @@ export default function PrivacySettings() {
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-orange-100 pt-6 dark:border-stone-700">
-          <Button type="button" onClick={savePreferences} disabled={loading || saving || !user?.id || !isOnline} className="h-12 rounded-2xl px-8 text-xs font-bold uppercase tracking-widest">
-            {saving ? 'Saving...' : 'Save Privacy'}
-          </Button>
-        </div>
       </section>
 
       {showDeleteModal && (
@@ -304,6 +349,28 @@ export default function PrivacySettings() {
             )}
           </div>
         </div>
+      )}
+
+      {showMfaSetup && (
+        <MFASetupModal
+          onClose={() => setShowMfaSetup(false)}
+          onEnabled={() => {
+            setMfaEnabled(true);
+            setShowMfaSetup(false);
+            toast.success('Two-Factor Authentication enabled!');
+          }}
+        />
+      )}
+
+      {showMfaDisable && (
+        <MFADisableModal
+          onClose={() => setShowMfaDisable(false)}
+          onDisabled={() => {
+            setMfaEnabled(false);
+            setShowMfaDisable(false);
+            toast.success('Two-Factor Authentication disabled.');
+          }}
+        />
       )}
     </div>
   );
