@@ -145,23 +145,20 @@ async function startServer() {
     res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
   });
 
-  // ─── File Upload Routes - Mount BEFORE body parsers ───
-  // busboy needs the raw stream before express.json() consumes it
-  const recipeRoutes = require('./routes/recipes');
-  app.use('/api/recipes', recipeRoutes);
-
-  // Avatar upload needs to be before body parsers so busboy can read the raw multipart stream
-  const { handleAvatarUpload, uploadAvatarHandler } = require('./routes/profileUpload');
-  app.post('/api/profile/:userId/avatar', handleAvatarUpload, uploadAvatarHandler);
-
   // ─── Body Parsing ───
-  // Camera/image analysis routes need up to 15mb (base64 image data).
-  // All other routes use a tight 1mb limit.
+  // Applied early, but specific file upload routes will handle raw streams via busboy
   app.use('/api/ml/camera', express.json({ limit: '15mb' }));
   app.use('/api/ml/analyze-ingredients', express.json({ limit: '15mb' }));
   app.use('/api/ml/camera/remove-bg', express.json({ limit: '15mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+  // ─── Routes ───
+  const recipeRoutes = require('./routes/recipes');
+  app.use('/api/recipes', recipeRoutes);
+
+  const { handleAvatarUpload, uploadAvatarHandler } = require('./routes/profileUpload');
+  app.post('/api/profile/:userId/avatar', handleAvatarUpload, uploadAvatarHandler);
 
   // ─── Other API Routes ───
   app.use('/api/settings', settingsRouter);

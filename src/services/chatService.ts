@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { RecipeContext } from '@/context/AIChatContext';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -25,13 +26,19 @@ export interface ChatHistory {
  * Send a message to the AI chatbot
  * @param message - User's message
  * @param history - Previous conversation messages for context
+ * @param recipeContext - Optional recipe context when chatting from recipe page
  * @returns AI response with optional recipe suggestions
  */
 export async function sendMessage(
   message: string,
-  history: ChatMessage[] = []
+  history: ChatMessage[] = [],
+  recipeContext?: RecipeContext | null
 ): Promise<ChatResponse> {
-  return api.post<ChatResponse>('/api/chat', { message, history });
+  const payload: { message: string; history: ChatMessage[]; recipeContext?: RecipeContext } = { message, history };
+  if (recipeContext) {
+    payload.recipeContext = recipeContext;
+  }
+  return api.post<ChatResponse>('/api/chat', payload);
 }
 
 /**
@@ -48,8 +55,44 @@ export async function loadConversationHistory(): Promise<ChatMessage[]> {
 }
 
 /**
+ * Save feedback for an AI response
+ * @param messageIndex - Position in conversation
+ * @param feedbackType - 'up' or 'down'
+ * @param aiMessage - The AI response text
+ * @param userMessage - The user query that prompted the response
+ */
+export async function saveFeedback(
+  messageIndex: number,
+  feedbackType: 'up' | 'down',
+  aiMessage: string,
+  userMessage: string
+): Promise<void> {
+  await api.post('/api/chat/feedback', {
+    messageIndex,
+    feedbackType,
+    aiMessage,
+    userMessage
+  });
+}
+
+/**
  * Format timestamp for display
  */
+export interface RateLimitStatus {
+  dailyLimit: number;
+  usedToday: number;
+  remaining: number;
+  resetAt: string;
+}
+
+/**
+ * Get current rate limit status
+ * @returns Daily message limit and usage
+ */
+export async function getRateLimitStatus(): Promise<RateLimitStatus> {
+  return api.get<RateLimitStatus>('/api/chat/rate-limit');
+}
+
 export function formatChatTime(timestamp?: string): string {
   if (!timestamp) return '';
   const date = new Date(timestamp);

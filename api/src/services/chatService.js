@@ -54,10 +54,20 @@ async function getRelevantRecipes(pantryItems, limit = 20) {
     `SELECT id, title, normalized_ingredients 
      FROM recipes 
      WHERE is_published = true 
-     ORDER BY created_at DESC`
+     ORDER BY is_featured DESC, created_at DESC`
   );
   
   if (result.rowCount === 0) return [];
+  
+  // If no pantry items, return popular recipes (first 5)
+  if (!pantryItems || pantryItems.length === 0) {
+    return result.rows.slice(0, 5).map(recipe => ({
+      id: recipe.id,
+      title: recipe.title,
+      matchedIngredients: (recipe.normalized_ingredients || []).slice(0, 3),
+      score: 0
+    }));
+  }
   
   // Build pantry lookup set (lowercase for matching)
   const pantrySet = new Set(
@@ -82,11 +92,23 @@ async function getRelevantRecipes(pantryItems, limit = 20) {
     };
   });
   
-  // Sort by score descending, take top N
-  return scored
+  // Sort by score descending, take top N, filter out zero matches
+  const withMatches = scored
+    .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .filter(r => r.score > 0); // Only return recipes with at least one match
+    .slice(0, limit);
+  
+  // If no matches found, fall back to popular recipes
+  if (withMatches.length === 0) {
+    return result.rows.slice(0, 5).map(recipe => ({
+      id: recipe.id,
+      title: recipe.title,
+      matchedIngredients: ['Popular recipe'],
+      score: 0
+    }));
+  }
+  
+  return withMatches;
 }
 
 /**
@@ -203,11 +225,30 @@ async function getRecentMessages(userId, limit = 10) {
   return messages.slice(-limit);
 }
 
+/**
+ * Save feedback for an AI response
+ * @param {Object} params
+ * @param {number} params.userId
+ * @param {number} params.messageIndex
+ * @param {string} params.feedbackType - 'up' or 'down'
+ * @param {string} params.aiMessage
+ * @param {string} params.userMessage
+ * @returns {Promise<void>}
+ */
+async function saveFeedback({ userId, messageIndex, feedbackType, aiMessage, userMessage }) {
+  await pool.query(
+    `INSERT INTO chat_feedback (user_id, message_index, feedback_type, ai_message, user_message)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, messageIndex, feedbackType, aiMessage.slice(0, 2000), userMessage.slice(0, 2000)]
+  );
+}
+
 module.exports = {
   getUserPantry,
   getUserDietaryRestrictions,
   getRelevantRecipes,
   getConversation,
   saveMessage,
-  getRecentMessages
+  getRecentMessages,
+  saveFeedback
 };

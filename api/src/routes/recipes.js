@@ -7,6 +7,7 @@ const recipeController = require('../controllers/recipeController');
 const requireAdmin = require('../middleware/requireAdmin');
 const { requireAuth } = require('../middleware/requireAuth');
 const { auditLog } = require('../middleware/auditLog');
+const { pool } = require('../config/db');
 
 const MAX_VIDEO_SIZE = 30 * 1024 * 1024; // 30MB
 
@@ -130,6 +131,258 @@ router.get('/:id/saved-status', requireAuth, recipeController.getSavedStatus);
 router.post('/:id/save', requireAuth, recipeController.saveRecipe);
 router.delete('/:id/unsave', requireAuth, recipeController.unsaveByRecipeId);
 router.delete('/user/:userId/saved/:savedId', requireAuth, recipeController.unsaveRecipe);
+
+// Reviews endpoints
+// GET /api/recipes/:id/reviews - Get reviews for a recipe (public)
+// Query params: page (default 1), limit (default 10), sort (newest|highest|lowest|helpful)
+router.get('/:id/reviews', async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(recipeId)) {
+      return res.status(400).json({ error: 'Invalid recipe ID.' });
+    }
+
+    // Pagination params
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+    const offset = (page - 1) * limit;
+
+    // Sorting
+    const sort = req.query.sort || 'newest';
+    const orderByMap = {
+      newest: 'rv.created_at DESC',
+      highest: 'rv.rating DESC, rv.created_at DESC',
+      lowest: 'rv.rating ASC, rv.created_at DESC',
+      helpful: 'helpful_count DESC, rv.created_at DESC',
+    };
+    const orderBy = orderByMap[sort] || orderByMap.newest;
+
+    const result = await pool.query(
+      `SELECT rv.id, rv.rating, rv.comment, rv.created_at,
+              u.id AS user_id, u.full_name, u.avatar_url,
+              COUNT(CASE WHEN rh.is_helpful = true THEN 1 END)::int AS helpful_count,
+              COUNT(CASE WHEN rh.is_helpful = false THEN 1 END)::int AS unhelpful_count
+       FROM reviews rv
+       JOIN users u ON u.id = rv.user_id
+       LEFT JOIN review_helpfulness rh ON rh.review_id = rv.id
+       WHERE rv.recipe_id = $1 AND rv.is_hidden = FALSE
+       GROUP BY rv.id, u.id
+       ORDER BY ${orderBy}
+       LIMIT $2 OFFSET $3`,
+      [recipeId, limit, offset]
+    );
+
+    // Get total count for pagination
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int as total FROM reviews WHERE recipe_id = $1 AND is_hidden = FALSE`,
+      [recipeId]
+    );
+
+    // Get stats
+    const statsResult = await pool.query(
+      `SELECT COUNT(*)::int AS total_reviews,
+              ROUND(AVG(rating)::numeric, 1)::float AS avg_rating,
+              COUNT(*) FILTER (WHERE rating = 5)::int AS five_star,
+              COUNT(*) FILTER (WHERE rating = 4)::int AS four_star,
+              COUNT(*) FILTER (WHERE rating = 3)::int AS three_star,
+              COUNT(*) FILTER (WHERE rating = 2)::int AS two_star,
+              COUNT(*) FILTER (WHERE rating = 1)::int AS one_star
+       FROM reviews
+       WHERE recipe_id = $1 AND is_hidden = FALSE`,
+      [recipeId]
+    );
+
+    res.json({
+      reviews: result.rows,
+      stats: statsResult.rows[0],
+      pagination: {
+        page,
+        limit,
+        total: countResult.rows[0].total,
+        totalPages: Math.ceil(countResult.rows[0].total / limit),
+      }
+    });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews] failed:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews.' });
+  }
+});
+
+// GET /api/recipes/:id/my-review - Get current user's review for this recipe
+router.get('/:id/my-review', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    if (!Number.isFinite(recipeId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, rating, comment, created_at
+       FROM reviews
+       WHERE recipe_id = $1 AND user_id = $2`,
+      [recipeId, userId]
+    );
+
+    res.json({ review: result.rows[0] || null });
+  } catch (err) {
+    logger.error('[recipes/:id/my-review] failed:', err);
+    res.status(500).json({ error: 'Failed to fetch review.' });
+  }
+});
+
+// POST /api/recipes/:id/reviews - Submit or update a review
+router.post('/:id/reviews', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    const { rating, comment } = req.body;
+
+    if (!Number.isFinite(recipeId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5.' });
+    }
+    if (comment && comment.length > 500) {
+      return res.status(400).json({ error: 'Comment must be 500 characters or less.' });
+    }
+
+    // Upsert review (insert or update if user already reviewed this recipe)
+    const result = await pool.query(
+      `INSERT INTO reviews (recipe_id, user_id, rating, comment)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (recipe_id, user_id)
+       DO UPDATE SET rating = $3, comment = $4, created_at = CURRENT_TIMESTAMP
+       RETURNING id, rating, comment, created_at`,
+      [recipeId, userId, rating, comment || null]
+    );
+
+    res.json({ review: result.rows[0] });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews POST] failed:', err);
+    res.status(500).json({ error: 'Failed to submit review.' });
+  }
+});
+
+// DELETE /api/recipes/:id/reviews - Delete current user's review
+router.delete('/:id/reviews', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    if (!Number.isFinite(recipeId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+
+    await pool.query(
+      'DELETE FROM reviews WHERE recipe_id = $1 AND user_id = $2',
+      [recipeId, userId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews DELETE] failed:', err);
+    res.status(500).json({ error: 'Failed to delete review.' });
+  }
+});
+
+// POST /api/recipes/:id/reviews/:reviewId/helpful - Vote on review helpfulness
+router.post('/:id/reviews/:reviewId/helpful', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = req.user?.id;
+    const { isHelpful } = req.body;
+
+    if (!Number.isFinite(recipeId) || !Number.isFinite(reviewId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+    if (typeof isHelpful !== 'boolean') {
+      return res.status(400).json({ error: 'isHelpful must be true or false.' });
+    }
+
+    // Verify review exists and belongs to this recipe
+    const reviewCheck = await pool.query(
+      'SELECT id FROM reviews WHERE id = $1 AND recipe_id = $2',
+      [reviewId, recipeId]
+    );
+    if (reviewCheck.rowCount === 0) {
+      return res.status(404).json({ error: 'Review not found.' });
+    }
+
+    // Upsert helpfulness vote
+    const result = await pool.query(
+      `INSERT INTO review_helpfulness (review_id, user_id, is_helpful)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (review_id, user_id)
+       DO UPDATE SET is_helpful = $3, created_at = CURRENT_TIMESTAMP
+       RETURNING id, is_helpful`,
+      [reviewId, userId, isHelpful]
+    );
+
+    res.json({ vote: result.rows[0] });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews/:reviewId/helpful] failed:', err);
+    res.status(500).json({ error: 'Failed to record vote.' });
+  }
+});
+
+// DELETE /api/recipes/:id/reviews/:reviewId/helpful - Remove helpfulness vote
+router.delete('/:id/reviews/:reviewId/helpful', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const userId = req.user?.id;
+
+    if (!Number.isFinite(recipeId) || !Number.isFinite(reviewId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+
+    await pool.query(
+      'DELETE FROM review_helpfulness WHERE review_id = $1 AND user_id = $2',
+      [reviewId, userId]
+    );
+
+    res.json({ message: 'Vote removed.' });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews/:reviewId/helpful DELETE] failed:', err);
+    res.status(500).json({ error: 'Failed to remove vote.' });
+  }
+});
+
+// Admin: Hide/unhide review
+router.patch('/:id/reviews/:reviewId/hide', requireAdmin, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const reviewId = parseInt(req.params.reviewId, 10);
+    const adminId = req.user?.id;
+    const { isHidden, reason } = req.body;
+
+    if (!Number.isFinite(recipeId) || !Number.isFinite(reviewId)) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE reviews
+       SET is_hidden = $1,
+           flagged_reason = COALESCE($2, flagged_reason),
+           moderated_at = CURRENT_TIMESTAMP,
+           moderated_by = $3
+       WHERE id = $4 AND recipe_id = $5
+       RETURNING id, is_hidden`,
+      [isHidden === true, reason || null, adminId, reviewId, recipeId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Review not found.' });
+    }
+
+    res.json({ review: result.rows[0] });
+  } catch (err) {
+    logger.error('[recipes/:id/reviews/:reviewId/hide] failed:', err);
+    res.status(500).json({ error: 'Failed to moderate review.' });
+  }
+});
 
 // Public: must be AFTER all named routes to avoid catching them as :id
 router.get('/:id', recipeController.getById);

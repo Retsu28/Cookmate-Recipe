@@ -7,8 +7,9 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import {
   Clock, ChefHat, Users, Flame, Info,
-  CheckCircle2, Printer, Share2, Heart,
-  ShoppingCart, Star, ArrowLeft, Play, Pause, Volume2, VolumeX, X, Sparkles, Loader2, CalendarPlus, WifiOff
+  Printer, Share2, Heart,
+  Star, ArrowLeft, Play, Pause, Volume2, VolumeX, X, Sparkles, Loader2, WifiOff,
+  Calendar, CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -17,8 +18,10 @@ import { getRecipeByIdCached } from '@/offline/cacheService';
 import { OFFLINE_MESSAGE } from '@/offline/network';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
+import { useAIChat } from '@/context/AIChatContext';
 import { AddToPlannerModal } from '@/components/meal-planner/AddToPlannerModal';
 import StartCookingSplash from '@/components/StartCookingSplash';
+import { ReviewSection } from '@/components/recipe/ReviewSection';
 
 interface Ingredient {
   id: number;
@@ -59,20 +62,31 @@ export default function RecipeDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { openChat } = useAIChat();
   const isOnline = useOnlineStatus();
   const [recipe, setRecipe] = useState<DbRecipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [fromCache, setFromCache] = useState(false);
-  const [servings, setServings] = useState(4);
   const [isCooking, setIsCooking] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
   const [plannerModalOpen, setPlannerModalOpen] = useState(false);
   const [showStartCookingSplash, setShowStartCookingSplash] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [heartBounce, setHeartBounce] = useState(false);
+  const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
+
+  // Derived ingredient list from recipe
+  const ingredientList = recipe?.ingredients?.length
+    ? recipe.ingredients.map(i => ({ id: i.id, name: i.name, amount: i.quantity, unit: i.unit }))
+    : (recipe?.normalized_ingredients || []).map((name, idx) => ({ id: idx, name, amount: null, unit: null }));
+
+  const toggleIngredient = (ingId: number) => {
+    setCheckedIngredients(prev =>
+      prev.includes(ingId) ? prev.filter(id => id !== ingId) : [...prev, ingId]
+    );
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -84,7 +98,6 @@ export default function RecipeDetail() {
       .then(data => {
         setRecipe(data.recipe);
         setFromCache(!!(data as { fromCache?: boolean }).fromCache);
-        if (data.recipe.servings) setServings(data.recipe.servings);
       })
       .catch(err => {
         const isOfflineMiss = (err as { code?: string }).code === 'OFFLINE_CACHE_MISS';
@@ -132,25 +145,11 @@ export default function RecipeDetail() {
     }
   };
 
-  const baseServings = recipe?.servings || 4;
-  const scale = servings / baseServings;
-
-  const ingredientList: { id: number; name: string; amount: number | null; unit: string | null }[] =
-    recipe?.ingredients?.length
-      ? recipe.ingredients.map(i => ({ id: i.id, name: i.name, amount: i.quantity, unit: i.unit }))
-      : (recipe?.normalized_ingredients || []).map((name, idx) => ({ id: idx, name, amount: null, unit: null }));
-
   const steps = (recipe?.instructions || []).map((text, idx) => ({
     number: idx + 1,
     text,
     time: null as number | null,
   }));
-
-  const toggleIngredient = (ingId: number) => {
-    setCheckedIngredients(prev =>
-      prev.includes(ingId) ? prev.filter(item => item !== ingId) : [...prev, ingId]
-    );
-  };
 
   if (loading) {
     return (
@@ -290,14 +289,7 @@ export default function RecipeDetail() {
                 className={`flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-14 font-bold text-lg gap-2 shadow-lg shadow-orange-500/20 ${!isOnline ? 'opacity-50 cursor-not-allowed hover:bg-orange-500' : ''}`}
                 disabled={steps.length === 0}
               >
-                <Play size={20} fill="currentColor" /> Start Cooking
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setPlannerModalOpen(true)}
-                className="flex-1 h-14 rounded-full border-stone-200 font-bold text-lg gap-2 text-stone-700 hover:border-orange-500 hover:text-orange-500 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400"
-              >
-                <CalendarPlus size={20} /> Add to meal planner
+                <Play size={20} fill="currentColor" /> Start Cooking Guide
               </Button>
               <Button
                 variant="outline"
@@ -323,82 +315,46 @@ export default function RecipeDetail() {
           {/* Main Content (Ingredients & Steps) */}
           <div className="w-full lg:w-2/3 space-y-16">
 
-            {/* Ingredients */}
-            <section>
-              <div className="flex items-end justify-between mb-8">
+            {/* Plan This Meal CTA */}
+            <section className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-3xl p-8 border border-orange-200 dark:from-orange-950/20 dark:to-orange-900/10 dark:border-orange-500/20">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-3xl font-bold text-stone-900 mb-2 dark:text-stone-100">Ingredients</h2>
-                  <div className="flex items-center gap-3">
-                    <span className="text-stone-500 font-medium dark:text-stone-400">Servings</span>
-                    <div className="flex items-center gap-4 bg-stone-100 rounded-full px-4 py-1 dark:bg-stone-800">
-                      <button onClick={() => setServings(Math.max(1, servings - 1))} className="text-stone-500 hover:text-orange-500 font-bold text-xl dark:text-stone-400">-</button>
-                      <span className="font-bold text-stone-900 w-4 text-center dark:text-stone-100">{servings}</span>
-                      <button onClick={() => setServings(servings + 1)} className="text-stone-500 hover:text-orange-500 font-bold text-xl dark:text-stone-400">+</button>
-                    </div>
-                  </div>
+                  <h2 className="text-2xl font-bold text-stone-900 mb-2 dark:text-stone-100">Plan This Meal</h2>
+                  <p className="text-stone-600 dark:text-stone-400">Add to your meal planner to get a grocery list and reminders.</p>
                 </div>
-                <Button variant="ghost" className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 font-semibold gap-2 hidden sm:flex dark:hover:bg-orange-500/10">
-                  <ShoppingCart size={18} /> Add to list
+                <Button
+                  onClick={() => setPlannerModalOpen(true)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white font-semibold gap-2 px-6 py-6 rounded-2xl shadow-lg shadow-orange-500/20 transition-all hover:scale-105"
+                >
+                  <Calendar size={20} />
+                  Add to Meal Plan
                 </Button>
               </div>
-
-              <div className="space-y-3">
-                {ingredientList.map((ing) => {
-                  const isChecked = checkedIngredients.includes(ing.id);
-                  return (
-                    <div
-                      key={ing.id}
-                      onClick={() => toggleIngredient(ing.id)}
-                      className={`flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer select-none
-                        ${isChecked ? 'bg-stone-50 border-stone-200 opacity-60 dark:bg-stone-800 dark:border-stone-700' : 'bg-white border-stone-200 hover:border-orange-300 shadow-sm dark:bg-stone-800 dark:border-stone-700 dark:hover:border-orange-500/50'}
-                      `}
-                    >
-                      <div className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors border-2 
-                        ${isChecked ? 'bg-orange-500 border-orange-500 text-white' : 'border-stone-300 dark:border-stone-600'}`}
-                      >
-                        {isChecked && <CheckCircle2 size={16} />}
-                      </div>
-                      <span className={`flex-1 font-medium capitalize ${isChecked ? 'text-stone-500 line-through dark:text-stone-500' : 'text-stone-800 dark:text-stone-200'}`}>
-                        {ing.name}
-                      </span>
-                      {ing.amount != null && (
-                        <span className="font-bold text-stone-500 dark:text-stone-400">
-                          {parseFloat((ing.amount * scale).toFixed(1))} {ing.unit || ''}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-                {ingredientList.length === 0 && (
-                  <p className="text-stone-400 italic dark:text-stone-500">No ingredients listed for this recipe.</p>
-                )}
-              </div>
             </section>
 
-            {/* Instructions */}
+            {/* Ingredients - Simple List */}
             <section>
-              <h2 className="text-3xl font-bold text-stone-900 mb-8 dark:text-stone-100">Instructions</h2>
-              <div className="space-y-8">
-                {steps.map((step, idx) => (
-                  <div key={idx} className="flex gap-6">
-                    <div className="flex flex-col items-center shrink-0">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white shadow-lg shadow-orange-500/20">
-                        {step.number}
-                      </div>
-                      {idx !== steps.length - 1 && (
-                        <div className="w-0.5 h-full bg-stone-200 mt-4 dark:bg-stone-700" />
-                      )}
-                    </div>
-                    <div className="pb-8">
-                      <p className="text-lg text-stone-700 leading-relaxed mb-4 dark:text-stone-300">{step.text}</p>
-                    </div>
-                  </div>
+              <h2 className="text-3xl font-bold text-stone-900 dark:text-stone-100 mb-6">Ingredients</h2>
+              <ul className="space-y-2 text-stone-700 dark:text-stone-300">
+                {ingredientList.map((ing) => (
+                  <li key={ing.id} className="flex items-baseline gap-2">
+                    <span className="text-orange-500">•</span>
+                    <span className="capitalize">{ing.name}</span>
+                    {ing.amount != null && (
+                      <span className="text-stone-500 dark:text-stone-400">
+                        — {ing.amount} {ing.unit || ''}
+                      </span>
+                    )}
+                  </li>
                 ))}
-                {steps.length === 0 && (
-                  <p className="text-stone-400 italic dark:text-stone-500">No instructions available for this recipe.</p>
+                {ingredientList.length === 0 && (
+                  <li className="text-stone-400 italic">No ingredients listed for this recipe.</li>
                 )}
-              </div>
+              </ul>
             </section>
+
+            {/* Reviews */}
+            <ReviewSection recipeId={recipe.id} />
 
           </div>
 
@@ -525,7 +481,17 @@ export default function RecipeDetail() {
                   <Sparkles size={32} className="text-orange-100" />
                   <h3 className="font-bold text-xl">Ask AI Assistant</h3>
                   <p className="text-orange-50">Need a substitute or want to make this recipe differently?</p>
-                  <Button className="w-full bg-white text-stone-900 hover:bg-stone-200 rounded-full px-8 font-bold">
+                  <Button 
+                    className="w-full bg-white text-stone-900 hover:bg-stone-200 rounded-full px-8 font-bold"
+                    onClick={() => openChat(recipe ? {
+                      id: recipe.id,
+                      title: recipe.title,
+                      ingredients: recipe.ingredients?.map(i => i.name) || recipe.normalized_ingredients || [],
+                      instructions: recipe.instructions || [],
+                      category: recipe.category || undefined,
+                      region: recipe.region_or_origin || undefined
+                    } : undefined)}
+                  >
                     Ask CookMate
                   </Button>
                 </CardContent>

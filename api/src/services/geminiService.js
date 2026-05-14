@@ -11,6 +11,9 @@ const DEFAULT_GEMINI_MODELS = [
   'gemini-2.0-flash',
   'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.0-pro',
 ];
 
 const AI_ANALYSIS_UNAVAILABLE = 'AI analysis is temporarily unavailable. Please try again.';
@@ -47,7 +50,12 @@ function shouldStopGeminiFallback(err) {
 
 function isGeminiQuotaError(err) {
   const message = String(err?.message || '');
-  return err?.status === 429 || /429|quota|too many requests/i.test(message);
+  return err?.status === 429 || /429|quota|too many requests|rate limit/i.test(message);
+}
+
+function isGeminiModelUnavailable(err) {
+  const message = String(err?.message || '');
+  return /model not found|not supported|not available|deprecated|404/i.test(message);
 }
 
 function parseJsonFromModel(responseText) {
@@ -248,6 +256,7 @@ async function generateChatResponse({ apiKey, systemPrompt, messages }) {
   const genAI = new GoogleGenerativeAI(apiKey);
   
   const modelNames = getGeminiModelNames();
+  const triedModels = [];
   let lastError = null;
 
   for (const modelName of modelNames) {
@@ -255,16 +264,12 @@ async function generateChatResponse({ apiKey, systemPrompt, messages }) {
       const model = genAI.getGenerativeModel({
         model: modelName,
         generationConfig: { 
-          temperature: 0.7, // Conversational, balanced creativity
-          maxOutputTokens: 500, // Keep responses concise
+          temperature: 0.7,
+          maxOutputTokens: 500,
         },
         systemInstruction: systemPrompt,
       });
 
-      // Separate prior history from the current user message.
-      // Gemini's startChat() history must NOT include the message we are about
-      // to send — including it there and then calling sendMessage() with it
-      // causes the model to see the same turn twice.
       const lastMessage = messages[messages.length - 1];
       const priorMessages = lastMessage?.role === 'user'
         ? messages.slice(0, -1)
@@ -286,17 +291,38 @@ async function generateChatResponse({ apiKey, systemPrompt, messages }) {
 
       const responseText = result.response.text();
       
+      // Log success if we had to fallback
+      if (triedModels.length > 0) {
+        logger.info(`[chat] Successfully used fallback model ${modelName} after trying: ${triedModels.join(', ')}`);
+      }
+      
       return {
         response: responseText.trim(),
         modelUsed: modelName,
       };
     } catch (err) {
       lastError = err;
-      if (shouldStopGeminiFallback(err)) throw err;
-      logger.warn(`[chat] Gemini model ${modelName} unavailable, trying fallback:`, err.message);
+      triedModels.push(modelName);
+      
+      // Check if we should stop trying
+      if (shouldStopGeminiFallback(err)) {
+        logger.error(`[chat] Critical error, stopping fallback chain:`, err.message);
+        throw err;
+      }
+      
+      // Log specific error types
+      if (isGeminiQuotaError(err)) {
+        logger.warn(`[chat] Model ${modelName} rate limited (quota):`, err.message);
+      } else if (isGeminiModelUnavailable(err)) {
+        logger.warn(`[chat] Model ${modelName} not available (404/deprecated):`, err.message);
+      } else {
+        logger.warn(`[chat] Model ${modelName} failed:`, err.message);
+      }
     }
   }
 
+  // All models failed
+  logger.error(`[chat] All ${modelNames.length} models failed. Tried: ${triedModels.join(', ')}`);
   throw lastError || new Error('No Gemini model is available for chat');
 }
 
@@ -306,6 +332,7 @@ module.exports = {
   generateChatResponse,
   geminiErrorPayload,
   isGeminiQuotaError,
+  isGeminiModelUnavailable,
   parseJsonFromModel,
   withTimeout,
   GEMINI_TIMEOUT_MS,

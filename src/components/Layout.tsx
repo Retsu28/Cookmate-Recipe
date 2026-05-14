@@ -5,6 +5,7 @@ import {
   Bell, Menu, ShieldCheck, X
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
+import { useAIChat } from '@/context/AIChatContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getInitial } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -100,7 +101,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isNestedInAppShell = useContext(LayoutShellContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { recipeContext, clearRecipeContext } = useAIChat();
   const { user } = useAuth();
+
+  // Clear recipe context when navigating away from recipe pages
+  useEffect(() => {
+    const isRecipePage = location.pathname.startsWith('/recipe/');
+    if (!isRecipePage && recipeContext) {
+      clearRecipeContext();
+    }
+  }, [location.pathname, recipeContext, clearRecipeContext]);
   const unreadCount = useUnreadNotifCount(user?.id);
   const profileInitial = getInitial(user?.name);
   const profileLabel = user?.name?.trim() || 'Profile';

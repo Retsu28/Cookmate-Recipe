@@ -59,12 +59,12 @@ const userChatLimiter = rateLimit({
 });
 
 /**
- * Per-user daily hard cap — 100 messages per 24 hours per user.
+ * Per-user daily hard cap — 50 messages per 24 hours per user.
  * Prevents sustained abuse across multiple 10-min windows.
  */
 const userDailyLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
-  max: 100,
+  max: 50,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) => `daily:${req.userId}`,
@@ -98,5 +98,11 @@ router.post('/', ipChatLimiter, requireAuth, skipForAdmin(userChatLimiter), skip
 
 // GET /api/chat/history - Get conversation history
 router.get('/history', requireAuth, historyLimiter, chatController.getChatHistory);
+
+// POST /api/chat/feedback - Save feedback for AI response
+router.post('/feedback', requireAuth, historyLimiter, chatController.postFeedback);
+
+// GET /api/chat/rate-limit - Get current rate limit status
+router.get('/rate-limit', requireAuth, chatController.getRateLimitStatus);
 
 module.exports = router;

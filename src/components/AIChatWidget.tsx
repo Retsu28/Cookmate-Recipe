@@ -1,33 +1,54 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, X, Send, Sparkles, ChefHat, User } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles, ChefHat, User, ThumbsUp, ThumbsDown, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AIChatMessagesSkeleton } from '@/components/SkeletonScreen';
-import { useAIChat } from '@/context/AIChatContext';
-import { sendMessage, loadConversationHistory, type ChatMessage } from '@/services/chatService';
+import { useAIChat, type RecipeContext } from '@/context/AIChatContext';
+import { sendMessage, loadConversationHistory, saveFeedback, getRateLimitStatus, type ChatMessage, type ChatResponse, type RateLimitStatus } from '@/services/chatService';
+import { useNavigate } from 'react-router-dom';
 
 export function AIChatWidget() {
-  const { isOpen, closeChat, toggleChat } = useAIChat();
+  const { isOpen, recipeContext, closeChat, toggleChat } = useAIChat();
+  
+  // Dynamic welcome based on recipe context
+  const getWelcomeMessage = (recipe: RecipeContext | null): string => {
+    if (recipe) {
+      return `Hi! I see you're viewing **${recipe.title}**. Need substitutions, scaling help, or cooking tips?`;
+    }
+    return "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?";
+  };
+  
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?" }
+    { role: 'assistant', content: getWelcomeMessage(null) }
   ]);
+  
+  // Update welcome when recipe context changes
+  useEffect(() => {
+    if (isOpen) {
+      setMessages([{ role: 'assistant', content: getWelcomeMessage(recipeContext) }]);
+    }
+  }, [recipeContext, isOpen]);
   const [input, setInput] = useState('');
   const [isReplying, setIsReplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastResponse, setLastResponse] = useState<ChatResponse | null>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 'up' | 'down'>>({});
+  const [rateLimit, setRateLimit] = useState<RateLimitStatus | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
-  // Load conversation history when chat opens
+  // Load conversation history and rate limit status when chat opens
   useEffect(() => {
     if (isOpen) {
       loadConversationHistory()
         .then(history => {
           if (history.length > 0) {
-            // Prepend welcome message if we have history
-            setMessages([
-              { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?" },
-              ...history
+            // Prepend contextual welcome message if we have history
+            setMessages(prev => [
+              { role: 'assistant', content: getWelcomeMessage(recipeContext) },
+              ...history.slice(-19) // Keep last 19 + welcome = 20 total
             ]);
           }
         })
@@ -35,8 +56,20 @@ export function AIChatWidget() {
           console.error('[AIChatWidget] Failed to load history:', err);
           // Silently fail - user can still chat
         });
+      
+      // Load rate limit status
+      getRateLimitStatus()
+        .then(setRateLimit)
+        .catch(err => console.error('[AIChatWidget] Failed to load rate limit:', err));
     }
-  }, [isOpen]);
+  }, [isOpen, recipeContext]);
+
+  // Update rate limit after each message sent
+  const updateRateLimit = useCallback(() => {
+    getRateLimitStatus()
+      .then(setRateLimit)
+      .catch(err => console.error('[AIChatWidget] Failed to update rate limit:', err));
+  }, []);
 
   const handleSend = useCallback(async () => {
     const question = input.trim();
@@ -50,17 +83,20 @@ export function AIChatWidget() {
     setIsReplying(true);
 
     try {
-      // Include last 10 messages for context (but not the welcome message)
+      // Include last 20 messages for context (but not the welcome message)
+      const welcomeContent = getWelcomeMessage(recipeContext);
       const historyForContext = messages
-        .filter(m => m.role !== 'assistant' || m.content !== "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?")
-        .slice(-10);
+        .filter(m => m.role !== 'assistant' || m.content !== welcomeContent)
+        .slice(-20);
 
-      const { response } = await sendMessage(question, historyForContext);
+      const response = await sendMessage(question, historyForContext, recipeContext);
 
       setMessages((current) => [
         ...current,
-        { role: 'assistant', content: response },
+        { role: 'assistant', content: response.response },
       ]);
+      setLastResponse(response);
+      updateRateLimit(); // Update remaining message count
     } catch (err) {
       console.error('[AIChatWidget] Chat error:', err);
       const apiErr = err as Error & { status?: number };
@@ -87,6 +123,103 @@ export function AIChatWidget() {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isReplying]);
+
+  // Generate quick action suggestions based on recipe context
+  const getQuickActions = (recipe: RecipeContext | null): string[] => {
+    if (recipe) {
+      const mainIngredient = recipe.ingredients[0] || 'ingredient';
+      return [
+        "Make it vegan",
+        `Substitute ${mainIngredient}`,
+        "Scale for 2 people",
+        "Storage tips"
+      ];
+    }
+    return [
+      "Quick dinner ideas",
+      "Easy breakfast recipes",
+      "Meal plan this week"
+    ];
+  };
+  
+  const quickActions = getQuickActions(recipeContext);
+  
+  const handleQuickAction = useCallback((action: string) => {
+    if (isReplying) return;
+    
+    setError(null);
+    const userMessage: ChatMessage = { role: 'user', content: action };
+    setMessages((current) => [...current, userMessage]);
+    setIsReplying(true);
+
+    // Build history with this new message
+    const welcomeContent = getWelcomeMessage(recipeContext);
+    const historyForContext = [
+      ...messages.filter(m => m.role !== 'assistant' || m.content !== welcomeContent).slice(-19),
+      userMessage
+    ];
+
+    sendMessage(action, historyForContext, recipeContext)
+      .then((response) => {
+        setMessages((current) => [
+          ...current,
+          { role: 'assistant', content: response.response },
+        ]);
+        setLastResponse(response);
+        updateRateLimit(); // Update remaining message count
+      })
+      .catch((err) => {
+        console.error('[AIChatWidget] Chat error:', err);
+        const apiErr = err as Error & { status?: number };
+        const isDailyLimit = apiErr?.status === 429 && apiErr.message.toLowerCase().includes('daily');
+        const isBurstLimit = apiErr?.status === 429 && !isDailyLimit;
+        const userFacingMsg = isDailyLimit
+          ? "You've reached your daily message limit. Please come back tomorrow!"
+          : isBurstLimit
+            ? "You're sending messages too quickly. Please wait a moment before trying again."
+            : "I'm having trouble connecting right now. Please try again in a moment!";
+        setMessages((current) => [
+          ...current,
+          { role: 'assistant', content: userFacingMsg },
+        ]);
+      })
+      .finally(() => {
+        setIsReplying(false);
+      });
+  }, [isReplying, messages, recipeContext, updateRateLimit]);
+
+  // Suggested starter questions for empty chat
+  const getStarterQuestions = (recipe: RecipeContext | null): string[] => {
+    if (recipe) {
+      return [
+        `How do I cook ${recipe.title}?`,
+        "What ingredients do I need?",
+        "How long does this take?",
+        "Make this recipe vegan"
+      ];
+    }
+    return [
+      "Find me a chicken recipe",
+      "What's a quick Filipino dinner?",
+      "Substitute for calamansi?",
+      "How to store leftover adobo?"
+    ];
+  };
+
+  const handleFeedback = async (messageIndex: number, type: 'up' | 'down') => {
+    setFeedbackGiven(prev => ({ ...prev, [messageIndex]: type }));
+    
+    // Get the messages for context
+    const aiMsg = messages[messageIndex]?.content || '';
+    const userMsg = messages[messageIndex - 1]?.content || '';
+    
+    try {
+      await saveFeedback(messageIndex, type, aiMsg, userMsg);
+    } catch (err) {
+      // Silently fail - feedback is best-effort
+      console.error('[Chat Feedback] Failed to save:', err);
+    }
+  };
 
   return (
     <motion.div layout className="fixed bottom-24 right-4 z-50 flex flex-col items-end sm:bottom-6 sm:right-6">
@@ -126,35 +259,113 @@ export function AIChatWidget() {
             <div className="flex-1 overflow-y-auto px-4 py-3 bg-stone-50" ref={scrollAreaRef}>
               <div className="space-y-4">
                 {messages.map((msg, i) => (
-                  <div 
-                    key={i} 
-                    className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                  >
-                    {/* Avatar */}
-                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                      msg.role === 'user' 
-                        ? 'bg-orange-500 text-white' 
-                        : 'bg-orange-100 text-orange-600'
-                    }`}>
-                      {msg.role === 'user' ? <User size={14} /> : <ChefHat size={14} />}
+                  <div key={i}>
+                    <div 
+                      className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                    >
+                      {/* Avatar */}
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        msg.role === 'user' 
+                          ? 'bg-orange-500 text-white' 
+                          : 'bg-orange-100 text-orange-600'
+                      }`}>
+                        {msg.role === 'user' ? <User size={14} /> : <ChefHat size={14} />}
+                      </div>
+                      
+                      {/* Message Bubble */}
+                      <div className={`max-w-[75%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-md ${
+                          msg.role === 'user' 
+                            ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-br-md' 
+                            : 'bg-white border border-stone-300 text-stone-900 rounded-bl-md shadow-stone-200/50'
+                        }`}>
+                          {msg.content}
+                        </div>
+                        {/* Timestamp & Feedback */}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-stone-400 px-1">
+                            {msg.timestamp 
+                              ? new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                              : 'Now'}
+                          </span>
+                          {/* Feedback buttons for AI messages */}
+                          {msg.role === 'assistant' && i > 0 && (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleFeedback(i, 'up')}
+                                className={`p-1 rounded transition-colors ${
+                                  feedbackGiven[i] === 'up' 
+                                    ? 'text-green-500' 
+                                    : 'text-stone-400 hover:text-green-500'
+                                }`}
+                                aria-label="Helpful"
+                              >
+                                <ThumbsUp size={12} />
+                              </button>
+                              <button
+                                onClick={() => handleFeedback(i, 'down')}
+                                className={`p-1 rounded transition-colors ${
+                                  feedbackGiven[i] === 'down' 
+                                    ? 'text-red-500' 
+                                    : 'text-stone-400 hover:text-red-500'
+                                }`}
+                                aria-label="Not helpful"
+                              >
+                                <ThumbsDown size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     
-                    {/* Message Bubble */}
-                    <div className={`max-w-[75%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-md ${
-                        msg.role === 'user' 
-                          ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-br-md' 
-                          : 'bg-white border border-stone-300 text-stone-900 rounded-bl-md shadow-stone-200/50'
-                      }`}>
-                        {msg.content}
+                    {/* Recipe Cards - shown after last AI response if recipes available */}
+                    {msg.role === 'assistant' && 
+                     i === messages.length - 1 && 
+                     !isReplying && (
+                      <div className="mt-3 ml-10">
+                        {lastResponse?.matchedRecipes && lastResponse.matchedRecipes.length > 0 ? (
+                          <>
+                            <p className="text-xs font-medium text-stone-500 mb-2">Suggested recipes:</p>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                              {lastResponse.matchedRecipes.map((recipe) => (
+                                <button
+                                  key={recipe.id}
+                                  onClick={() => {
+                                    navigate(`/recipe/${recipe.id}`);
+                                    closeChat();
+                                  }}
+                                  className="flex-shrink-0 w-32 p-2 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl hover:border-orange-300 hover:shadow-sm transition-all text-left"
+                                >
+                                  <p className="text-xs font-bold text-stone-800 dark:text-stone-100 line-clamp-2">{recipe.title}</p>
+                                  <p className="text-[10px] text-stone-500 dark:text-stone-400 mt-1">
+                                    {recipe.matchedIngredients.slice(0, 2).join(', ')}
+                                    {recipe.matchedIngredients.length > 2 && '...'}
+                                  </p>
+                                  <div className="flex items-center gap-1 mt-1 text-[10px] text-orange-500">
+                                    <ExternalLink size={10} />
+                                    <span>View</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : isReplying ? (
+                          // Loading skeleton for recipe cards
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {[1, 2, 3].map((n) => (
+                              <div
+                                key={n}
+                                className="flex-shrink-0 w-32 p-2 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl animate-pulse"
+                              >
+                                <div className="h-4 bg-stone-200 dark:bg-stone-700 rounded w-3/4 mb-2"></div>
+                                <div className="h-3 bg-stone-200 dark:bg-stone-700 rounded w-1/2"></div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                      {/* Timestamp */}
-                      <span className="text-[10px] text-stone-400 mt-1 px-1">
-                        {msg.timestamp 
-                          ? new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                          : 'Now'}
-                      </span>
-                    </div>
+                    )}
                   </div>
                 ))}
                 {isReplying && (
@@ -162,17 +373,82 @@ export function AIChatWidget() {
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
                       <ChefHat size={14} />
                     </div>
-                    <div className="bg-white border border-stone-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-md shadow-stone-200/50">
+                    <div className="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-md shadow-stone-200/50">
                       <AIChatMessagesSkeleton />
+                      <div className="flex items-center gap-1 mt-2 text-xs text-stone-400 dark:text-stone-500">
+                        <span>CookMate AI is typing</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
+                
+                {/* Starter Questions - only show with welcome message */}
+                {messages.length === 1 && messages[0].role === 'assistant' && !isReplying && (
+                  <div className="ml-10 mt-2">
+                    <p className="text-xs text-stone-500 mb-2">Try asking:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {getStarterQuestions(recipeContext).map((question, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleQuickAction(question)}
+                          className="px-3 py-1.5 text-xs bg-white border border-stone-200 text-stone-600 rounded-full hover:border-orange-300 hover:text-orange-600 transition-colors"
+                        >
+                          {question}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div ref={messagesEndRef} className="h-2" />
               </div>
             </div>
 
             {/* Input */}
             <div className="p-4 bg-white border-t border-stone-200">
+              {/* Rate Limit Indicator */}
+              {rateLimit && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between px-2">
+                    <span className="text-[10px] text-stone-500 dark:text-stone-400">
+                      {rateLimit.remaining} messages remaining today
+                    </span>
+                    <div className="flex-1 mx-2 h-1 bg-stone-200 dark:bg-stone-700 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all ${
+                          rateLimit.remaining > 20 ? 'bg-emerald-400' : 
+                          rateLimit.remaining > 10 ? 'bg-yellow-400' : 'bg-red-400'
+                        }`}
+                        style={{ width: `${(rateLimit.remaining / rateLimit.dailyLimit) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  {/* Warning when low on messages */}
+                  {rateLimit.remaining <= 10 && (
+                    <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 px-2 font-medium">
+                      ⚠️ Low on messages! Use them wisely.
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* Quick Action Buttons */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {quickActions.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleQuickAction(action)}
+                    disabled={isReplying}
+                    className="px-3 py-1.5 text-xs font-medium bg-orange-50 text-orange-600 rounded-full border border-orange-200 hover:bg-orange-100 transition-colors disabled:opacity-50"
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2 items-end">
                 <div className="flex-1 relative">
                   <Input 

@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
-import { Search, Calendar as CalendarIcon, ExternalLink, Check, Plus, Star } from 'lucide-react';
+import { Search, Calendar as CalendarIcon, ExternalLink, Check, Plus, Star, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import mealPlannerService from '@/services/mealPlannerService';
+import { toast } from 'sonner';
 
 export default function PlannerPage() {
   const [selectedDay, setSelectedDay] = useState(4); // Today (Thursday 4th in mockup)
+  const [groceryList, setGroceryList] = useState<{ groups: Array<{ category: string; items: Array<{ name: string; quantity_label: string; checked: boolean }> }>; totalItems: number } | null>(null);
+  const [groceryLoading, setGroceryLoading] = useState(true);
 
   const savedRecipes = [
     { title: 'Miso Glazed Salmon', time: '20 Mins', type: 'High Protein', img: 'https://picsum.photos/seed/miso/200/150' },
@@ -14,21 +18,38 @@ export default function PlannerPage() {
     { title: 'Sheet Pan Tofu', time: '35 Mins', type: 'Low Carb', img: 'https://picsum.photos/seed/tofu/200/150' },
   ];
 
-  const shoppingList = [
-    {
-      category: 'PRODUCE', items: [
-        { name: 'Fresh Spinach', desc: '2 Large bags', checked: false },
-        { name: 'Cherry Tomatoes', desc: '500g', checked: false },
-        { name: 'Garlic Bulbs', desc: '3 Units', checked: true },
-      ]
-    },
-    {
-      category: 'PANTRY', items: [
-        { name: 'Olive Oil', desc: '1 Bottle (Refill)', checked: false },
-        { name: 'Quinoa', desc: '1kg Bag', checked: false },
-      ]
+  useEffect(() => {
+    loadGroceryList();
+  }, []);
+
+  const loadGroceryList = async () => {
+    try {
+      setGroceryLoading(true);
+      const data = await mealPlannerService.getGroceryList();
+      // Transform API data to include checked state
+      const groupsWithChecked = data.groceryList.groups.map(g => ({
+        category: g.category,
+        items: g.items.map(item => ({
+          name: item.name,
+          quantity_label: item.quantity_label,
+          checked: false
+        }))
+      }));
+      setGroceryList({ groups: groupsWithChecked, totalItems: data.groceryList.totalItems });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load grocery list');
+      setGroceryList(null);
+    } finally {
+      setGroceryLoading(false);
     }
-  ];
+  };
+
+  const toggleItem = (categoryIdx: number, itemIdx: number) => {
+    if (!groceryList) return;
+    const newGroups = [...groceryList.groups];
+    newGroups[categoryIdx].items[itemIdx].checked = !newGroups[categoryIdx].items[itemIdx].checked;
+    setGroceryList({ ...groceryList, groups: newGroups });
+  };
 
   return (
     <Layout>
@@ -155,27 +176,36 @@ export default function PlannerPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {shoppingList.map((section, i) => (
-                <div key={i}>
-                  <p className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-4">{section.category}</p>
-                  <div className="space-y-4">
-                    {section.items.map((item, j) => (
-                      <label key={j} className="flex items-start gap-3 cursor-pointer group">
-                        <div className={cn(
-                          "w-4 h-4 mt-0.5 flex items-center justify-center border transition-colors shrink-0",
-                          item.checked ? "border-orange-500 bg-orange-500" : "border-stone-300 bg-white group-hover:border-orange-400"
-                        )}>
-                          {item.checked && <Check size={12} className="text-white" />}
-                        </div>
-                        <div className={cn("transition-all", item.checked ? "opacity-40 line-through" : "")}>
-                          <p className="text-xs font-bold text-stone-900 mb-0.5 leading-none">{item.name}</p>
-                          <p className="text-[10px] text-stone-500">{item.desc}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+              {groceryLoading ? (
+                <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-orange-500" /></div>
+              ) : !groceryList || groceryList.groups.length === 0 ? (
+                <div className="text-center py-8 text-stone-400">
+                  <p className="text-sm">No items in your grocery list.</p>
+                  <p className="text-xs mt-1">Plan some meals to generate a list!</p>
                 </div>
-              ))}
+              ) : (
+                groceryList.groups.map((section, i) => (
+                  <div key={i}>
+                    <p className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-4">{section.category}</p>
+                    <div className="space-y-4">
+                      {section.items.map((item, j) => (
+                        <label key={j} className="flex items-start gap-3 cursor-pointer group" onClick={() => toggleItem(i, j)}>
+                          <div className={cn(
+                            "w-4 h-4 mt-0.5 flex items-center justify-center border transition-colors shrink-0",
+                            item.checked ? "border-orange-500 bg-orange-500" : "border-stone-300 bg-white group-hover:border-orange-400"
+                          )}>
+                            {item.checked && <Check size={12} className="text-white" />}
+                          </div>
+                          <div className={cn("transition-all", item.checked ? "opacity-40 line-through" : "")}>
+                            <p className="text-xs font-bold text-stone-900 mb-0.5 leading-none">{item.name}</p>
+                            <p className="text-[10px] text-stone-500">{item.quantity_label}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="p-5 border-t border-stone-200 space-y-3 shrink-0 bg-white">

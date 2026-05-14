@@ -376,13 +376,17 @@ router.get('/reviews', requireAdmin, async (req, res) => {
     params.push(limit, offset);
     const [reviewsResult, countResult, statsResult] = await Promise.all([
       pool.query(
-        `SELECT rv.id, rv.rating, rv.comment, rv.created_at,
+        `SELECT rv.id, rv.rating, rv.comment, rv.created_at, rv.is_hidden,
                 u.id AS user_id, u.full_name, u.email,
-                r.id AS recipe_id, r.title AS recipe_title
+                r.id AS recipe_id, r.title AS recipe_title,
+                COUNT(CASE WHEN rh.is_helpful = true THEN 1 END)::int AS helpful_count,
+                COUNT(CASE WHEN rh.is_helpful = false THEN 1 END)::int AS unhelpful_count
          FROM reviews rv
          JOIN users u ON u.id = rv.user_id
          JOIN recipes r ON r.id = rv.recipe_id
+         LEFT JOIN review_helpfulness rh ON rh.review_id = rv.id
          ${where}
+         GROUP BY rv.id, u.id, r.id
          ORDER BY rv.created_at DESC
          LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params
@@ -397,19 +401,47 @@ router.get('/reviews', requireAdmin, async (req, res) => {
            COUNT(*)::int AS total_reviews,
            COUNT(*) FILTER (WHERE rating = 5)::int AS five_star,
            COUNT(*) FILTER (WHERE rating >= 4)::int AS four_plus,
-           COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE)::int AS today
+           COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE)::int AS today,
+           COUNT(*) FILTER (WHERE is_hidden = true)::int AS hidden_count
          FROM reviews`
       ),
     ]);
 
     res.json({
       reviews: reviewsResult.rows,
-      total: countResult.rows[0].total,
+      pagination: {
+        page: Math.floor(offset / limit) + 1,
+        limit,
+        total: countResult.rows[0].total,
+        totalPages: Math.ceil(countResult.rows[0].total / limit),
+      },
       stats: statsResult.rows[0],
     });
   } catch (err) {
     logger.error('[admin/reviews] failed:', err);
     res.status(500).json({ error: 'Failed to fetch reviews.' });
+  }
+});
+
+// PATCH /api/admin/reviews/:id/hide - Hide or unhide a review
+router.patch('/reviews/:id/hide', requireAdmin, async (req, res) => {
+  try {
+    const { isHidden, reason } = req.body;
+    const result = await pool.query(
+      `UPDATE reviews
+       SET is_hidden = $1,
+           flagged_reason = COALESCE($2, flagged_reason),
+           moderated_at = CURRENT_TIMESTAMP,
+           moderated_by = $3
+       WHERE id = $4
+       RETURNING id, is_hidden`,
+      [isHidden === true, reason || null, req.user?.id, req.params.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Review not found.' });
+    res.json({ review: result.rows[0] });
+  } catch (err) {
+    logger.error('[admin/reviews/hide] failed:', err);
+    res.status(500).json({ error: 'Failed to update review visibility.' });
   }
 });
 
