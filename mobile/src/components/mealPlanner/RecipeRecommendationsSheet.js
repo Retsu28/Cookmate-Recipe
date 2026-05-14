@@ -66,7 +66,7 @@ export default function RecipeRecommendationsSheet({
     ? mealType.charAt(0).toUpperCase() + mealType.slice(1)
     : 'Meal';
 
-  const dateLabel = date ? format(date, 'EEEE, MMM d') : '';
+  const dateLabel = date ? format(date, 'EEEE, MMM d, yyyy') : '';
 
   return (
     <Modal

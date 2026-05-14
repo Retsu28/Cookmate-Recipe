@@ -136,13 +136,14 @@ exports.updateProfile = async (req, res) => {
     }
     const hasCurrentPassword =
       typeof current_password === 'string' && current_password.length > 0;
+    const isFirebaseUser = currentUser.password_hash === null;
 
-    if ((emailChanging || passwordChanging) && !hasCurrentPassword) {
+    if (!isFirebaseUser && (emailChanging || passwordChanging) && !hasCurrentPassword) {
       return res
         .status(400)
         .json({ error: 'Current password is required to update your email or password.' });
     }
-    if (emailChanging || passwordChanging) {
+    if (!isFirebaseUser && (emailChanging || passwordChanging) && hasCurrentPassword) {
       const passwordOk = await bcrypt.compare(current_password, currentUser.password_hash);
       if (!passwordOk) {
         return res.status(401).json({ error: 'Current password is incorrect.' });

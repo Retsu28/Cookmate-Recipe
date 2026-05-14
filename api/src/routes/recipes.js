@@ -126,7 +126,9 @@ router.post('/:id/view', requireAuth, recipeController.recordView);
 
 // Saved recipes endpoints
 router.get('/user/:userId/saved', requireAuth, recipeController.getSavedRecipes);
+router.get('/:id/saved-status', requireAuth, recipeController.getSavedStatus);
 router.post('/:id/save', requireAuth, recipeController.saveRecipe);
+router.delete('/:id/unsave', requireAuth, recipeController.unsaveByRecipeId);
 router.delete('/user/:userId/saved/:savedId', requireAuth, recipeController.unsaveRecipe);
 
 // Public: must be AFTER all named routes to avoid catching them as :id

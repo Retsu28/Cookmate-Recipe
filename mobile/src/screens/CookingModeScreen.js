@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   StyleSheet,
   Dimensions,
   Alert,
+  ActivityIndicator,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Video } from 'expo-av';
-import { apiBaseUrl } from '../api/api';
+import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -22,7 +24,18 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// Use expo-video (same as AuthVideoBackground) for consistency in standalone builds
+let VideoView = null;
+let useVideoPlayer = null;
+try {
+  const mod = require('expo-video');
+  VideoView = mod.VideoView;
+  useVideoPlayer = mod.useVideoPlayer;
+} catch {
+  // Native module not available
+}
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Parse recipe instructions into steps format
 function parseInstructions(instructions) {
@@ -48,10 +61,16 @@ export default function CookingModeScreen({ route, navigation }) {
   const { recipe } = route.params;
   const [currentStep, setCurrentStep] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
-  const videoRef = useRef(null);
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [showTimer, setShowTimer] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [showPlayButton, setShowPlayButton] = useState(false);
+
+  // Interval timer state (like web)
+  const [intervalTimeLeft, setIntervalTimeLeft] = useState(0);
+  const [showIntervalComplete, setShowIntervalComplete] = useState(false);
+  const [addedTime, setAddedTime] = useState(0);
 
   // Completion celebration animation values
   const completionScale = useSharedValue(0);
@@ -68,19 +87,214 @@ export default function CookingModeScreen({ route, navigation }) {
   const timestamps = recipe.instruction_timestamps || [];
   const progress = hasInstructions ? ((currentStep + 1) / steps.length) * 100 : 0;
 
-  // Get video URL from recipe
-  const videoUrl = recipe.video_filename
-    ? `${apiBaseUrl}/uploads/mp4/${recipe.video_filename}`
-    : null;
+  // Get video URL from recipe - use direct URL (Cloudinary) like web
+  const videoUrl = recipe.video_filename || null;
 
-  // Seek to timestamp when step changes
-  useEffect(() => {
-    if (videoRef.current && timestamps[currentStep] && !videoError) {
-      const startTime = timestamps[currentStep].start || 0;
-      videoRef.current.setPositionAsync(startTime * 1000).catch(() => {}); // ms
-      videoRef.current.playAsync().catch(() => {});
+  // Setup video player with expo-video
+  const player = useVideoPlayer?.(videoUrl, (p) => {
+    try {
+      // Don't use player.loop - we handle manual looping for timestamps
+      p.loop = false;
+      p.muted = false;
+      p.play();
+    } catch (err) {
+      console.error('[CookingMode] Video player setup error:', err);
+      setVideoError(true);
+      setVideoLoading(false);
     }
-  }, [currentStep, timestamps, videoError]);
+  });
+
+  // Monitor player status for loading state
+  useEffect(() => {
+    if (!player) return;
+
+    const statusListener = player.addListener('statusChange', ({ status, error }) => {
+      if (status === 'readyToPlay' || status === 'playing' || status === 'paused') {
+        setVideoLoading(false);
+        setVideoError(false);
+        setIsPlaying(status === 'playing');
+        // Handle pending seek when player becomes ready
+        if (status === 'readyToPlay' && pendingSeekRef.current !== null) {
+          try {
+            player.currentTime = pendingSeekRef.current;
+            player.play();
+            setIsPlaying(true);
+            setShowPlayButton(false);
+            pendingSeekRef.current = null;
+          } catch (err) {
+            // Ignore seek errors
+          }
+        }
+      } else if (status === 'error') {
+        console.error('[CookingMode] Player error:', error);
+        setVideoError(true);
+        setVideoLoading(false);
+      } else if (status === 'loading' || status === 'idle') {
+        setVideoLoading(true);
+      }
+    });
+
+    // Also check if player already has duration (meaning it's loaded)
+    if (player.duration > 0) {
+      setVideoLoading(false);
+    }
+
+    // Timeout fallback - stop loading after 10 seconds if still loading
+    const timeoutId = setTimeout(() => {
+      setVideoLoading((current) => {
+        if (current) {
+          if (player.duration <= 0) {
+            setVideoError(true);
+          }
+          return false;
+        }
+        return current;
+      });
+    }, 10000);
+
+    return () => {
+      statusListener?.remove();
+      clearTimeout(timeoutId);
+    };
+  }, [player]);
+
+  // Reset loading state when video URL changes
+  useEffect(() => {
+    if (videoUrl) {
+      setVideoLoading(true);
+      setVideoError(false);
+    } else {
+      setVideoLoading(false);
+      setVideoError(false);
+    }
+  }, [videoUrl]);
+
+  // Track pending seek for smoother autoplay
+  const pendingSeekRef = useRef(null);
+
+  // Seek to timestamp and auto-loop within range when step changes (like web)
+  useEffect(() => {
+    if (!player || !timestamps[currentStep] || videoError) return;
+
+    const startTime = timestamps[currentStep].start || 0;
+    pendingSeekRef.current = startTime;
+
+    // Try to seek immediately, but also set up a listener for when player is ready
+    const seekAndPlay = () => {
+      try {
+        if (player.currentTime !== undefined) {
+          player.currentTime = startTime;
+          player.play();
+          setIsPlaying(true);
+          setShowPlayButton(false);
+          pendingSeekRef.current = null;
+          return true;
+        }
+      } catch (err) {
+        console.error('[CookingMode] Seek error:', err);
+      }
+      return false;
+    };
+
+    // If player is already ready, seek immediately
+    if (player.duration > 0) {
+      seekAndPlay();
+    }
+    // Otherwise, the statusChange listener will handle it when ready
+  }, [currentStep, timestamps, videoError, player]);
+
+  // Auto-loop video within timestamp range (like web timeupdate)
+  useEffect(() => {
+    if (!player || !timestamps[currentStep] || videoError) return;
+
+    const startTime = timestamps[currentStep].start || 0;
+    const endTime = timestamps[currentStep].end;
+
+    // Check current time every 250ms for smoother performance
+    const loopInterval = setInterval(() => {
+      try {
+        const currentTime = player.currentTime ?? 0;
+        // Loop 0.5s before end for smoother transition
+        if (currentTime >= endTime - 0.5) {
+          player.currentTime = startTime;
+        }
+      } catch (err) {
+        // Ignore loop errors silently
+      }
+    }, 250);
+
+    return () => clearInterval(loopInterval);
+  }, [currentStep, timestamps, videoError, player]);
+
+  // Interval timer based on timestamps: (end - start) + interval (like web)
+  useEffect(() => {
+    if (!timestamps || !timestamps[currentStep]) {
+      setIntervalTimeLeft(0);
+      setShowIntervalComplete(false);
+      return;
+    }
+
+    const timestamp = timestamps[currentStep];
+    const start = timestamp.start || 0;
+    const end = timestamp.end || start;
+    const videoDuration = Math.max(0, end - start);
+    const additionalInterval = timestamp.interval || 0;
+    const totalIntervalSeconds = videoDuration + additionalInterval + addedTime;
+
+    setIntervalTimeLeft(totalIntervalSeconds);
+    setShowIntervalComplete(false);
+
+    if (totalIntervalSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setIntervalTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setShowIntervalComplete(true);
+          playBellSound();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentStep, timestamps, addedTime]);
+
+  // Play bell sound when interval completes (like web)
+  const playBellSound = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../../sound/custom_sound.wav'),
+        { shouldPlay: true }
+      );
+      // Sound plays automatically, unload after it finishes
+      setTimeout(() => {
+        sound.unloadAsync();
+      }, 2000);
+    } catch (err) {
+      console.log('[CookingMode] Bell sound error:', err);
+    }
+  };
+
+  // Text-to-speech: read step instruction aloud on step change (like web)
+  const speak = useCallback((text) => {
+    Speech.stop();
+    Speech.speak(text, {
+      rate: 0.92,
+      pitch: 1.05,
+      language: 'en-US',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (steps[currentStep]?.text) {
+      speak(steps[currentStep].text);
+    }
+    return () => {
+      Speech.stop();
+    };
+  }, [currentStep, steps, speak]);
 
   // Show alert if no instructions available
   useEffect(() => {
@@ -96,33 +310,23 @@ export default function CookingModeScreen({ route, navigation }) {
     }
   }, [hasInstructions, navigation]);
 
-  // Timer countdown
-  useEffect(() => {
-    if (!showTimer || timerSeconds <= 0) return;
-    const interval = setInterval(() => {
-      setTimerSeconds(s => {
-        if (s <= 1) {
-          setShowTimer(false);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [showTimer, timerSeconds]);
-
   const handlePrevious = () => {
-    if (currentStep > 0) setCurrentStep(currentStep - 1);
+    if (currentStep > 0) {
+      setAddedTime(0);
+      setCurrentStep(currentStep - 1);
+    }
   };
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
+      setAddedTime(0);
       setCurrentStep(currentStep + 1);
     }
   };
 
   const handleFinish = useCallback(() => {
     setIsCompleted(true);
+    Speech.stop();
     // Trigger celebration animations
     completionScale.value = withSpring(1, { damping: 15, stiffness: 200 });
     completionOpacity.value = withTiming(1, { duration: 300 });
@@ -151,30 +355,76 @@ export default function CookingModeScreen({ route, navigation }) {
   }));
 
   const handleCompleteAndExit = useCallback(() => {
+    Speech.stop();
     navigation.goBack();
   }, [navigation]);
 
-  const handleVideoError = useCallback(() => {
-    setVideoError(true);
-  }, []);
+  // Swipe navigation (like web touch swipe)
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 20;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > 50) {
+          // Swipe right - previous
+          handlePrevious();
+        } else if (gestureState.dx < -50) {
+          // Swipe left - next
+          if (currentStep < steps.length - 1 && (intervalTimeLeft === 0 || showIntervalComplete)) {
+            handleNext();
+          }
+        }
+      },
+    })
+  ).current;
+
+  // Video play/pause toggle
+  const togglePlayPause = useCallback(() => {
+    if (!player) return;
+    if (isPlaying) {
+      player.pause();
+    } else {
+      player.play();
+    }
+    setIsPlaying(!isPlaying);
+  }, [player, isPlaying]);
 
   const currentTimestamp = timestamps[currentStep];
-  const segmentDuration = currentTimestamp
-    ? (currentTimestamp.end - currentTimestamp.start)
-    : 0;
-
-  const startTimer = () => {
-    setTimerSeconds(segmentDuration > 0 ? segmentDuration : 300); // default 5 min
-    setShowTimer(true);
-  };
+  const canGoNext = intervalTimeLeft === 0 || showIntervalComplete || !currentTimestamp;
 
   return (
     <View style={st.root}>
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={st.flex1}>
+        {/* Exit Confirmation Dialog */}
+        {showExitConfirm && (
+          <View style={st.exitOverlay}>
+            <View style={st.exitDialog}>
+              <Text style={st.exitTitle}>Exit Cooking Mode?</Text>
+              <Text style={st.exitSubtitle}>Your progress will be lost. Are you sure you want to exit?</Text>
+              <View style={st.exitButtons}>
+                <TouchableOpacity
+                  onPress={() => setShowExitConfirm(false)}
+                  style={[st.exitBtn, st.exitBtnSecondary]}
+                >
+                  <Text style={st.exitBtnSecondaryText}>Keep Cooking</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { Speech.stop(); navigation.goBack(); }}
+                  style={[st.exitBtn, st.exitBtnDanger]}
+                >
+                  <Text style={st.exitBtnDangerText}>Exit</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Header */}
         <View style={st.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.closeBtn}>
+          <TouchableOpacity onPress={() => setShowExitConfirm(true)} style={st.closeBtn}>
             <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
           <View style={st.headerCenter}>
@@ -184,44 +434,76 @@ export default function CookingModeScreen({ route, navigation }) {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Progress bar */}
-        <View style={st.progressWrap}>
-          <View style={st.progressBg}>
-            <View style={[st.progressFill, { width: `${progress}%` }]} />
+        {/* Progress bar with Circular Timer */}
+        <View style={st.headerProgress}>
+          <View style={st.progressBarWrap}>
+            <View style={st.progressBg}>
+              <View style={[st.progressFill, { width: `${progress}%` }]} />
+            </View>
           </View>
+          {/* Circular Timer - only when timestamps exist */}
+          {currentTimestamp && (
+            <View style={st.timerCircleWrap}>
+              <View style={[
+                st.timerCircle,
+                showIntervalComplete && st.timerCircleComplete
+              ]}>
+                <Text style={[st.timerCircleTime, showIntervalComplete && st.timerCircleTimeComplete]}>
+                  {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
+                </Text>
+                <Text style={[st.timerCircleLabel, showIntervalComplete && st.timerCircleLabelComplete]}>
+                  {showIntervalComplete ? 'Done!' : 'Interval'}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Main Content - Video + Step Layout */}
-        <View style={st.mainContent}>
+        <View style={st.mainContent} {...panResponder.panHandlers}>
           {/* Video Section - Top half on mobile */}
           <View style={st.videoSection}>
-            {videoUrl && !videoError ? (
+            {videoUrl && !videoError && VideoView && player ? (
               <View style={st.videoContainer}>
-                <Video
-                  ref={videoRef}
-                  source={{ uri: videoUrl }}
+                {videoLoading && (
+                  <View style={st.videoLoading}>
+                    <ActivityIndicator size="large" color="#f97316" />
+                  </View>
+                )}
+                <VideoView
+                  player={player}
                   style={st.video}
-                  useNativeControls
-                  resizeMode="contain"
-                  isLooping={false}
-                  onError={handleVideoError}
+                  nativeControls={false}
+                  contentFit="contain"
+                  allowsPictureInPicture={false}
+                  allowsFullscreen={true}
+                  renderMode="texture"
                 />
+                {/* Play/Pause Overlay */}
+                <TouchableOpacity
+                  style={st.videoOverlay}
+                  activeOpacity={1}
+                  onPress={togglePlayPause}
+                >
+                  {!isPlaying && !videoLoading && (
+                    <View style={st.playPauseBtn}>
+                      <Ionicons name="play" size={48} color="#fff" />
+                    </View>
+                  )}
+                  {isPlaying && !videoLoading && (
+                    <View style={[st.playPauseBtn, st.playPauseBtnHidden]}>
+                      <Ionicons name="pause" size={48} color="#fff" />
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={[st.videoContainer, st.noVideo]}>
-                <Ionicons name="videocam-off" size={48} color="#57534e" />
-                <Text style={st.noVideoText}>No video available</Text>
-              </View>
-            )}
-
-            {/* Timer Button - Below video */}
-            {currentTimestamp && (
-              <TouchableOpacity style={st.timerBtn} onPress={startTimer}>
-                <Ionicons name="timer" size={18} color="#fff" />
-                <Text style={st.timerBtnText}>
-                  {showTimer ? formatTime(timerSeconds) : 'Timer'}
+                <Ionicons name={videoError ? "alert-circle" : "videocam-off"} size={48} color="#57534e" />
+                <Text style={st.noVideoText}>
+                  {videoError ? 'Video failed to load' : 'No video available'}
                 </Text>
-              </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -231,7 +513,7 @@ export default function CookingModeScreen({ route, navigation }) {
               <View style={st.stepBadge}>
                 <Text style={st.stepBadgeText}>{steps[currentStep].number}</Text>
               </View>
-              <View>
+              <View style={st.stepHeaderText}>
                 <Text style={st.stepLabel}>CURRENT STEP</Text>
                 {currentTimestamp && (
                   <Text style={st.timestampText}>
@@ -239,11 +521,49 @@ export default function CookingModeScreen({ route, navigation }) {
                   </Text>
                 )}
               </View>
+              {/* TTS Button */}
+              <TouchableOpacity
+                onPress={() => speak(steps[currentStep].text)}
+                style={st.ttsBtn}
+              >
+                <Ionicons name="volume-high" size={18} color="#fff" />
+              </TouchableOpacity>
             </View>
 
             <Text style={st.stepText}>{steps[currentStep].text}</Text>
           </View>
         </View>
+
+        {/* Interval Complete Banner */}
+        {currentTimestamp && showIntervalComplete && (
+          <View style={st.intervalBanner}>
+            <Text style={st.intervalBannerText}>Interval Complete! Proceed to Next Step?</Text>
+          </View>
+        )}
+
+        {/* Add Time Buttons - only when timestamps exist */}
+        {currentTimestamp && (
+          <View style={st.addTimeRow}>
+            <TouchableOpacity
+              onPress={() => setAddedTime(prev => prev + 60)}
+              style={st.addTimeBtn}
+            >
+              <Text style={st.addTimeBtnText}>+1 min</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setAddedTime(prev => prev + 300)}
+              style={st.addTimeBtn}
+            >
+              <Text style={st.addTimeBtnText}>+5 min</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setAddedTime(0)}
+              style={st.resetTimeBtn}
+            >
+              <Text style={st.resetTimeBtnText}>Reset</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Footer - Previous / Next */}
         <View style={st.footer}>
@@ -265,7 +585,11 @@ export default function CookingModeScreen({ route, navigation }) {
               <Text style={st.nextBtnText}>Finish</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={handleNext} style={st.nextBtn}>
+            <TouchableOpacity
+              onPress={handleNext}
+              disabled={!canGoNext}
+              style={[st.nextBtn, !canGoNext && { opacity: 0.4 }]}
+            >
               <Text style={st.nextBtnText}>Next</Text>
             </TouchableOpacity>
           )}
@@ -306,16 +630,67 @@ export default function CookingModeScreen({ route, navigation }) {
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
   flex1: { flex: 1 },
+  // Exit Dialog
+  exitOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    zIndex: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  exitDialog: {
+    backgroundColor: '#1c1917',
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    width: '80%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  exitTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 18, color: '#fff', marginBottom: 8 },
+  exitSubtitle: { fontFamily: 'Geist_400Regular', fontSize: 14, color: '#a8a29e', textAlign: 'center', marginBottom: 20 },
+  exitButtons: { flexDirection: 'row', gap: 12, width: '100%' },
+  exitBtn: { flex: 1, paddingVertical: 12, borderRadius: 999, alignItems: 'center' },
+  exitBtnSecondary: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  exitBtnSecondaryText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff' },
+  exitBtnDanger: { backgroundColor: '#ef4444' },
+  exitBtnDangerText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff' },
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
   closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 12 },
   headerTitle: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff' },
   headerSub: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#a8a29e', marginTop: 2 },
-  // Progress
-  progressWrap: { paddingHorizontal: 16, paddingVertical: 8 },
+  // Progress with Circular Timer
+  headerProgress: { paddingHorizontal: 16, paddingVertical: 8, position: 'relative', minHeight: 60 },
+  progressBarWrap: { paddingRight: 80 },
   progressBg: { height: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', borderRadius: 2 },
   progressFill: { height: '100%', backgroundColor: '#f97316', borderRadius: 2 },
+  // Circular Timer
+  timerCircleWrap: {
+    position: 'absolute',
+    right: 16,
+    top: -20,
+    zIndex: 10,
+  },
+  timerCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#1c1917',
+    borderWidth: 4,
+    borderColor: '#f97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerCircleComplete: {
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
+  },
+  timerCircleTime: { fontFamily: 'Geist_800ExtraBold', fontSize: 20, color: '#f97316' },
+  timerCircleTimeComplete: { color: '#fff' },
+  timerCircleLabel: { fontFamily: 'Geist_500Medium', fontSize: 10, color: '#78716c' },
+  timerCircleLabelComplete: { color: 'rgba(255,255,255,0.8)' },
   // Main Content
   mainContent: { flex: 1, flexDirection: 'column' },
   // Video Section
@@ -326,38 +701,91 @@ const st = StyleSheet.create({
     backgroundColor: '#000', 
     borderRadius: 16, 
     overflow: 'hidden',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    position: 'relative',
   },
   video: { width: '100%', height: '100%' },
+  videoLoading: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    zIndex: 1,
+  },
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  playPauseBtn: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playPauseBtnHidden: { opacity: 0.3 },
   noVideo: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1917' },
   noVideoText: { color: '#57534e', marginTop: 8, fontFamily: 'Geist_400Regular', fontSize: 14 },
-  timerBtn: { 
-    marginTop: 12, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6,
-    backgroundColor: '#f97316', 
-    paddingHorizontal: 20, 
-    paddingVertical: 10, 
-    borderRadius: 999,
-    alignSelf: 'center'
-  },
-  timerBtnText: { fontFamily: 'Geist_700Bold', fontSize: 13, color: '#fff' },
   // Step Section
   stepSection: { padding: 16, paddingTop: 8 },
   stepHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  stepHeaderText: { flex: 1 },
   stepBadge: { 
-    width: 48, 
-    height: 48, 
+    width: 56, 
+    height: 56, 
     backgroundColor: '#f97316', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    borderRadius: 24 
+    borderRadius: 28 
   },
-  stepBadgeText: { fontFamily: 'Geist_800ExtraBold', fontSize: 20, color: '#fff' },
+  stepBadgeText: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, color: '#fff' },
   stepLabel: { fontFamily: 'Geist_600SemiBold', fontSize: 10, color: '#78716c', letterSpacing: 0.5 },
   timestampText: { fontFamily: 'Geist_500Medium', fontSize: 12, color: '#fb923c', marginTop: 2 },
   stepText: { fontFamily: 'Geist_500Medium', fontSize: 22, color: '#fff', lineHeight: 30 },
+  ttsBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Interval Banner
+  intervalBanner: {
+    backgroundColor: 'rgba(249,115,22,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  intervalBannerText: { fontFamily: 'Geist_700Bold', fontSize: 12, color: '#fb923c' },
+  // Add Time Buttons
+  addTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  addTimeBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 999,
+  },
+  addTimeBtnText: { fontFamily: 'Geist_600SemiBold', fontSize: 12, color: '#fff' },
+  resetTimeBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#ef4444',
+    borderRadius: 999,
+  },
+  resetTimeBtnText: { fontFamily: 'Geist_600SemiBold', fontSize: 12, color: '#fff' },
   // Footer
   footer: { 
     flexDirection: 'row', 

@@ -2,7 +2,7 @@ import './global.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, BackHandler, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -114,6 +114,29 @@ function AppContent({ fontsLoaded }) {
         clearTimeout(transitionTimer.current);
       }
     };
+  }, []);
+
+  // Handle Android hardware back button when at root (prevent GO_BACK error)
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!navigationRef.isReady()) return false;
+
+      const state = navigationRef.getRootState();
+      // Check if we're at the root of any navigator (no routes to go back)
+      const canGoBack = state?.routes && state.routes.length > 0 && state.index > 0;
+
+      if (!canGoBack) {
+        // At root - let system handle (move to background or finish app)
+        return false;
+      }
+
+      // Not at root - let navigation handle it
+      return false;
+    });
+
+    return () => backHandler.remove();
   }, []);
 
   const showTransitionSkeleton = (route) => {

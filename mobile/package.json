@@ -28,6 +28,7 @@
     "expo-auth-session": "~55.0.15",
     "expo-av": "^16.0.8",
     "expo-camera": "~55.0.16",
+    "expo-speech": "~13.1.7",
     "expo-constants": "~55.0.15",
     "expo-crypto": "~55.0.14",
     "expo-dev-client": "~55.0.32",

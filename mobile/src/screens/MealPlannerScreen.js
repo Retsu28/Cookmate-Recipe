@@ -762,7 +762,7 @@ export default function MealPlannerScreen({ navigation, route }) {
 
                     <Text style={[st.modalDate, { color: colors.textMuted }]}>
 
-                      {modalState.slot ? format(modalState.slot.day, 'EEEE, MMM d') : ''}
+                      {modalState.slot ? format(modalState.slot.day, 'EEEE, MMM d, yyyy') : ''}
 
                     </Text>
 

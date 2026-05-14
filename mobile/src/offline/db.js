@@ -9,6 +9,10 @@
 //   reminder_events (id, data JSON, updated_at)
 //   sync_queue     (id, type, payload JSON, created_at)
 //
+// Cache limits with LRU eviction:
+//   recipes: 500 entries, saved_recipes: 300, meal_plans: 100,
+//   grocery_lists: 50, reminder_events: 200
+//
 // Usage:
 //   import { getDb, recipeCache, savedRecipeCache, queue } from './db';
 //   await recipeCache.upsert(recipe.id, recipe);
@@ -18,6 +22,15 @@ import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'cookmate-offline.db';
 let dbPromise = null;
+
+// Cache size limits per table (LRU eviction when exceeded)
+const CACHE_LIMITS = {
+  recipes: 500,
+  saved_recipes: 300,
+  meal_plans: 100,
+  grocery_lists: 50,
+  reminder_events: 200,
+};
 
 async function openDb() {
   const db = await SQLite.openDatabaseAsync(DB_NAME);
@@ -30,6 +43,16 @@ async function openDb() {
   await db.runAsync(`CREATE TABLE IF NOT EXISTS grocery_lists (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
   await db.runAsync(`CREATE TABLE IF NOT EXISTS reminder_events (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL)`);
   await db.runAsync(`CREATE TABLE IF NOT EXISTS sync_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL)`);
+  // Image cache metadata table - tracks file system cached images
+  await db.runAsync(`CREATE TABLE IF NOT EXISTS image_cache_metadata (
+    url TEXT PRIMARY KEY NOT NULL,
+    local_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    last_accessed INTEGER NOT NULL
+  )`);
+  // Index for LRU eviction queries
+  await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_image_cache_last_accessed ON image_cache_metadata(last_accessed)`);
   return db;
 }
 
@@ -60,6 +83,36 @@ function safeParse(value) {
   }
 }
 
+/**
+ * Enforce cache size limits with LRU eviction
+ * Removes oldest entries when table exceeds its limit
+ */
+async function enforceCacheLimit(table) {
+  const limit = CACHE_LIMITS[table];
+  if (!limit || limit <= 0) return;
+
+  try {
+    const db = await getDb();
+
+    // Get total count
+    const countRow = await db.getFirstAsync(`SELECT COUNT(*) as count FROM ${table}`);
+    const count = countRow?.count || 0;
+
+    if (count <= limit) return;
+
+    // Delete oldest entries (by updated_at)
+    const toDelete = count - limit;
+    await db.runAsync(
+      `DELETE FROM ${table} WHERE id IN (
+        SELECT id FROM ${table} ORDER BY updated_at ASC LIMIT ?
+      )`,
+      [toDelete]
+    );
+  } catch {
+    // Best-effort eviction
+  }
+}
+
 function makeCache(table) {
   return {
     async upsert(id, data) {
@@ -84,6 +137,8 @@ function makeCache(table) {
           [String(id), safeStringify(item), now]
         );
       }
+      // Enforce cache limits with LRU eviction (fire-and-forget)
+      enforceCacheLimit(table).catch(() => {});
     },
     async get(id) {
       if (id == null) return null;
@@ -167,4 +222,63 @@ export async function clearOfflineCache() {
   } catch {
     // best-effort
   }
+}
+
+/**
+ * Get cache statistics for all data stores
+ * Returns entry counts and limits for monitoring cache health
+ */
+export async function getCacheStats() {
+  const stats = {};
+
+  const stores = [
+    { name: 'recipes', cache: recipeCache, limit: CACHE_LIMITS.recipes },
+    { name: 'saved_recipes', cache: savedRecipeCache, limit: CACHE_LIMITS.saved_recipes },
+    { name: 'meal_plans', cache: mealPlanCache, limit: CACHE_LIMITS.meal_plans },
+    { name: 'grocery_lists', cache: groceryListCache, limit: CACHE_LIMITS.grocery_lists },
+    { name: 'reminder_events', cache: reminderEventCache, limit: CACHE_LIMITS.reminder_events },
+  ];
+
+  for (const { name, cache, limit } of stores) {
+    try {
+      const all = await cache.getAll({ limit: limit + 100 });
+      stats[name] = {
+        count: all.length,
+        limit: limit || Infinity,
+        percentage: limit ? Math.round((all.length / limit) * 100) : 0,
+      };
+    } catch {
+      stats[name] = { count: 0, limit: limit || Infinity, percentage: 0 };
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Get total cache storage estimate across all stores
+ */
+export async function getTotalCacheSize() {
+  const stores = [
+    { name: 'recipes', cache: recipeCache },
+    { name: 'saved_recipes', cache: savedRecipeCache },
+    { name: 'meal_plans', cache: mealPlanCache },
+    { name: 'grocery_lists', cache: groceryListCache },
+    { name: 'reminder_events', cache: reminderEventCache },
+  ];
+
+  let totalEntries = 0;
+  const storeCounts = {};
+
+  for (const { name, cache } of stores) {
+    try {
+      const count = (await cache.getAll({ limit: 10000 })).length;
+      storeCounts[name] = count;
+      totalEntries += count;
+    } catch {
+      storeCounts[name] = 0;
+    }
+  }
+
+  return { totalEntries, stores: storeCounts };
 }

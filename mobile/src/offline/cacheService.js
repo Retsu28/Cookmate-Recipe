@@ -10,6 +10,10 @@
 
 import { groceryListCache, mealPlanCache, recipeCache, reminderEventCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
+import { preloadRecipeImages, getImageUri } from './imageCache';
+
+// Re-export image cache helpers for screens
+export { getImageUri, getCachedImage, isImageCached, getCacheStats as getImageCacheStats, clearImageCache } from './imageCache';
 
 function toArray(value) {
   if (Array.isArray(value)) return value;
@@ -39,6 +43,8 @@ export async function getRecipesCached(apiFn, { fallbackFilter } = {}) {
       if (items.length > 0) {
         // Fire-and-forget cache write so the UI isn't blocked.
         recipeCache.upsertMany(items).catch(() => {});
+        // Preload recipe images for offline viewing (fire-and-forget)
+        preloadRecipeImages(items).catch(() => {});
       }
       return response;
     } catch (err) {

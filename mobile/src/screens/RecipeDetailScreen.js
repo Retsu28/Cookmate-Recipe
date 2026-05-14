@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Alert,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -13,7 +14,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, parseISO, getDaysInMonth } from 'date-fns';
 import { plannerApi, recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -110,13 +111,20 @@ function todayInputValue() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
-function buildDateList() {
-  return [format(new Date(), 'yyyy-MM-dd')];
+function formatSelectedPlannerDate(value) {
+  return format(parseISO(value), 'EEEE, MMM d, yyyy');
 }
 
 function InlineDatePicker({ visible, selected, onSelect, onClose, colors }) {
+  const selectedDate = parseISO(selected);
+  const today = new Date();
+  const todayKey = format(today, 'yyyy-MM-dd');
+  const [year, setYear] = useState(selectedDate.getFullYear());
+  const [month, setMonth] = useState(selectedDate.getMonth());
+  const years = Array.from({ length: 10 }, (_, i) => today.getFullYear() + i);
+  const months = Array.from({ length: 12 }, (_, i) => i);
+  const days = Array.from({ length: getDaysInMonth(new Date(year, month, 1)) }, (_, i) => i + 1);
   if (!visible) return null;
-  const dates = buildDateList();
   return (
     <View style={[ipSt.dateWrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
       <View style={ipSt.dateHeader}>
@@ -125,15 +133,50 @@ function InlineDatePicker({ visible, selected, onSelect, onClose, colors }) {
           <Ionicons name="close" size={18} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
-      <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
-        {dates.map((item) => {
-          const active = item === selected;
-          const label = format(parseISO(item), 'EEE, MMM d yyyy');
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ipSt.dateSegmentRow}>
+        {years.map((item) => {
+          const active = item === year;
           return (
             <TouchableOpacity
               key={item}
-              onPress={() => onSelect(item)}
-              style={[ipSt.dateItem, active && { backgroundColor: colors.primary }]}
+              onPress={() => setYear(item)}
+              style={[ipSt.dateSegment, active && { backgroundColor: colors.primary }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[ipSt.dateSegmentText, { color: active ? '#fff' : colors.text }]}>{item}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ipSt.dateSegmentRow}>
+        {months.map((item) => {
+          const active = item === month;
+          return (
+            <TouchableOpacity
+              key={item}
+              onPress={() => setMonth(item)}
+              style={[ipSt.dateSegment, active && { backgroundColor: colors.primary }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[ipSt.dateSegmentText, { color: active ? '#fff' : colors.text }]}>
+                {format(new Date(year, item, 1), 'MMM').toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+        {days.map((day) => {
+          const item = format(new Date(year, month, day), 'yyyy-MM-dd');
+          const disabled = item < todayKey;
+          const active = item === selected;
+          const label = format(new Date(year, month, day), 'EEE, MMM d, yyyy');
+          return (
+            <TouchableOpacity
+              key={item}
+              onPress={() => !disabled && onSelect(item)}
+              disabled={disabled}
+              style={[ipSt.dateItem, active && { backgroundColor: colors.primary }, disabled && { opacity: 0.35 }]}
               activeOpacity={0.7}
             >
               <Text style={[ipSt.dateItemText, { color: active ? '#fff' : colors.text }]}>{label}</Text>
@@ -261,6 +304,9 @@ const ipSt = StyleSheet.create({
   dateWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', marginTop: 4 },
   dateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10 },
   dateTitle: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
+  dateSegmentRow: { gap: 8, paddingHorizontal: 12, paddingBottom: 8 },
+  dateSegment: { minWidth: 64, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, alignItems: 'center' },
+  dateSegmentText: { fontFamily: 'Geist_700Bold', fontSize: 12 },
   dateItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11 },
   dateItemText: { fontFamily: 'Geist_500Medium', fontSize: 13 },
   timeWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', marginTop: 4 },
@@ -290,15 +336,18 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [checkedIngredients, setCheckedIngredients] = useState({});
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [planDate, setPlanDate] = useState(todayInputValue());
-  const [planMealType, setPlanMealType] = useState('dinner');
+  const [planMealType, setPlanMealType] = useState('breakfast');
   const [planReminderEnabled, setPlanReminderEnabled] = useState(true);
   const [planCustomTimeEnabled, setPlanCustomTimeEnabled] = useState(false);
-  const [planStartTimeInput, setPlanStartTimeInput] = useState(toTime12Input(defaultMealTimes.dinner.start).digits);
-  const [planStartPeriod, setPlanStartPeriod] = useState(toTime12Input(defaultMealTimes.dinner.start).period);
-  const [planEndTimeInput, setPlanEndTimeInput] = useState(toTime12Input(defaultMealTimes.dinner.end).digits);
-  const [planEndPeriod, setPlanEndPeriod] = useState(toTime12Input(defaultMealTimes.dinner.end).period);
+  const [planStartTimeInput, setPlanStartTimeInput] = useState(toTime12Input(defaultMealTimes.breakfast.start).digits);
+  const [planStartPeriod, setPlanStartPeriod] = useState(toTime12Input(defaultMealTimes.breakfast.start).period);
+  const [planEndTimeInput, setPlanEndTimeInput] = useState(toTime12Input(defaultMealTimes.breakfast.end).digits);
+  const [planEndPeriod, setPlanEndPeriod] = useState(toTime12Input(defaultMealTimes.breakfast.end).period);
   const [planning, setPlanning] = useState(false);
   const [plannerKeyboardHeight, setPlannerKeyboardHeight] = useState(0);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const heartScale = useRef(new Animated.Value(1)).current;
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
@@ -385,6 +434,41 @@ export default function RecipeDetailScreen({ route, navigation }) {
     });
   }, [loadedFromApi, recipe?.id, user?.id]);
 
+  // Check if recipe is saved
+  useEffect(() => {
+    if (!recipe?.id || !user?.id) return;
+    recipeApi.getSavedStatus(recipe.id)
+      .then(res => setIsSaved(res.data?.saved === true))
+      .catch(() => {});
+  }, [recipe?.id, user?.id]);
+
+  const toggleSave = async () => {
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to save recipes.');
+      return;
+    }
+    if (savingRecipe) return;
+    Animated.sequence([
+      Animated.spring(heartScale, { toValue: 1.4, useNativeDriver: true, speed: 30 }),
+      Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, speed: 20 }),
+    ]).start();
+    const next = !isSaved;
+    setIsSaved(next);
+    setSavingRecipe(true);
+    try {
+      if (next) {
+        await recipeApi.saveRecipe(recipe.id);
+      } else {
+        await recipeApi.unsaveRecipe(recipe.id);
+      }
+    } catch (err) {
+      setIsSaved(!next);
+      Alert.alert('Error', err?.response?.data?.error || 'Failed to update saved recipe.');
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
   const toggleIngredient = (i) => {
     setCheckedIngredients(prev => ({ ...prev, [i]: !prev[i] }));
   };
@@ -400,10 +484,10 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
   const openPlanner = () => {
     setPlanDate(todayInputValue());
-    setPlanMealType('dinner');
+    setPlanMealType('breakfast');
     setPlanReminderEnabled(true);
     setPlanCustomTimeEnabled(false);
-    applyPlanTimes(defaultMealTimes.dinner.start, defaultMealTimes.dinner.end);
+    applyPlanTimes(defaultMealTimes.breakfast.start, defaultMealTimes.breakfast.end);
     setPlannerOpen(true);
   };
 
@@ -508,9 +592,13 @@ export default function RecipeDetailScreen({ route, navigation }) {
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={toggleSave}
             style={[st.heroHeartBtn, { backgroundColor: isDark ? 'rgba(28,25,23,0.8)' : 'rgba(255,255,255,0.85)' }]}
+            activeOpacity={0.7}
           >
-            <Ionicons name="heart-outline" size={22} color={colors.text} />
+            <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+              <Ionicons name={isSaved ? 'heart' : 'heart-outline'} size={22} color={isSaved ? '#ef4444' : colors.text} />
+            </Animated.View>
           </TouchableOpacity>
           {/* Floating category badge */}
           <View style={st.heroBadge}>
@@ -665,8 +753,14 @@ export default function RecipeDetailScreen({ route, navigation }) {
           <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ marginRight: 6 }} />
           <Text style={[st.planBtnText, { color: colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>Add to planner</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[st.heartBtn, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}>
-          <Ionicons name="heart-outline" size={22} color={colors.text} />
+        <TouchableOpacity
+          onPress={toggleSave}
+          style={[st.heartBtn, { borderColor: isSaved ? '#ef4444' : colors.border, backgroundColor: isSaved ? '#fef2f2' : colors.surfaceAlt }]}
+          activeOpacity={0.7}
+        >
+          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+            <Ionicons name={isSaved ? 'heart' : 'heart-outline'} size={22} color={isSaved ? '#ef4444' : colors.text} />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
@@ -718,7 +812,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
               activeOpacity={0.8}
             >
               <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
-              <Text style={[st.pickerBtnText, { color: colors.text }]}>{planDate}</Text>
+              <Text style={[st.pickerBtnText, { color: colors.text }]}>{formatSelectedPlannerDate(planDate)}</Text>
               <Ionicons name="chevron-down" size={16} color={colors.textSubtle} />
             </TouchableOpacity>
             <InlineDatePicker
@@ -738,9 +832,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
                     key={type.id}
                     onPress={() => {
                       setPlanMealType(type.id);
-                      if (!planCustomTimeEnabled) {
-                        applyPlanTimes(defaultMealTimes[type.id].start, defaultMealTimes[type.id].end);
-                      }
+                      applyPlanTimes(defaultMealTimes[type.id].start, defaultMealTimes[type.id].end);
                     }}
                     style={[st.mealTypeBtn, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.background }]}
                     activeOpacity={0.8}

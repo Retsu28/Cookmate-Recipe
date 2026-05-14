@@ -8,15 +8,6 @@ import { AdminTable, type AdminTableColumn } from '../components/AdminTable';
 import { StatusBadge, statusToneFromLabel } from '../components/StatusBadge';
 import { Button } from '@/components/ui/button';
 import api from '@/services/api';
-import type { StatusTone } from '../data/adminMockData';
-
-type ChurnRisk = 'High' | 'Medium' | 'Low';
-
-function churnTone(risk: ChurnRisk): StatusTone {
-  if (risk === 'High') return 'danger';
-  if (risk === 'Medium') return 'warning';
-  return 'success';
-}
 
 export interface AdminUser {
   id: string;
@@ -37,48 +28,21 @@ export default function UserManagement() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [churnMap, setChurnMap] = useState<Record<string, ChurnRisk>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
-  const [roleChanging, setRoleChanging] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    api.get<{ users: { user_id: number; risk: ChurnRisk }[] }>('/api/ml-analytics/churn-risk')
-      .then((data) => {
-        const map: Record<string, ChurnRisk> = {};
-        (data.users || []).forEach((u) => { map[String(u.user_id)] = u.risk; });
-        setChurnMap(map);
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleRoleChange = useCallback(async (user: AdminUser, newRole: string) => {
-    if (newRole === user.role) return;
-    setRoleChanging((prev) => ({ ...prev, [user.id]: true }));
-    setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));
-    try {
-      await api.put(`/api/admin/users/${user.id}`, { role: newRole });
-      toast.success(`${user.name} is now ${newRole === 'admin' ? 'an admin' : 'a regular user'}.`);
-    } catch (err: any) {
-      setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: user.role } : u));
-      toast.error(err.message || 'Failed to update role.');
-    } finally {
-      setRoleChanging((prev) => { const next = { ...prev }; delete next[user.id]; return next; });
-    }
-  }, []);
 
   const columns: AdminTableColumn<AdminUser>[] = useMemo(() => [
     {
       header: 'User',
       render: (user) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-900 text-sm font-extrabold text-white">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-stone-900 text-sm font-extrabold text-white dark:bg-stone-700">
             {user.name ? user.name.charAt(0).toUpperCase() : '?'}
           </div>
           <div>
-            <p className="font-extrabold text-stone-900">
+            <p className="font-extrabold text-stone-900 dark:text-stone-50">
               {user.name} {user.role === 'admin' && <span className="ml-1 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] uppercase text-orange-600">Admin</span>}
             </p>
-            <p className="text-xs font-medium text-stone-400">#{user.id.substring(0, 5)} &middot; {user.email}</p>
+            <p className="text-xs font-medium text-stone-400 dark:text-stone-500">#{user.id.substring(0, 5)} &middot; {user.email}</p>
           </div>
         </div>
       ),
@@ -87,31 +51,35 @@ export default function UserManagement() {
     { header: 'Recipes viewed', render: (user) => user.recipesViewed },
     { header: 'AI scans', render: (user) => user.aiScans },
     { header: 'Last active', render: (user) => user.lastActive },
-    { header: 'Status', render: (user) => <StatusBadge tone={statusToneFromLabel(user.status)}>{user.status}</StatusBadge> },
     {
-      header: 'Churn Risk',
+      header: 'Status',
       render: (user) => {
-        const risk = churnMap[user.id] as ChurnRisk | undefined;
-        if (!risk) return <span className="text-xs text-stone-400">—</span>;
-        return <StatusBadge tone={churnTone(risk)}>{risk}</StatusBadge>;
+        const isOnline = user.status === 'Online';
+        const isActive = isOnline || user.status === 'Recently Active';
+        const isDeleted = user.status === 'Deleted';
+        const label = isDeleted ? 'Deleted' : isActive ? 'Active' : 'Inactive';
+        const tone = isDeleted ? 'danger' : isActive ? 'success' : 'neutral';
+        return (
+          <div className="flex items-center gap-1.5">
+            {isOnline && (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            <StatusBadge tone={tone}>{label}</StatusBadge>
+          </div>
+        );
       },
     },
     {
       header: 'Role',
       render: (user) => (
         <div className="flex items-center gap-2">
-          <select
-            value={user.role || 'user'}
-            disabled={roleChanging[user.id]}
-            onChange={(e) => handleRoleChange(user, e.target.value)}
-            className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold text-stone-700 outline-none focus:border-orange-400 disabled:opacity-50"
-          >
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
           {user.role === 'admin'
             ? <ShieldCheck size={14} className="text-orange-500 shrink-0" />
             : <User size={14} className="text-stone-400 shrink-0" />}
+          <span className="text-xs font-bold capitalize text-stone-700 dark:text-stone-300">{user.role || 'user'}</span>
         </div>
       ),
     },
@@ -131,20 +99,20 @@ export default function UserManagement() {
         </div>
       ),
     },
-  ], [churnMap, roleChanging, handleRoleChange]);
+  ], []);
 
-  const fetchUsers = useCallback(async (targetPage = page) => {
+  const fetchUsers = useCallback(async (targetPage = page, silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const data = await api.get<{ users: AdminUser[]; total: number }>(
         `/api/admin/users?page=${targetPage}&limit=${PAGE_SIZE}`
       );
       setUsers(data.users);
       setTotal(data.total ?? 0);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to fetch users');
+      if (!silent) toast.error(err.message || 'Failed to fetch users');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [page]);
 
@@ -165,6 +133,8 @@ export default function UserManagement() {
 
   useEffect(() => {
     fetchUsers(page);
+    const interval = setInterval(() => fetchUsers(page, true), 30_000);
+    return () => clearInterval(interval);
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -202,17 +172,17 @@ export default function UserManagement() {
                 <button
                   onClick={() => setPage((p) => Math.max(p - 1, 0))}
                   disabled={page === 0}
-                  className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-700 shadow-sm transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-700 shadow-sm transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:border-orange-700 dark:hover:text-orange-400"
                 >
                   <ChevronLeft size={14} /> Prev
                 </button>
-                <span className="text-sm font-medium text-stone-500">
+                <span className="text-sm font-medium text-stone-500 dark:text-stone-400">
                   {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
                   disabled={page >= totalPages - 1}
-                  className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-700 shadow-sm transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-700 shadow-sm transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:border-orange-700 dark:hover:text-orange-400"
                 >
                   Next <ChevronRight size={14} />
                 </button>

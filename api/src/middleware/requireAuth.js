@@ -86,6 +86,13 @@ async function requireAuth(req, res, next) {
     req.userId = user.id;
     req.userRole = user.role === 'admin' ? 'admin' : 'user';
     req.user = user;
+
+    // Fire-and-forget: update last_active_at for accurate online status
+    // user.id is validated as a positive integer above, safe to interpolate
+    pool.query(
+      `UPDATE users SET last_active_at = NOW() WHERE id = ${user.id}`
+    ).catch(() => {});
+
     next();
   } catch (err) {
     logger.error('[requireAuth] failed:', err);

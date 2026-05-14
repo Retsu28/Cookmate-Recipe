@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,502 +6,124 @@ import {
   StyleSheet,
   Image,
   Dimensions,
-  Alert,
   ScrollView,
   LayoutAnimation,
   Animated as RNAnimated,
-  PanResponder,
-  Easing as RNEasing,
 } from 'react-native';
-import { Camera, CameraView } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
 import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
-import { apiBaseUrl, mlApi } from '../api/api';
 import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
-import { offlineCache } from '../offline/cacheService';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  withDelay,
-  Easing,
-  runOnJS,
-  interpolate,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { useCamera } from '../hooks/useCamera';
+import { useCameraAnalysis } from '../hooks/useCameraAnalysis';
+import { useCameraScanAnimation, PHASES as P } from '../hooks/useCameraScanAnimation';
 
 const { width: SW } = Dimensions.get('window');
-
-/* Phases: idle → scanning → selecting → selected → sticker → done */
-const P = { IDLE: 0, SCAN: 1, SELECTING: 2, SELECTED: 3, STICKER: 4, DONE: 5 };
-const MAX_CAMERA_BASE64_LENGTH = 7 * 1024 * 1024;
-const TARGET_CAPTURE_MAX_EDGE = 1280;
-const CAMERA_CAPTURE_QUALITY = 0.28;
-const MAX_SAVES = 20;
-
-function parsePictureSize(size) {
-  const match = String(size || '').match(/^(\d+)x(\d+)$/);
-  if (!match) return null;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
-  return { size, width, height, maxEdge: Math.max(width, height) };
-}
-
-function chooseFastPictureSize(sizes) {
-  if (!Array.isArray(sizes) || sizes.length === 0) return null;
-  if (sizes.includes('1280x720')) return '1280x720';
-  if (sizes.includes('Medium')) return 'Medium';
-
-  const parsed = sizes.map(parsePictureSize).filter(Boolean);
-  if (parsed.length === 0) return null;
-
-  const atOrBelowTarget = parsed
-    .filter((item) => item.maxEdge <= TARGET_CAPTURE_MAX_EDGE && item.maxEdge >= 640)
-    .sort((a, b) => b.maxEdge - a.maxEdge);
-  if (atOrBelowTarget[0]) return atOrBelowTarget[0].size;
-
-  return parsed.sort((a, b) => a.maxEdge - b.maxEdge)[0].size;
-}
-
-function normalizeQueueStatus(data) {
-  if (!data || typeof data !== 'object') return null;
-  const queueCount = Number(data.queueCount);
-  const queueLimit = Number(data.queueLimit || 50);
-  if (!Number.isFinite(queueCount) || queueCount <= 0 || !Number.isFinite(queueLimit) || queueLimit <= 0) {
-    return null;
-  }
-  return {
-    queueCount,
-    queueLimit,
-    queueLabel: data.queueLabel || `Queue: ${queueCount}/${queueLimit}`,
-    queuePosition: data.queuePosition,
-    queueFullMessage: data.queueFullMessage,
-  };
-}
-
-function apiErrorMessage(err, fallback) {
-  const queueStatus = normalizeQueueStatus(err.response?.data);
-  if (queueStatus && err.response?.data?.queueFullMessage) {
-    const busyMessage = err.response?.data?.message || err.response?.data?.error || fallback;
-    return `${busyMessage} ${err.response.data.queueFullMessage}`;
-  }
-
-  const serverError =
-    typeof err.response?.data?.error === 'string' ? err.response.data.error : '';
-  if (serverError) return serverError;
-  if (err.code === 'ECONNABORTED') {
-    return 'AI Camera is taking longer than usual. Please wait 1-2 minutes, then try again with a clearer photo.';
-  }
-  if (err.message === 'Network Error') {
-    return `Cannot reach the CookMate API at ${apiBaseUrl}. Make sure the API server is running and your phone is on the same Wi-Fi network.`;
-  }
-  return err.message || fallback;
-}
-
 
 export default function CameraScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
   const { isOnline } = useNetwork();
-  const [hasPermission, setHasPermission] = useState(null);
-  const [type, setType] = useState('back');
-  const [pictureSize, setPictureSize] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [capturedImage, setCapturedImage] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [analysisError, setAnalysisError] = useState(null);
-  const [phase, setPhase] = useState(P.IDLE);
-  const [cutoutUri, setCutoutUri] = useState(null);
-  const [bgRemovalDone, setBgRemovalDone] = useState(false);
-  const [bgRemovalProgress, setBgRemovalProgress] = useState('');
-  const [queueStatus, setQueueStatus] = useState(null);
-  const [cooldown, setCooldown] = useState(0);
-  const [showMoreRecipes, setShowMoreRecipes] = useState(false);
-  const [saves, setSaves] = useState([]);
-  const [showSaves, setShowSaves] = useState(false);
-  const [savesLoading, setSavesLoading] = useState(false);
-  const [savesError, setSavesError] = useState(null);
-  const [restoringSaveId, setRestoringSaveId] = useState(null);
-  const [currentOriginalImageData, setCurrentOriginalImageData] = useState(null);
-  const [isResultHidden, setIsResultHidden] = useState(false);
-  const cooldownRef = useRef(null);
-  const queuePollRef = useRef(null);
-  const cameraRef = useRef(null);
-  const requestIdRef = useRef(0);
-  const savedRequestIdRef = useRef(0);
-  const savingRequestIdRef = useRef(0);
   const isInitialLoading = useInitialContentLoading();
 
-  /* ── Animated values ── */
-  const resultSlideY = useRef(new RNAnimated.Value(0)).current;
-  const resultOpacity = useRef(new RNAnimated.Value(1)).current;
-  const resultScale = useRef(new RNAnimated.Value(1)).current;
+  /* ── Phase state ── */
+  const [phase, setPhase] = useState(P.IDLE);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [currentOriginalImageData, setCurrentOriginalImageData] = useState(null);
+  const [showMoreRecipes, setShowMoreRecipes] = useState(false);
+  const [showSaves, setShowSaves] = useState(false);
+  const [isResultHidden, setIsResultHidden] = useState(false);
 
-  const scanY = useSharedValue(-2);
-  const scanOpacity = useSharedValue(0);
-  const imgOpacity = useSharedValue(1);
-  const cornerOpacity = useSharedValue(0);
-  const cornerInset = useSharedValue(4);
-  const glowOpacity = useSharedValue(0);
-  const glowScale = useSharedValue(1.05);
-  const stickerScale = useSharedValue(0.4);
-  const stickerOpacity = useSharedValue(0);
-  const stickerRotate = useSharedValue(-6);
-  const sparkle1 = useSharedValue(0);
-  const sparkle2 = useSharedValue(0);
-  const badgeOp = useSharedValue(0);
+  /* ── Hooks ── */
+  const {
+    hasPermission, type, pictureSize, cameraRef,
+    configurePictureSize, toggleCameraType, takePicture: capturePhoto,
+  } = useCamera();
 
-  const startCooldown = () => {
-    if (cooldownRef.current) clearInterval(cooldownRef.current);
-    setCooldown(20);
-    cooldownRef.current = setInterval(() => {
-      setCooldown((prev) => {
-        if (prev <= 1) {
-          if (cooldownRef.current) clearInterval(cooldownRef.current);
-          cooldownRef.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  const {
+    loading, setLoading,
+    analysisResult, setAnalysisResult,
+    analysisError, setAnalysisError,
+    cutoutUri, setCutoutUri,
+    bgRemovalDone, setBgRemovalDone,
+    bgRemovalProgress, setBgRemovalProgress,
+    queueStatus, setQueueStatus,
+    cooldown,
+    saves, setSaves,
+    savesLoading, savesError, setSavesError,
+    restoringSaveId,
+    requestIdRef, savedRequestIdRef, savingRequestIdRef,
+    isCurrentRequest,
+    loadCameraSaves, analyzeImage, startBgRemoval,
+    autoSaveResult, restoreSave: restoreSaveBase,
+    deleteSave, clearAllSaves, newRequestId, stopQueuePolling,
+  } = useCameraAnalysis();
 
-  const stopQueuePolling = () => {
-    if (queuePollRef.current) {
-      clearInterval(queuePollRef.current);
-      queuePollRef.current = null;
-    }
-  };
+  const {
+    asScanLine, asImg, asCorner, asGlow, asSticker, asSp1, asSp2, asBadge,
+    resultSlideY, resultOpacity, resultScale,
+    resultPanResponder,
+    hideResult: hideResultAnim, showResult: showResultAnim,
+    reset, setRestoredDoneState,
+  } = useCameraScanAnimation({
+    phase, bgRemovalDone,
+    onGoSelecting: () => setPhase(P.SELECTING),
+    onGoSelected: () => setPhase(P.SELECTED),
+    onGoSticker: () => setPhase(P.STICKER),
+    onGoDone: () => setPhase(P.DONE),
+  });
 
-  const startQueuePolling = (requestId) => {
-    stopQueuePolling();
-
-    const refresh = async () => {
-      try {
-        const response = await mlApi.getImageAnalysisQueue();
-        if (isCurrentRequest(requestId)) {
-          setQueueStatus(normalizeQueueStatus(response.data));
-        }
-      } catch {
-        // Queue status is only user-facing context; analysis should continue.
-      }
-    };
-
-    refresh();
-    queuePollRef.current = setInterval(refresh, 1500);
-  };
-
-  const loadCameraSaves = async () => {
-    setSavesLoading(true);
-    setSavesError(null);
-    try {
-      const response = await mlApi.getAiCameraSaves({ limit: MAX_SAVES });
-      const list = response.data?.saves || [];
-      setSaves(list);
-      // Mirror "My Saves" locally so they remain visible offline.
-      if (list.length > 0) {
-        offlineCache.savedRecipes.upsertMany(list).catch(() => {});
-      }
-    } catch (err) {
-      // Offline fallback: serve the locally cached saves if present.
-      try {
-        const cachedRows = await offlineCache.savedRecipes.getAll({ limit: MAX_SAVES });
-        const cached = cachedRows.map((r) => r.data).filter(Boolean);
-        if (cached.length > 0) {
-          setSaves(cached);
-          setSavesError(null);
-        } else {
-          setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
-        }
-      } catch {
-        setSavesError(apiErrorMessage(err, 'Failed to load saved AI Camera results.'));
-      }
-    } finally {
-      setSavesLoading(false);
-    }
-  };
-
+  /* ── Initial load ── */
   useEffect(() => {
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-      await loadCameraSaves();
-    })();
-    return () => {
-      if (cooldownRef.current) clearInterval(cooldownRef.current);
-      stopQueuePolling();
-    };
-  }, []);
+    loadCameraSaves();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Auto-save when capture reaches DONE phase ── */
   useEffect(() => {
     if (phase !== P.DONE || !capturedImage || !analysisResult || !bgRemovalDone || loading || !currentOriginalImageData) return;
-    const rid = requestIdRef.current;
-    if (savedRequestIdRef.current === rid || savingRequestIdRef.current === rid) return;
-    savingRequestIdRef.current = rid;
+    autoSaveResult({ capturedImage, cutoutUri, analysisResult, currentOriginalImageData, phase });
+  }, [phase, capturedImage, cutoutUri, analysisResult, bgRemovalDone, loading, currentOriginalImageData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    (async () => {
-      try {
-        const response = await mlApi.saveAiCameraResult({
-          originalImageData: currentOriginalImageData,
-          removedBackgroundImageData: cutoutUri,
-          thumbnailImageData: cutoutUri || currentOriginalImageData,
-          analysisResult,
-          sourceType: 'capture',
-        });
-        if (!isCurrentRequest(rid)) return;
-        const saved = response.data;
-        setSaves(prev => [saved, ...prev.filter((item) => item.id !== saved.id)].slice(0, MAX_SAVES));
-        savedRequestIdRef.current = rid;
-      } catch (err) {
-        console.warn('[CameraScreen] auto-save warning:', apiErrorMessage(err, 'Failed to save AI Camera result.'));
-      } finally {
-        if (savingRequestIdRef.current === rid) {
-          savingRequestIdRef.current = 0;
-        }
-      }
-    })();
-  }, [phase, capturedImage, cutoutUri, analysisResult, bgRemovalDone, loading, currentOriginalImageData]);
+  /* ── Capture + analyze ── */
+  const takePicture = async () => {
+    if (cooldown > 0) return;
+    const photo = await capturePhoto();
+    if (!photo) return;
 
-  const configurePictureSize = async () => {
-    try {
-      const sizes = await cameraRef.current?.getAvailablePictureSizesAsync?.();
-      const nextPictureSize = chooseFastPictureSize(sizes);
-      if (nextPictureSize) {
-        setPictureSize(nextPictureSize);
-      }
-    } catch (err) {
-      console.warn('[CameraScreen] picture size optimization skipped:', err?.message || err);
-    }
-  };
-
-  const toggleCameraType = () => {
-    setPictureSize(null);
-    setType((current) => (current === 'back' ? 'front' : 'back'));
-  };
-
-  const reset = () => {
-    scanY.value = -2; scanOpacity.value = 0; imgOpacity.value = 1;
-    cornerOpacity.value = 0; cornerInset.value = 4;
-    glowOpacity.value = 0; glowScale.value = 1.05;
-    stickerScale.value = 0.4; stickerOpacity.value = 0; stickerRotate.value = -6;
-    sparkle1.value = 0; sparkle2.value = 0; badgeOp.value = 0;
-  };
-
-  const setRestoredDoneAnimationState = () => {
-    scanY.value = -2; scanOpacity.value = 0; imgOpacity.value = 0.15;
-    cornerOpacity.value = 0; cornerInset.value = 12;
-    glowOpacity.value = 0; glowScale.value = 1;
-    stickerScale.value = 1; stickerOpacity.value = 1; stickerRotate.value = 0;
-    sparkle1.value = 1; sparkle2.value = 1; badgeOp.value = 0;
-  };
-
-  const goSel = () => setPhase(P.SELECTING);
-  const goSeld = () => setPhase(P.SELECTED);
-  const goStk = () => setPhase(P.STICKER);
-  const goDone = () => setPhase(P.DONE);
-  const isCurrentRequest = (requestId) => requestId === requestIdRef.current;
-
-  /* ── Call backend API ── */
-  const analyzeImage = async (base64, requestId) => {
+    const requestId = newRequestId();
     setLoading(true);
-    startQueuePolling(requestId);
-    try {
-      const response = await mlApi.analyzeIngredients(base64);
-      if (!isCurrentRequest(requestId)) return false;
-      setAnalysisResult(response.data);
-      setAnalysisError(null);
-      setQueueStatus(normalizeQueueStatus(response.data));
-      startCooldown();
-      return true;
-    } catch (err) {
-      if (!isCurrentRequest(requestId)) return false;
-      console.warn('[CameraScreen] analyzeImage warning:', err);
-      const nextQueueStatus = normalizeQueueStatus(err.response?.data);
-      setQueueStatus(nextQueueStatus);
-      const serverMessage = err.response?.data?.message;
-      if (serverMessage) {
-        const nextMessage = apiErrorMessage(err, serverMessage);
-        setAnalysisError(nextMessage);
-        if (nextQueueStatus?.queueFullMessage) {
-          Alert.alert('AI Camera Busy', nextMessage);
-        }
-      } else {
-        setAnalysisError(apiErrorMessage(err, 'Failed to analyze image.'));
-      }
-      setAnalysisResult(null);
-      startCooldown();
-      return false;
-    } finally {
-      stopQueuePolling();
-      if (isCurrentRequest(requestId)) setLoading(false);
-    }
-  };
-
-  /* ── Call backend to remove background ── */
-  const startBgRemoval = async (base64, requestId) => {
+    setAnalysisResult(null);
+    setAnalysisError(null);
     setCutoutUri(null);
     setBgRemovalDone(false);
-    setBgRemovalProgress('Removing background...');
+    setBgRemovalProgress('');
+    setQueueStatus(null);
+    setCurrentOriginalImageData(null);
+    reset();
+    setCapturedImage(photo.uri);
+    setPhase(P.SCAN);
 
-    try {
-      const response = await mlApi.removeCameraBackground(base64);
-      if (!isCurrentRequest(requestId)) return;
-      const cutout =
-        response.data?.cutout ||
-        response.data?.cutoutUri ||
-        response.data?.image ||
-        null;
-
-      if (cutout) {
-        setCutoutUri(cutout);
-      } else {
-        console.warn('[CameraScreen] removeBackground returned no cutout.');
-      }
-    } catch (err) {
-      if (!isCurrentRequest(requestId)) return;
-      console.warn('[CameraScreen] removeBackground warning:', apiErrorMessage(err, 'Background removal is temporarily unavailable. The original photo will be used.'));
-      // Keep the capture flow alive. The sticker stage will fall back to the framed photo.
-    } finally {
-      if (isCurrentRequest(requestId)) {
-        setBgRemovalDone(true);
-        setBgRemovalProgress('');
-      }
-    }
-  };
-
-  /* ── Phase animations ── */
-  useEffect(() => {
-    if (phase === P.SCAN) {
-      scanOpacity.value = withTiming(1, { duration: 100 });
-      badgeOp.value = withTiming(1, { duration: 200 });
-      scanY.value = withTiming(102, { duration: 1100, easing: Easing.inOut(Easing.ease) },
-        (f) => { if (f) { scanOpacity.value = withTiming(0, { duration: 150 }); runOnJS(goSel)(); } });
-    }
-    if (phase === P.SELECTING) {
-      cornerOpacity.value = withTiming(1, { duration: 300 });
-      cornerInset.value = withTiming(12, { duration: 800, easing: Easing.out(Easing.ease) });
-      badgeOp.value = withTiming(1, { duration: 200 });
-      const t = setTimeout(() => goSeld(), 1000);
-      return () => clearTimeout(t);
-    }
-    if (phase === P.SELECTED) {
-      imgOpacity.value = withTiming(0.15, { duration: 600 });
-      glowOpacity.value = withTiming(1, { duration: 400 });
-      glowScale.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.ease) });
-      cornerOpacity.value = withDelay(400, withTiming(0, { duration: 300 }));
-      badgeOp.value = withTiming(1, { duration: 200 });
-      const t = setTimeout(() => goStk(), bgRemovalDone ? 320 : 650);
-      return () => clearTimeout(t);
-    }
-    if (phase === P.STICKER) {
-      glowOpacity.value = withTiming(0, { duration: 300 });
-      stickerOpacity.value = withTiming(1, { duration: 200 });
-      stickerScale.value = withSequence(
-        withTiming(1.1, { duration: 300, easing: Easing.out(Easing.ease) }),
-        withTiming(0.96, { duration: 140 }), withTiming(1.02, { duration: 100 }), withTiming(1, { duration: 80 }));
-      stickerRotate.value = withSequence(
-        withTiming(3, { duration: 300 }), withTiming(-1.5, { duration: 140 }),
-        withTiming(0.5, { duration: 100 }), withTiming(0, { duration: 80 }));
-      sparkle1.value = withDelay(300, withSequence(withTiming(1.3, { duration: 180 }), withTiming(1, { duration: 130 })));
-      sparkle2.value = withDelay(400, withSequence(withTiming(1.2, { duration: 180 }), withTiming(1, { duration: 130 })));
-      badgeOp.value = withDelay(150, withTiming(1, { duration: 200 }));
-      const t = setTimeout(() => goDone(), 1000);
-      return () => clearTimeout(t);
-    }
-    if (phase === P.DONE) {
-      badgeOp.value = withDelay(200, withTiming(0, { duration: 300 }));
-    }
-  }, [phase, bgRemovalDone]);
-
-  /* ── Animated styles ── */
-  const asScanLine = useAnimatedStyle(() => ({
-    position: 'absolute', left: 0, right: 0, height: 5,
-    top: `${scanY.value}%`, opacity: scanOpacity.value, zIndex: 20,
-  }));
-  const asImg = useAnimatedStyle(() => ({ opacity: imgOpacity.value }));
-  const asCorner = useAnimatedStyle(() => ({
-    position: 'absolute', opacity: cornerOpacity.value, zIndex: 18,
-    top: `${cornerInset.value}%`, left: `${cornerInset.value}%`,
-    right: `${cornerInset.value}%`, bottom: `${cornerInset.value}%`,
-  }));
-  const asGlow = useAnimatedStyle(() => ({
-    position: 'absolute', opacity: glowOpacity.value, zIndex: 16,
-    top: '14%', left: '14%', right: '14%', bottom: '14%',
-    transform: [{ scale: glowScale.value }],
-    borderRadius: 22, overflow: 'hidden',
-  }));
-  const asSticker = useAnimatedStyle(() => ({
-    opacity: stickerOpacity.value, zIndex: 22,
-    transform: [{ scale: stickerScale.value }, { rotate: `${stickerRotate.value}deg` }],
-  }));
-  const asSp1 = useAnimatedStyle(() => ({ transform: [{ scale: sparkle1.value }], opacity: sparkle1.value > 0 ? 1 : 0 }));
-  const asSp2 = useAnimatedStyle(() => ({ transform: [{ scale: sparkle2.value }], opacity: sparkle2.value > 0 ? 1 : 0 }));
-  const asBadge = useAnimatedStyle(() => ({
-    opacity: badgeOp.value, zIndex: 30,
-    transform: [{ translateY: interpolate(badgeOp.value, [0, 1], [-10, 0]) }],
-  }));
-
-  /* ── Capture photo ── */
-  const takePicture = async () => {
-    if (cooldown > 0) {
-      Alert.alert('Cooldown', `Please wait ${cooldown}s before taking another photo.`);
+    if (photo.error === 'too_large') {
+      setAnalysisError('Captured photo is too large. Move a little farther back or retake the photo in better light.');
+      setBgRemovalDone(true); setBgRemovalProgress(''); setLoading(false);
       return;
     }
-    if (cameraRef.current) {
-      try {
-        const requestId = requestIdRef.current + 1;
-        requestIdRef.current = requestId;
-        setLoading(true);
-        setAnalysisResult(null);
-        setAnalysisError(null);
-        setCutoutUri(null);
-        setBgRemovalDone(false);
-        setBgRemovalProgress('');
-        setQueueStatus(null);
-        setCurrentOriginalImageData(null);
-        reset();
-        const photo = await cameraRef.current.takePictureAsync({
-          base64: true,
-          quality: CAMERA_CAPTURE_QUALITY,
-          exif: false,
-        });
-        setCapturedImage(photo.uri);
-        setPhase(P.SCAN);
-
-        if (photo.base64) {
-          if (photo.base64.length > MAX_CAMERA_BASE64_LENGTH) {
-            setAnalysisError('Captured photo is too large. Move a little farther back or retake the photo in better light.');
-            setBgRemovalDone(true);
-            setBgRemovalProgress('');
-            setLoading(false);
-            return;
-          }
-
-          const b64 = `data:image/jpeg;base64,${photo.base64}`;
-          setCurrentOriginalImageData(b64);
-          await startBgRemoval(b64, requestId);
-          if (isCurrentRequest(requestId)) {
-            await analyzeImage(b64, requestId);
-          }
-        } else {
-          setAnalysisError('Failed to capture image data. Please try again.');
-          setBgRemovalDone(true);
-          setBgRemovalProgress('');
-          setLoading(false);
-        }
-      } catch (e) {
-        console.error('Failed to take picture', e);
-        setLoading(false);
-        Alert.alert('Error', 'Failed to capture image. Please try again.');
-      }
+    if (!photo.base64) {
+      setAnalysisError('Failed to capture image data. Please try again.');
+      setBgRemovalDone(true); setBgRemovalProgress(''); setLoading(false);
+      return;
     }
+
+    setCurrentOriginalImageData(photo.base64);
+    await startBgRemoval(photo.base64, requestId);
+    if (isCurrentRequest(requestId)) await analyzeImage(photo.base64, requestId);
   };
 
   const handleRetake = () => {
-    requestIdRef.current += 1;
+    newRequestId();
     setCapturedImage(null);
     setAnalysisResult(null);
     setAnalysisError(null);
@@ -516,129 +138,27 @@ export default function CameraScreen({ navigation }) {
     setPhase(P.IDLE);
   };
 
-  // Slide output down to hide
   const hideResult = useCallback(() => {
     setIsResultHidden(true);
-    RNAnimated.parallel([
-      RNAnimated.timing(resultSlideY, {
-        toValue: 300,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-      RNAnimated.timing(resultOpacity, {
-        toValue: 0,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-      RNAnimated.timing(resultScale, {
-        toValue: 0.95,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [resultSlideY, resultOpacity, resultScale]);
+    hideResultAnim();
+  }, [hideResultAnim]);
 
-  // Slide output up to show
   const showResult = useCallback(() => {
     setIsResultHidden(false);
-    RNAnimated.parallel([
-      RNAnimated.timing(resultSlideY, {
-        toValue: 0,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-      RNAnimated.timing(resultOpacity, {
-        toValue: 1,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-      RNAnimated.timing(resultScale, {
-        toValue: 1,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [resultSlideY, resultOpacity, resultScale]);
-
-  // Pan responder for swipe-to-hide gesture
-  const resultPanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return gestureState.dy > 10 && Math.abs(gestureState.dx) < Math.abs(gestureState.dy);
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dy > 0) {
-          resultSlideY.setValue(gestureState.dy);
-          resultOpacity.setValue(1 - Math.min(gestureState.dy / 200, 0.8));
-          resultScale.setValue(1 - Math.min(gestureState.dy / 1000, 0.05));
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 100) {
-          hideResult();
-        } else {
-          showResult();
-        }
-      },
-    })
-  ).current;
+    showResultAnim();
+  }, [showResultAnim]);
 
   const restoreSave = async (id) => {
-    setRestoringSaveId(id);
-    setSavesError(null);
-    try {
-      const response = await mlApi.getAiCameraSave(id);
-      const saved = response.data;
-      const restoredAnalysis = saved.analysisResult || saved.fullAnalysisResult;
-      const requestId = requestIdRef.current + 1;
-      requestIdRef.current = requestId;
-      savedRequestIdRef.current = requestId;
-      savingRequestIdRef.current = 0;
-      stopQueuePolling();
-      setCapturedImage(saved.originalImageData);
-      setCutoutUri(saved.removedBackgroundImageData || null);
-      setAnalysisResult(restoredAnalysis);
-      setAnalysisError(null);
-      setBgRemovalDone(true);
-      setBgRemovalProgress('');
-      setQueueStatus(null);
-      setLoading(false);
-      setShowMoreRecipes(false);
-      setCurrentOriginalImageData(null);
-      setRestoredDoneAnimationState();
-      setPhase(P.DONE);
-      setShowSaves(false);
-    } catch (err) {
-      setSavesError(apiErrorMessage(err, 'Failed to restore saved AI Camera result.'));
-    } finally {
-      setRestoringSaveId(null);
-    }
-  };
-
-  const deleteSave = async (id) => {
-    const previous = saves;
-    setSaves(prev => prev.filter(s => s.id !== id));
-    try {
-      await mlApi.deleteAiCameraSave(id);
-      // Also purge from offline cache so it doesn't reappear when offline.
-      offlineCache.savedRecipes.delete(id).catch(() => {});
-    } catch (err) {
-      setSaves(previous);
-      setSavesError(apiErrorMessage(err, 'Failed to delete saved AI Camera result.'));
-    }
-  };
-
-  const clearAllSaves = async () => {
-    const previous = saves;
-    setSaves([]);
-    try {
-      await Promise.all(previous.map((save) => mlApi.deleteAiCameraSave(save.id)));
-      // Server deletes succeeded — wipe the mirrored offline cache too.
-      offlineCache.savedRecipes.clear().catch(() => {});
-    } catch (err) {
-      setSaves(previous);
-      setSavesError(apiErrorMessage(err, 'Failed to clear saved AI Camera results.'));
-    }
+    await restoreSaveBase(id, {
+      onRestored: (saved, requestId) => {
+        setCapturedImage(saved.originalImageData);
+        setShowMoreRecipes(false);
+        setCurrentOriginalImageData(null);
+        setRestoredDoneState();
+        setPhase(P.DONE);
+        setShowSaves(false);
+      },
+    });
   };
 
   if (isInitialLoading || hasPermission === null) return <CameraPermissionSkeleton colors={colors} />;

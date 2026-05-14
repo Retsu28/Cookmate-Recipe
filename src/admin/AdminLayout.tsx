@@ -15,8 +15,8 @@ export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-stone-50 font-sans text-stone-900">
-      <div className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-stone-200 lg:block">
+    <div className="flex min-h-screen bg-stone-50 font-sans text-stone-900 dark:bg-stone-950 dark:text-stone-100">
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-stone-200 dark:border-stone-800 lg:block">
         <AdminSidebar />
       </div>
 
@@ -33,7 +33,7 @@ export default function AdminLayout() {
               onClick={() => setMobileMenuOpen(false)}
             />
             <motion.aside
-              className="fixed inset-y-0 left-0 z-[70] w-72 border-r border-stone-200 bg-stone-50 shadow-2xl lg:hidden"
+              className="fixed inset-y-0 left-0 z-[70] w-72 border-r border-stone-200 bg-stone-50 shadow-2xl dark:border-stone-800 dark:bg-stone-950 lg:hidden"
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
@@ -43,7 +43,7 @@ export default function AdminLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="rounded-full bg-stone-200 text-stone-600 hover:bg-stone-300"
+                  className="rounded-full bg-stone-200 text-stone-600 hover:bg-stone-300 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700"
                   aria-label="Close admin navigation"
                   onClick={() => setMobileMenuOpen(false)}
                 >

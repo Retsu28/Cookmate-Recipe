@@ -19,6 +19,9 @@ import {
   signOut,
   updateProfile,
   deleteUser,
+  reauthenticateWithCredential,
+  updatePassword,
+  EmailAuthProvider,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { firebaseAuth, googleProvider } from '@/lib/firebase';
@@ -184,6 +187,28 @@ export const authService = {
    */
   async resetPassword(token: string, password: string): Promise<void> {
     await api.post('/api/auth/reset-password', { token, password });
+  },
+
+  /**
+   * Re-authenticate the current Firebase user with their email/password, then
+   * update the password in Firebase Auth. Throws a friendly error on wrong
+   * current password or if no Firebase session is active.
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const fbUser = firebaseAuth.currentUser;
+    if (!fbUser) throw new Error('You must be signed in to change your password.');
+    if (!fbUser.email) throw new Error('No email associated with this account.');
+    try {
+      const credential = EmailAuthProvider.credential(fbUser.email, currentPassword);
+      await reauthenticateWithCredential(fbUser, credential);
+      await updatePassword(fbUser, newPassword);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code ?? '';
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        throw new Error('Current password is incorrect.');
+      }
+      throw friendlyFirebaseError(err);
+    }
   },
 
   /**

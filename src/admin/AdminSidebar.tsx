@@ -7,10 +7,10 @@ import {
   CalendarDays,
   Camera,
   Home,
+  MessageSquare,
   Package,
   Server,
   ShieldCheck,
-  Star,
   Users,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -29,9 +29,9 @@ const adminNavItems: AdminNavItem[] = [
   { label: 'Users', path: '/admin/users', icon: Users },
   { label: 'Meal Planner', path: '/admin/meal-planner', icon: CalendarDays },
   { label: 'AI Activity', path: '/admin/ai-activity', icon: Camera },
-  { label: 'Reviews', path: '/admin/reviews', icon: Star },
   { label: 'Notifications', path: '/admin/notifications', icon: Bell },
   { label: 'Reports', path: '/admin/reports', icon: BarChart3 },
+  { label: 'Reviews & Feedback', path: '/admin/reviews', icon: MessageSquare },
   { label: 'System Status', path: '/admin/system-status', icon: Server },
   { label: 'ML Analytics', path: '/admin/ml-analytics', icon: Brain },
   { label: 'Audit Log', path: '/admin/audit-log', icon: ShieldCheck },
@@ -43,13 +43,13 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   return (
-    <aside className="flex h-full flex-col bg-stone-100">
-      <div className="border-b border-stone-200 p-6">
+    <aside className="flex h-full flex-col bg-stone-100 dark:bg-stone-900">
+      <div className="border-b border-stone-200 dark:border-stone-800 p-6">
         <NavLink to="/" onClick={onNavigate} className="group flex items-center gap-3">
           <img src="/logo.png" alt="CookMate" className="h-11 w-11 transition-transform group-hover:scale-105" />
           <div>
-            <p className="text-xl font-extrabold tracking-tight text-stone-900">CookMate</p>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500">Admin Kitchen</p>
+            <p className="text-xl font-extrabold tracking-tight text-stone-900 dark:text-stone-50">CookMate</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500 dark:text-stone-400">Admin Kitchen</p>
           </div>
         </NavLink>
       </div>
@@ -65,14 +65,14 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
               cn(
                 'group relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all',
                 isActive
-                  ? 'border border-stone-200 bg-white text-orange-600 shadow-sm'
-                  : 'text-stone-500 hover:bg-white/5 hover:text-orange-600'
+                  ? 'border border-stone-200 bg-white text-orange-600 shadow-sm dark:border-stone-700 dark:bg-stone-800 dark:text-orange-400'
+                  : 'text-stone-500 hover:bg-stone-200/60 hover:text-orange-600 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-orange-400'
               )
             }
           >
             {({ isActive }) => (
               <>
-                <item.icon size={18} className={cn('transition-colors', isActive ? 'text-orange-500' : 'text-stone-400 group-hover:text-orange-600')} />
+                <item.icon size={18} className={cn('transition-colors', isActive ? 'text-orange-500 dark:text-orange-400' : 'text-stone-400 group-hover:text-orange-600 dark:text-stone-500 dark:group-hover:text-orange-400')} />
                 <span>{item.label}</span>
                 {isActive && <span className="ml-auto h-2 w-2 rounded-full bg-orange-500" />}
               </>
@@ -81,9 +81,9 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
         ))}
       </nav>
 
-      <div className="m-4 rounded-[1.5rem] border border-stone-200 bg-white p-4">
-        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600">Admin access</p>
-        <p className="mt-2 text-sm leading-relaxed text-stone-600">
+      <div className="m-4 rounded-[1.5rem] border border-stone-200 bg-white p-4 dark:border-stone-700 dark:bg-stone-800">
+        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Admin access</p>
+        <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
           Restricted to signed-in admin accounts. All actions are logged.
         </p>
       </div>

@@ -62,6 +62,24 @@ const fallbackFeatured = [
     image: 'https://picsum.photos/seed/salmon/600/400',
     category: 'Seafood',
   },
+  {
+    id: 4,
+    title: 'Beef Tapa',
+    time: '40 min',
+    difficulty: 'Medium',
+    rating: 4.8,
+    image: 'https://picsum.photos/seed/tapa/600/400',
+    category: 'Filipino',
+  },
+  {
+    id: 5,
+    title: 'Chicken Adobo',
+    time: '50 min',
+    difficulty: 'Easy',
+    rating: 4.9,
+    image: 'https://picsum.photos/seed/adobo/600/400',
+    category: 'Filipino',
+  },
 ];
 
 const fallbackRecent = [
@@ -95,8 +113,6 @@ export default function HomeScreen({ navigation }) {
   const [featuredRecipes, setFeaturedRecipes] = useState(fallbackFeatured);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const carouselTimerRef = useRef(null);
-  // Per-slide image opacity animations (crossfade)
-  const imageAnims = useRef(fallbackFeatured.map((_, i) => new Animated.Value(i === 0 ? 1 : 0))).current;
   // Per-element stagger animations for text content
   const badgeAnim   = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
   const titleAnim   = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
@@ -161,7 +177,7 @@ export default function HomeScreen({ navigation }) {
         recipeApi.getRecent(),
         recipeApi.getHomeSections(),
       ]);
-      const featured = withFallback(featuredRes?.data?.recipes, fallbackFeatured);
+      const featured = withFallback(featuredRes?.data?.recipes?.slice(0, 5), fallbackFeatured);
       const recent = withFallback(recentRes?.data?.recipes, fallbackRecent);
       setFeaturedRecipes(featured);
       setRecentRecipes(recent);
@@ -212,18 +228,7 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Resize imageAnims array when featuredRecipes loads from API
-  const imageAnimsRef = useRef(imageAnims);
-  useEffect(() => {
-    // Ensure we have enough Animated.Values for the loaded recipes
-    while (imageAnimsRef.current.length < featuredRecipes.length) {
-      imageAnimsRef.current.push(new Animated.Value(0));
-    }
-  }, [featuredRecipes.length]);
-
   const goToSlide = useCallback((idx) => {
-    const prev = carouselIndex;
-
     // 1. Stagger OUT: each element exits with a slight delay (badge → title → desc → btn)
     const outAnims = textElems.map((el, i) =>
       Animated.parallel([
@@ -233,17 +238,10 @@ export default function HomeScreen({ navigation }) {
     );
 
     Animated.parallel(outAnims).start(() => {
-      // 2. Swap the active index (text will now reference new recipe)
+      // 2. Swap the active index (image and text will now reference new recipe)
       setCarouselIndex(idx);
 
-      // 3. Crossfade images simultaneously
-      const anims = imageAnimsRef.current;
-      Animated.parallel([
-        Animated.timing(anims[prev] || new Animated.Value(0), { toValue: 0, duration: 600, useNativeDriver: true }),
-        Animated.timing(anims[idx] || new Animated.Value(0), { toValue: 1, duration: 600, useNativeDriver: true }),
-      ]).start();
-
-      // 4. Stagger IN: elements fly up in sequence (badge first, button last)
+      // 3. Stagger IN: elements fly up in sequence (badge first, button last)
       const inAnims = textElems.map((el, i) =>
         Animated.parallel([
           Animated.timing(el.op, { toValue: 1, duration: 340, delay: i * 55, useNativeDriver: true }),
@@ -446,23 +444,14 @@ export default function HomeScreen({ navigation }) {
         <Animated.View style={[s.content, introStyle]}>
           {/* Featured Hero Carousel */}
           <View style={s.heroWrap}>
-            {/* Stacked crossfade images */}
-            {featuredRecipes.slice(0, 5).map((recipe, i) => (
-              <Animated.View
-                key={recipe.id || i}
-                style={[
-                  StyleSheet.absoluteFill,
-                  { opacity: imageAnimsRef.current[i] || (i === carouselIndex ? 1 : 0) },
-                ]}
-                pointerEvents="none"
-              >
-                <OptimizedImage
-                  source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/chicken/800/800' }}
-                  style={s.heroImage}
-                  resizeMode="cover"
-                />
-              </Animated.View>
-            ))}
+            {/* Single image that changes source - prevents blur from stacked images */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <OptimizedImage
+                source={{ uri: featuredRecipes[carouselIndex]?.image_url || featuredRecipes[carouselIndex]?.image || 'https://picsum.photos/seed/chicken/800/800' }}
+                style={s.heroImage}
+                resizeMode="cover"
+              />
+            </View>
 
             {/* Dark gradient overlays */}
             <View style={s.heroOverlay} />

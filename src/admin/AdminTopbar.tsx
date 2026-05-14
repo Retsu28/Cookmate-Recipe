@@ -33,11 +33,11 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex min-h-20 items-center gap-3 border-b border-stone-200 bg-stone-50/90 px-4 backdrop-blur sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 flex min-h-20 items-center gap-3 border-b border-stone-200 bg-stone-50/90 px-4 backdrop-blur dark:border-stone-800 dark:bg-stone-950/90 sm:px-6 lg:px-8">
       <Button
         variant="ghost"
         size="icon"
-        className="rounded-full text-stone-500 lg:hidden"
+        className="rounded-full text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200 lg:hidden"
         aria-label="Open admin navigation"
         onClick={onMenuClick}
       >
@@ -45,14 +45,14 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
       </Button>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
-        <Badge className="hidden h-8 rounded-full bg-orange-100 px-3 font-bold text-orange-700 sm:inline-flex">
+        <Badge className="hidden h-8 rounded-full bg-orange-100 px-3 font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 sm:inline-flex">
           <ShieldCheck size={14} />
           Admin dashboard
         </Badge>
         <Link
           to="/admin/notifications"
           aria-label={`Admin notifications${unreadCount > 0 ? ` (${unreadCount} new)` : ''}`}
-          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm ring-1 ring-stone-200 transition-colors hover:text-orange-600"
+          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm ring-1 ring-stone-200 transition-colors hover:text-orange-600 dark:bg-stone-800 dark:text-stone-400 dark:ring-stone-700 dark:hover:text-orange-400"
         >
           <Bell size={18} />
           {unreadCount > 0 && (
@@ -64,7 +64,7 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
         <Link
           to="/"
           onClick={openUserApp}
-          className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-stone-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600"
+          className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-stone-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:hover:border-orange-700 dark:hover:text-orange-400"
         >
           User App
         </Link>

@@ -4,7 +4,7 @@ import {
   Modal, TextInput, Switch, StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
+import { format, getDaysInMonth } from 'date-fns';
 
 const mealSlots = [
   { id: 'breakfast', label: 'Breakfast', color: '#fdba74' },
@@ -12,13 +12,23 @@ const mealSlots = [
   { id: 'dinner', label: 'Dinner', color: '#f97316' },
 ];
 
-function buildDateList() {
-  return [format(new Date(), 'yyyy-MM-dd')];
+const defaultMealTimes = {
+  breakfast: { start: '07:00', end: '08:00' },
+  lunch: { start: '11:00', end: '14:00' },
+  dinner: { start: '18:00', end: '20:00' },
+};
+
+function formatSelectedPlannerDate(value) {
+  return format(new Date(`${value}T00:00:00`), 'EEEE, MMM d, yyyy');
 }
 
 export default function EditPlanModal({ plan, colors, isDark, softBorder, isOnline, onClose, onSave }) {
-  const dateList = buildDateList();
+  const initialDate = new Date(`${plan.planned_date}T00:00:00`);
+  const today = new Date();
+  const todayKey = format(today, 'yyyy-MM-dd');
   const [plannedDate, setPlannedDate] = useState(plan.planned_date);
+  const [pickerYear, setPickerYear] = useState(initialDate.getFullYear());
+  const [pickerMonth, setPickerMonth] = useState(initialDate.getMonth());
   const [mealType, setMealType] = useState(plan.meal_type);
   const [reminderEnabled, setReminderEnabled] = useState(!!plan.reminder_enabled);
   const [customTimeEnabled, setCustomTimeEnabled] = useState(!!plan.custom_time_enabled);
@@ -33,6 +43,9 @@ export default function EditPlanModal({ plan, colors, isDark, softBorder, isOnli
   const textColor = colors.text;
   const mutedColor = colors.textMuted;
   const primaryColor = colors.primary;
+  const years = Array.from({ length: 10 }, (_, i) => today.getFullYear() + i);
+  const months = Array.from({ length: 12 }, (_, i) => i);
+  const days = Array.from({ length: getDaysInMonth(new Date(pickerYear, pickerMonth, 1)) }, (_, i) => i + 1);
 
   const handleSave = async () => {
     if (!isOnline) {
@@ -72,27 +85,70 @@ export default function EditPlanModal({ plan, colors, isDark, softBorder, isOnli
 
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={em.body}>
             <Text style={[em.label, { color: mutedColor }]}>DATE</Text>
+            <Text style={[em.selectedDate, { color: textColor }]}>{formatSelectedPlannerDate(plannedDate)}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={em.dateScroll} contentContainerStyle={{ gap: 8 }}>
-              {dateList.map((d) => (
+              {years.map((item) => {
+                const active = item === pickerYear;
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    onPress={() => setPickerYear(item)}
+                    style={[
+                      em.dateSegment,
+                      { borderColor: active ? primaryColor : softBorder, backgroundColor: active ? primaryColor : inputBg },
+                    ]}
+                  >
+                    <Text style={[em.dateSegmentText, { color: active ? '#fff' : textColor }]}>{item}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={em.dateScroll} contentContainerStyle={{ gap: 8 }}>
+              {months.map((item) => {
+                const active = item === pickerMonth;
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    onPress={() => setPickerMonth(item)}
+                    style={[
+                      em.dateSegment,
+                      { borderColor: active ? primaryColor : softBorder, backgroundColor: active ? primaryColor : inputBg },
+                    ]}
+                  >
+                    <Text style={[em.dateSegmentText, { color: active ? '#fff' : textColor }]}>
+                      {format(new Date(pickerYear, item, 1), 'MMM').toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={em.dateScroll} contentContainerStyle={{ gap: 8 }}>
+              {days.map((day) => {
+                const d = format(new Date(pickerYear, pickerMonth, day), 'yyyy-MM-dd');
+                const disabled = d < todayKey;
+                const active = plannedDate === d;
+                return (
                 <TouchableOpacity
                   key={d}
-                  onPress={() => setPlannedDate(d)}
+                  onPress={() => !disabled && setPlannedDate(d)}
+                  disabled={disabled}
                   style={[
                     em.dateChip,
-                    { borderColor: plannedDate === d ? primaryColor : softBorder, backgroundColor: plannedDate === d ? primaryColor : inputBg },
+                    { borderColor: active ? primaryColor : softBorder, backgroundColor: active ? primaryColor : inputBg, opacity: disabled ? 0.35 : 1 },
                   ]}
                 >
-                  <Text style={[em.dateChipTop, { color: plannedDate === d ? '#fff' : mutedColor }]}>
+                  <Text style={[em.dateChipTop, { color: active ? '#fff' : mutedColor }]}>
                     {format(new Date(d + 'T00:00:00'), 'EEE').toUpperCase()}
                   </Text>
-                  <Text style={[em.dateChipNum, { color: plannedDate === d ? '#fff' : textColor }]}>
+                  <Text style={[em.dateChipNum, { color: active ? '#fff' : textColor }]}>
                     {format(new Date(d + 'T00:00:00'), 'd')}
                   </Text>
-                  <Text style={[em.dateChipMonth, { color: plannedDate === d ? '#fff' : mutedColor }]}>
-                    {format(new Date(d + 'T00:00:00'), 'MMM').toUpperCase()}
+                  <Text style={[em.dateChipMonth, { color: active ? '#fff' : mutedColor }]}>
+                    {format(new Date(d + 'T00:00:00'), 'MMM yyyy').toUpperCase()}
                   </Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </ScrollView>
 
             <Text style={[em.label, { color: mutedColor, marginTop: 16 }]}>MEAL TYPE</Text>
@@ -100,7 +156,11 @@ export default function EditPlanModal({ plan, colors, isDark, softBorder, isOnli
               {mealSlots.map((slot) => (
                 <TouchableOpacity
                   key={slot.id}
-                  onPress={() => setMealType(slot.id)}
+                  onPress={() => {
+                    setMealType(slot.id);
+                    setStartTime(defaultMealTimes[slot.id].start);
+                    setEndTime(defaultMealTimes[slot.id].end);
+                  }}
                   style={[
                     em.mealTypeBtn,
                     { borderColor: mealType === slot.id ? primaryColor : softBorder, backgroundColor: mealType === slot.id ? primaryColor : inputBg },
@@ -193,8 +253,11 @@ const em = StyleSheet.create({
   title: { fontFamily: 'Geist_800ExtraBold', fontSize: 17, letterSpacing: -0.3, lineHeight: 22 },
   body: { paddingHorizontal: 20, paddingVertical: 16, gap: 0 },
   label: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 2, marginBottom: 8 },
+  selectedDate: { fontFamily: 'Geist_800ExtraBold', fontSize: 16, letterSpacing: -0.3, marginBottom: 10 },
   dateScroll: { marginBottom: 4 },
-  dateChip: { width: 52, paddingVertical: 10, borderRadius: 16, borderWidth: 1, alignItems: 'center', gap: 2 },
+  dateSegment: { minWidth: 64, height: 38, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  dateSegmentText: { fontFamily: 'Geist_700Bold', fontSize: 12 },
+  dateChip: { width: 76, paddingVertical: 10, borderRadius: 16, borderWidth: 1, alignItems: 'center', gap: 2 },
   dateChipTop: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },
   dateChipNum: { fontFamily: 'Geist_800ExtraBold', fontSize: 20, lineHeight: 24 },
   dateChipMonth: { fontFamily: 'Geist_700Bold', fontSize: 9, letterSpacing: 1.5 },

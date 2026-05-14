@@ -7,16 +7,30 @@
 //   saved_recipes  — keyPath: id  (full JSON value + updatedAt)
 //   sync_queue     — auto-incrementing id (type, payload JSON, createdAt)
 //
+// Cache limits with LRU eviction to prevent unbounded growth:
+//   recipes: 500 entries, saved_recipes: 300, meal_plans: 100,
+//   grocery_lists: 50, reminder_events: 200
+//
 // Purely additive: no existing service depends on this file.
 
 const DB_NAME = 'cookmate-offline';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_RECIPES = 'recipes';
 const STORE_SAVED = 'saved_recipes';
 const STORE_MEAL_PLANS = 'meal_plans';
 const STORE_GROCERY_LISTS = 'grocery_lists';
 const STORE_REMINDER_EVENTS = 'reminder_events';
 const STORE_QUEUE = 'sync_queue';
+const STORE_IMAGES = 'images';
+
+// Cache size limits per store (LRU eviction when exceeded)
+const CACHE_LIMITS: Record<string, number> = {
+  [STORE_RECIPES]: 500,
+  [STORE_SAVED]: 300,
+  [STORE_MEAL_PLANS]: 100,
+  [STORE_GROCERY_LISTS]: 50,
+  [STORE_REMINDER_EVENTS]: 200,
+};
 
 type CacheRow<T = unknown> = {
   id: string;
@@ -64,6 +78,10 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_QUEUE)) {
         db.createObjectStore(STORE_QUEUE, { keyPath: 'id', autoIncrement: true });
       }
+      // Images store for offline image caching - stores blobs with URL as key
+      if (!db.objectStoreNames.contains(STORE_IMAGES)) {
+        db.createObjectStore(STORE_IMAGES, { keyPath: 'url' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB.'));
@@ -99,6 +117,47 @@ function safeClone<T>(value: T): T {
   }
 }
 
+/**
+ * Enforce cache size limits with LRU eviction
+ * Removes oldest entries when store exceeds its limit
+ */
+async function enforceCacheLimit(storeName: string): Promise<void> {
+  const limit = CACHE_LIMITS[storeName];
+  if (!limit || limit <= 0) return;
+
+  try {
+    const db = await getDb();
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+
+    // Get all entries sorted by updatedAt (oldest first)
+    const rows = (await new Promise<CacheRow[]>((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result as CacheRow[]);
+      req.onerror = () => reject(req.error);
+    })) as CacheRow[];
+
+    if (rows.length <= limit) return;
+
+    // Sort by updatedAt ascending (oldest first) and delete excess
+    const toDelete = rows
+      .sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0))
+      .slice(0, rows.length - limit);
+
+    for (const row of toDelete) {
+      if (row.id != null) {
+        await new Promise<void>((resolve, reject) => {
+          const req = store.delete(String(row.id));
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+    }
+  } catch {
+    // Best-effort eviction
+  }
+}
+
 function makeCache<T = unknown>(storeName: string) {
   return {
     async upsert(id: string | number, data: T): Promise<void> {
@@ -127,6 +186,8 @@ function makeCache<T = unknown>(storeName: string) {
           store.transaction.onerror = () => reject(store.transaction.error ?? new Error('Transaction failed.'));
           store.transaction.onabort = () => reject(store.transaction.error ?? new Error('Transaction aborted.'));
         });
+        // Enforce cache limits with LRU eviction (fire-and-forget)
+        enforceCacheLimit(storeName).catch(() => {});
       } catch {
         /* best-effort cache */
       }
@@ -231,4 +292,68 @@ export async function clearOfflineCache(): Promise<void> {
   } catch {
     /* best-effort */
   }
+}
+
+/**
+ * Get cache statistics for all data stores
+ * Returns entry counts and limits for monitoring cache health
+ */
+export async function getCacheStats(): Promise<
+  Record<string, { count: number; limit: number; percentage: number }>
+> {
+  const stats: Record<string, { count: number; limit: number; percentage: number }> = {};
+
+  const stores = [
+    { name: STORE_RECIPES, cache: recipeCache, limit: CACHE_LIMITS[STORE_RECIPES] },
+    { name: STORE_SAVED, cache: savedRecipeCache, limit: CACHE_LIMITS[STORE_SAVED] },
+    { name: STORE_MEAL_PLANS, cache: mealPlanCache, limit: CACHE_LIMITS[STORE_MEAL_PLANS] },
+    { name: STORE_GROCERY_LISTS, cache: groceryListCache, limit: CACHE_LIMITS[STORE_GROCERY_LISTS] },
+    { name: STORE_REMINDER_EVENTS, cache: reminderEventCache, limit: CACHE_LIMITS[STORE_REMINDER_EVENTS] },
+  ];
+
+  for (const { name, cache, limit } of stores) {
+    try {
+      const all = await cache.getAll({ limit: limit + 100 }); // Get a bit more to check if over limit
+      stats[name] = {
+        count: all.length,
+        limit: limit || Infinity,
+        percentage: limit ? Math.round((all.length / limit) * 100) : 0,
+      };
+    } catch {
+      stats[name] = { count: 0, limit: limit || Infinity, percentage: 0 };
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Get total cache storage estimate across all stores
+ */
+export async function getTotalCacheSize(): Promise<{
+  totalEntries: number;
+  stores: Record<string, number>;
+}> {
+  const stores = [
+    { name: STORE_RECIPES, cache: recipeCache },
+    { name: STORE_SAVED, cache: savedRecipeCache },
+    { name: STORE_MEAL_PLANS, cache: mealPlanCache },
+    { name: STORE_GROCERY_LISTS, cache: groceryListCache },
+    { name: STORE_REMINDER_EVENTS, cache: reminderEventCache },
+  ];
+
+  let totalEntries = 0;
+  const storeCounts: Record<string, number> = {};
+
+  for (const { name, cache } of stores) {
+    try {
+      const count = (await cache.getAll({ limit: 10000 })).length;
+      storeCounts[name] = count;
+      totalEntries += count;
+    } catch {
+      storeCounts[name] = 0;
+    }
+  }
+
+  return { totalEntries, stores: storeCounts };
 }

@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   Switch,
   StyleSheet,
@@ -22,11 +23,12 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LogoutButton from '../components/LogoutButton';
 import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/authService';
 import { useAppTheme } from '../context/ThemeContext';
-import { profileApi, apiBaseUrl, settingsApi } from '../api/api';
+import { profileApi, settingsApi, recipeApi, apiBaseUrl } from '../api/api';
+import OptimizedImage from '../components/OptimizedImage';
 import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
-import { tokenStorage } from '../lib/tokenStorage';
 import { useFontSizes } from '../hooks/useFontSizes';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -39,7 +41,6 @@ const profileTabs = [
   { id: 'appearance', label: 'Appearance', icon: 'color-palette-outline', description: 'Theme and reading preferences' },
   { id: 'privacy', label: 'Privacy & Security', icon: 'shield-outline', description: 'Visibility and account safety' },
   { id: 'inventory', label: 'Kitchen Inventory', icon: 'cube-outline', description: 'Ingredient tracking tools', disabled: true, badge: 'Coming Soon' },
-  { id: 'my-recipes', label: 'My Recipes', icon: 'restaurant-outline', description: 'Your created recipes' },
   { id: 'saved', label: 'Saved', icon: 'bookmark-outline', description: 'Bookmarked recipes' },
 ];
 
@@ -89,6 +90,124 @@ function SectionHeader({ icon, title, caption, colors, compact = false }) {
 
 function FieldLabel({ label, colors, fontSizes }) {
   return <Text style={[st.label, { color: colors.textSubtle, fontSize: fontSizes.xs }]}>{label.toUpperCase()}</Text>;
+}
+
+function SavedRecipesInline({ user, colors, isDark, navigation, fontSizes }) {
+  const [saved, setSaved] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [removingId, setRemovingId] = useState(null);
+
+  const loadSaved = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const res = await recipeApi.getSavedRecipes(user.id);
+      setSaved(res.data?.saved || []);
+    } catch {
+      setSaved([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(useCallback(() => { loadSaved(); }, [loadSaved]));
+
+  const handleRemove = async (item) => {
+    if (removingId) return;
+    setRemovingId(item.recipe_id);
+    setSaved(prev => prev.filter(r => r.recipe_id !== item.recipe_id));
+    try {
+      await recipeApi.unsaveRecipe(item.recipe_id);
+    } catch {
+      setSaved(prev => [item, ...prev]);
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (saved.length === 0) {
+    return (
+      <View style={{ alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 }}>
+        <Ionicons name="heart-outline" size={56} color={colors.border} />
+        <Text style={{ fontFamily: 'Geist_700Bold', fontSize: fontSizes.base, color: colors.text }}>No saved recipes yet</Text>
+        <Text style={{ fontFamily: 'Geist_400Regular', fontSize: fontSizes.sm, color: colors.textMuted, textAlign: 'center', lineHeight: 20 }}>
+          Tap the heart icon on any recipe to save it here.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 10 }}>
+      {saved.map(item => (
+        <TouchableOpacity
+          key={String(item.id)}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('RecipeDetail', { id: item.recipe_id })}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderWidth: 1,
+            borderRadius: 16,
+            overflow: 'hidden',
+            padding: 12,
+            gap: 12,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          }}
+        >
+          <View style={{ width: 72, height: 72, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+            {item.image_url ? (
+              <OptimizedImage source={{ uri: item.image_url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#431407' : '#fff7ed' }}>
+                <Ionicons name="restaurant-outline" size={26} color={colors.primary} />
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={{ fontFamily: 'Geist_700Bold', fontSize: fontSizes.sm, color: colors.text, lineHeight: 20 }} numberOfLines={2}>{item.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {item.category ? (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: isDark ? '#431407' : '#fff7ed' }}>
+                  <Text style={{ fontFamily: 'Geist_700Bold', fontSize: 10, color: colors.primary }}>{item.category}</Text>
+                </View>
+              ) : null}
+              {item.total_time_minutes ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                  <Text style={{ fontFamily: 'Geist_500Medium', fontSize: 11, color: colors.textMuted }}>{item.total_time_minutes} min</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={{ fontFamily: 'Geist_400Regular', fontSize: 11, color: colors.textSubtle }}>
+              Saved {new Date(item.saved_at).toLocaleDateString()}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleRemove(item)}
+            disabled={removingId === item.recipe_id}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            {removingId === item.recipe_id ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <Ionicons name="heart" size={22} color="#ef4444" />
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
 }
 
 export default function ProfileScreen({ navigation }) {
@@ -438,39 +557,18 @@ export default function ProfileScreen({ navigation }) {
       email: normalizeEmail(form.email),
       cooking_skill_level: form.cookingSkillLevel,
     };
-    if (securityChanging) payload.current_password = form.currentPassword;
-    if (passwordChanging) payload.new_password = form.newPassword;
+    if (emailChanged) payload.current_password = form.currentPassword;
 
     setSaving(true);
     try {
+      if (passwordChanging) {
+        await authService.changePassword(form.currentPassword, form.newPassword);
+      }
       // Upload avatar if selected
       if (avatarUri) {
         setUploadingAvatar(true);
         try {
-          const formData = new FormData();
-          const fileName = avatarUri.split('/').pop() || 'avatar.jpg';
-          const fileType = fileName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-          
-          formData.append('avatar', {
-            uri: avatarUri,
-            name: fileName,
-            type: fileType,
-          });
-
-          const token = await tokenStorage.getItem('userToken');
-          const uploadResponse = await fetch(`${apiBaseUrl}/api/profile/${user.id}/avatar`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-            body: formData,
-          });
-
-          if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to upload avatar');
-          }
-
+          await profileApi.uploadAvatar(user.id, avatarUri);
           setAvatarUri(null);
         } finally {
           setUploadingAvatar(false);
@@ -839,17 +937,8 @@ export default function ProfileScreen({ navigation }) {
               </View>
             )}
 
-            {activeTab === 'my-recipes' && (
-              <View style={st.emptyState}>
-                <Ionicons name="restaurant-outline" size={40} color={colors.textSubtle} />
-                <Text style={[st.emptyText, { color: colors.textSubtle }]}>Your created recipes will appear here.</Text>
-              </View>
-            )}
             {activeTab === 'saved' && (
-              <View style={st.emptyState}>
-                <Ionicons name="bookmark-outline" size={40} color={colors.textSubtle} />
-                <Text style={[st.emptyText, { color: colors.textSubtle }]}>Bookmark recipes to save them for later.</Text>
-              </View>
+              <SavedRecipesInline user={user} colors={colors} isDark={isDark} navigation={navigation} fontSizes={fontSizes} />
             )}
 
             {/* Notifications Tab */}
@@ -867,7 +956,6 @@ export default function ProfileScreen({ navigation }) {
                     { icon: 'phone-portrait-outline', label: 'Push notifications', key: 'pushNotifications' },
                     { icon: 'mail-outline', label: 'Email notifications', key: 'emailNotifications' },
                     { icon: 'flame-outline', label: 'Recipe alerts', key: 'recipeAlerts' },
-                    { icon: 'newspaper-outline', label: 'Weekly digest', key: 'weeklyDigest' },
                   ].map((item) => (
                     <View key={item.key} style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
                       <View style={st.settingLeft}>
@@ -1222,6 +1310,7 @@ const st = StyleSheet.create({
   section: { borderWidth: 1, borderRadius: 10, padding: 16, gap: 10 },
   sectionHeader: { flexDirection: 'row', gap: 12, marginBottom: 6 },
   sectionIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  tabIconWrap: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   sectionTitleWrap: { flex: 1 },
   sectionTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 17, letterSpacing: 0 },
   sectionCaption: { fontFamily: 'Geist_500Medium', fontSize: 12, lineHeight: 17, marginTop: 1 },

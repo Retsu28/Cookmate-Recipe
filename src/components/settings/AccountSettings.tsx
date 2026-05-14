@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn, getInitial } from '@/lib/utils';
 import profileService, { type AccountSettingsUpdate, type UserProfile } from '@/services/profileService';
+import authService from '@/services/authService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const MIN_PASSWORD_LEN = 8;
@@ -225,11 +226,13 @@ export default function AccountSettings() {
       email: normalizeEmail(form.email),
       cooking_skill_level: form.cookingSkillLevel,
     };
-    if (securityChanging) payload.current_password = form.currentPassword;
-    if (passwordChanging) payload.new_password = form.newPassword;
+    if (emailChanged) payload.current_password = form.currentPassword;
 
     setSaving(true);
     try {
+      if (passwordChanging) {
+        await authService.changePassword(form.currentPassword, form.newPassword);
+      }
       let nextInitial = initial;
       if (hasProfileChanges) {
         const { profile } = await profileService.updateProfile(user.id, payload);

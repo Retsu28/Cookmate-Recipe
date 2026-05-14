@@ -44,9 +44,9 @@ const IngredientManagement = lazy(() => import('./admin/pages/IngredientManageme
 const UserManagement = lazy(() => import('./admin/pages/UserManagement'));
 const MealPlannerMonitoring = lazy(() => import('./admin/pages/MealPlannerMonitoring'));
 const AIActivityMonitoring = lazy(() => import('./admin/pages/AIActivityMonitoring'));
-const ReviewsFeedback = lazy(() => import('./admin/pages/ReviewsFeedback'));
 const NotificationManagement = lazy(() => import('./admin/pages/NotificationManagement'));
 const Reports = lazy(() => import('./admin/pages/Reports'));
+const ReviewsFeedback = lazy(() => import('./admin/pages/ReviewsFeedback'));
 const SystemStatus = lazy(() => import('./admin/pages/SystemStatus'));
 const AuditLog = lazy(() => import('./admin/pages/AuditLog'));
 
@@ -94,9 +94,9 @@ export default function App() {
                 <Route path="users" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><UserManagement /></Suspense></PageErrorBoundary>} />
                 <Route path="meal-planner" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><MealPlannerMonitoring /></Suspense></PageErrorBoundary>} />
                 <Route path="ai-activity" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AIActivityMonitoring /></Suspense></PageErrorBoundary>} />
-                <Route path="reviews" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><ReviewsFeedback /></Suspense></PageErrorBoundary>} />
                 <Route path="notifications" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><NotificationManagement /></Suspense></PageErrorBoundary>} />
                 <Route path="reports" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><Reports /></Suspense></PageErrorBoundary>} />
+                <Route path="reviews" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><ReviewsFeedback /></Suspense></PageErrorBoundary>} />
                 <Route path="system-status" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><SystemStatus /></Suspense></PageErrorBoundary>} />
                 <Route path="ml-analytics" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><MLAnalytics /></Suspense></PageErrorBoundary>} />
                 <Route path="audit-log" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AuditLog /></Suspense></PageErrorBoundary>} />

@@ -40,11 +40,11 @@ export function AddToPlannerForm({
   const navigate = useNavigate();
   const isOnline = useOnlineStatus();
   const [plannedDate, setPlannedDate] = useState(todayInputValue);
-  const [mealType, setMealType] = useState<MealType>('dinner');
+  const [mealType, setMealType] = useState<MealType>('breakfast');
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [customTimeEnabled, setCustomTimeEnabled] = useState(false);
-  const [startTime, setStartTime] = useState(defaultTimes.dinner.start);
-  const [endTime, setEndTime] = useState(defaultTimes.dinner.end);
+  const [startTime, setStartTime] = useState(defaultTimes.breakfast.start);
+  const [endTime, setEndTime] = useState(defaultTimes.breakfast.end);
   const [saving, setSaving] = useState(false);
 
   const canSave = useMemo(
@@ -113,7 +113,6 @@ export function AddToPlannerForm({
             type="date"
             value={plannedDate}
             min={todayInputValue()}
-            max={todayInputValue()}
             onChange={(event) => setPlannedDate(event.target.value)}
             className="h-11 w-full min-w-0 rounded-xl border border-white/10 bg-stone-800 px-3 text-sm font-bold text-stone-100 outline-none transition-colors focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 [color-scheme:dark]"
             required
@@ -134,10 +133,8 @@ export function AddToPlannerForm({
                   type="button"
                   onClick={() => {
                     setMealType(value);
-                    if (!customTimeEnabled) {
-                      setStartTime(defaultTimes[value].start);
-                      setEndTime(defaultTimes[value].end);
-                    }
+                    setStartTime(defaultTimes[value].start);
+                    setEndTime(defaultTimes[value].end);
                   }}
                   className={cn(
                     'h-11 min-w-0 rounded-full border px-2 text-[11px] font-extrabold uppercase leading-none tracking-[0.04em] transition-all',

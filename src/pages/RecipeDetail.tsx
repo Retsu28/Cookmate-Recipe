@@ -70,6 +70,9 @@ export default function RecipeDetail() {
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
   const [plannerModalOpen, setPlannerModalOpen] = useState(false);
   const [showStartCookingSplash, setShowStartCookingSplash] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [heartBounce, setHeartBounce] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -99,6 +102,35 @@ export default function RecipeDetail() {
       /* silently ignore — view tracking is best-effort */
     });
   }, [recipe?.id, user?.id]);
+
+  // Check saved status
+  useEffect(() => {
+    if (!recipe?.id || !user?.id) return;
+    api.get<{ saved: boolean }>(`/api/recipes/${recipe.id}/saved-status`)
+      .then(data => setIsSaved(data.saved))
+      .catch(() => {});
+  }, [recipe?.id, user?.id]);
+
+  const toggleSave = async () => {
+    if (!user?.id) return;
+    if (savingRecipe) return;
+    const next = !isSaved;
+    setIsSaved(next);
+    setHeartBounce(true);
+    setTimeout(() => setHeartBounce(false), 400);
+    setSavingRecipe(true);
+    try {
+      if (next) {
+        await api.post(`/api/recipes/${recipe!.id}/save`);
+      } else {
+        await api.delete(`/api/recipes/${recipe!.id}/unsave`);
+      }
+    } catch {
+      setIsSaved(!next);
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
 
   const baseServings = recipe?.servings || 4;
   const scale = servings / baseServings;
@@ -267,8 +299,19 @@ export default function RecipeDetail() {
               >
                 <CalendarPlus size={20} /> Add to meal planner
               </Button>
-              <Button variant="outline" aria-label="Save to favourites" className="w-14 h-14 rounded-full border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 shrink-0 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400">
-                <Heart size={24} />
+              <Button
+                variant="outline"
+                aria-label={isSaved ? 'Remove from saved' : 'Save recipe'}
+                onClick={toggleSave}
+                disabled={savingRecipe}
+                className={`w-14 h-14 rounded-full shrink-0 transition-all ${isSaved ? 'border-red-400 text-red-500 bg-red-50 hover:bg-red-100 hover:border-red-500 dark:bg-red-950/30 dark:border-red-700 dark:text-red-400' : 'border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400'}`}
+              >
+                <Heart
+                  size={24}
+                  fill={isSaved ? 'currentColor' : 'none'}
+                  className={heartBounce ? 'scale-125' : 'scale-100'}
+                  style={{ transition: 'transform 0.2s cubic-bezier(.36,.07,.19,.97)' }}
+                />
               </Button>
             </div>
           </div>

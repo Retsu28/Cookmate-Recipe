@@ -16,29 +16,17 @@ import { tokenStorage } from '../lib/tokenStorage';
  * For production, set apiBaseUrl to your EC2 URL, e.g.:
  *   https://api.cookmate.com
  */
+// Read API base URL from Expo config (app.json)
 const configuredBaseUrl = Constants.expoConfig?.extra?.apiBaseUrl;
 
-function hostFromUri(value) {
-  if (!value || typeof value !== 'string') return '';
-  const withoutProtocol = value.replace(/^[a-z]+:\/\//i, '');
-  const host = withoutProtocol.split('/')[0].split(':')[0];
-  return host && host !== 'localhost' && host !== '127.0.0.1' ? host : '';
-}
-
-const expoHost =
-  hostFromUri(Constants.expoGoConfig?.debuggerHost) ||
-  hostFromUri(Constants.expoConfig?.hostUri) ||
-  hostFromUri(Constants.manifest2?.extra?.expoClient?.hostUri) ||
-  hostFromUri(Constants.manifest?.debuggerHost);
-
+// Always prefer the explicitly configured API URL from app.json
+// Only fall back to auto-detection if no config is set
 const API_URL =
   (typeof configuredBaseUrl === 'string' && configuredBaseUrl.trim())
     ? configuredBaseUrl.trim()
-    : expoHost
-      ? `http://${expoHost}:5000`
-      : Platform.OS === 'android'
-        ? 'http://10.0.2.2:5000'
-        : 'http://localhost:5000';
+    : Platform.OS === 'android'
+      ? 'http://10.0.2.2:5000'
+      : 'http://localhost:5000';
 
 export const apiBaseUrl = API_URL;
 
@@ -81,6 +69,11 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     const status = error.response?.status;
 
+    // Log network errors for debugging
+    if (!error.response) {
+      console.error(`[API Network Error] ${originalRequest?.method?.toUpperCase?.()} ${originalRequest?.url}`, error.message);
+    }
+
     if (status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/api/auth/refresh')) {
       if (_isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -110,7 +103,7 @@ api.interceptors.response.use(
         throw new Error('No token in refresh response');
       } catch (refreshErr) {
         processQueue(refreshErr, null);
-        await tokenStorage.removeItem('userToken');
+        await tokenStorage.deleteItem('userToken');
         return Promise.reject(refreshErr);
       } finally {
         _isRefreshing = false;
@@ -136,6 +129,10 @@ export const recipeApi = {
     api.get('/api/recipes', { params: { category, published: 'true', limit } }),
   getRecommendedForMeal: (mealType, limit = 8) =>
     api.get('/api/recipes/recommended-for-meal', { params: { meal_type: mealType, limit } }),
+  getSavedStatus: (recipeId) => api.get(`/api/recipes/${recipeId}/saved-status`),
+  saveRecipe: (recipeId) => api.post(`/api/recipes/${recipeId}/save`),
+  unsaveRecipe: (recipeId) => api.delete(`/api/recipes/${recipeId}/unsave`),
+  getSavedRecipes: (userId) => api.get(`/api/recipes/user/${userId}/saved`),
 };
 
 export const mlApi = {
@@ -181,6 +178,17 @@ export const notificationApi = {
 export const profileApi = {
   getProfile: (userId) => api.get(`/api/profile/${userId}`),
   updateProfile: (userId, data) => api.put(`/api/profile/${userId}`, data),
+  uploadAvatar: (userId, uri) => {
+    const fileName = uri.split('/').pop() || 'avatar.jpg';
+    const fileType = fileName.toLowerCase().endsWith('.png') ? 'image/png'
+      : fileName.toLowerCase().endsWith('.webp') ? 'image/webp'
+      : 'image/jpeg';
+    const formData = new FormData();
+    formData.append('avatar', { uri, name: fileName, type: fileType });
+    return api.post(`/api/profile/${userId}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 export const inventoryApi = {
@@ -190,6 +198,11 @@ export const inventoryApi = {
 export const settingsApi = {
   getSettings: (userId, key) => api.get(`/api/settings/${userId}/${key}`),
   saveSettings: (userId, key, value) => api.put(`/api/settings/${userId}/${key}`, { value }),
+};
+
+export const chatApi = {
+  sendMessage: (message, history = []) => api.post('/api/chat', { message, history }),
+  getHistory: () => api.get('/api/chat/history'),
 };
 
 export default api;

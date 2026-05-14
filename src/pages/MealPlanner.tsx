@@ -55,6 +55,12 @@ const mealSlots: Array<{ id: MealType; label: string; color: string }> = [
   { id: 'dinner', label: 'Dinner', color: 'bg-orange-500' },
 ];
 
+const defaultTimes: Record<MealType, { start: string; end: string }> = {
+  breakfast: { start: '07:00', end: '08:00' },
+  lunch: { start: '11:00', end: '14:00' },
+  dinner: { start: '18:00', end: '20:00' },
+};
+
 function dayKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
 }
@@ -1403,6 +1409,7 @@ function EditPlanModal({
             <input
               type="date"
               value={plannedDate}
+              min={format(new Date(), 'yyyy-MM-dd')}
               onChange={(event) => setPlannedDate(event.target.value)}
               className="h-11 w-full min-w-0 rounded-2xl border border-orange-100 bg-white px-3 text-sm font-bold text-stone-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-500/10 sm:h-12 sm:px-4 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
               required
@@ -1413,7 +1420,11 @@ function EditPlanModal({
               <button
                 key={slot.id}
                 type="button"
-                onClick={() => setMealType(slot.id)}
+                onClick={() => {
+                  setMealType(slot.id);
+                  setStartTime(defaultTimes[slot.id].start);
+                  setEndTime(defaultTimes[slot.id].end);
+                }}
                 className={cn(
                   'h-11 min-w-0 rounded-2xl border px-2 text-[11px] font-extrabold uppercase leading-none tracking-[0.04em] transition-all sm:h-12',
                   mealType === slot.id

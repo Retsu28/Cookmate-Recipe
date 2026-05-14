@@ -19,6 +19,7 @@ const { startMealReminderWorker } = require('./workers/mealReminderWorker');
 const { attachPlannerSocketServer } = require('./realtime/plannerSocket');
 const { purgeDeletedAccounts } = require('./jobs/purgeDeletedAccounts');
 const { purgeExpiredRefreshTokens } = require('./config/refreshToken');
+const { pool } = require('./config/db');
 
 async function startServer() {
   await testDbConnection();
@@ -27,6 +28,17 @@ async function startServer() {
     await ensureAdminAccount();
   } catch (err) {
     logger.warn({ err }, 'Admin bootstrap skipped — run database/schema.sql then restart.');
+  }
+
+  // Ensure last_active_at column exists (idempotent migration)
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE;
+      UPDATE users SET last_active_at = updated_at WHERE last_active_at IS NULL;
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_users_last_active_at ON users (last_active_at DESC)');
+  } catch (err) {
+    logger.warn({ err }, '[server] last_active_at migration skipped');
   }
 
   try {
@@ -88,7 +100,8 @@ async function startServer() {
 
   app.use((req, res, next) => {
     // Always issue a fresh CSRF token cookie if missing
-    if (!req.cookies[CSRF_COOKIE]) {
+    const csrfJustIssued = !req.cookies[CSRF_COOKIE];
+    if (csrfJustIssued) {
       const token = crypto.randomBytes(32).toString('hex');
       res.cookie(CSRF_COOKIE, token, {
         httpOnly: false, // must be readable by JS
@@ -101,8 +114,14 @@ async function startServer() {
       req.csrfToken = req.cookies[CSRF_COOKIE];
     }
 
-    // Validate on state-mutating methods (skip auth endpoints — they validate via Firebase)
-    if (!CSRF_SAFE_METHODS.has(req.method) && !CSRF_SKIP_PATHS.has(req.path)) {
+    // Validate on state-mutating methods.
+    // Skip: auth endpoints (validated via Firebase), when the cookie
+    // was just issued this request (client couldn't have sent it yet),
+    // and requests authenticated via Bearer token (mobile JWT clients
+    // don't use cookies so CSRF doesn't apply to them).
+    const skipPath = [...CSRF_SKIP_PATHS].some(p => req.originalUrl.startsWith(p));
+    const hasBearerToken = /^Bearer\s+\S+/.test(req.headers['authorization'] || '');
+    if (!csrfJustIssued && !CSRF_SAFE_METHODS.has(req.method) && !skipPath && !hasBearerToken) {
       const headerToken = req.headers['x-csrf-token'];
       if (!headerToken || headerToken !== req.csrfToken) {
         return res.status(403).json({ error: 'Invalid or missing CSRF token.' });
@@ -116,9 +135,14 @@ async function startServer() {
     res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
   });
 
-  // ─── Recipe Routes (with File Upload) - Mount BEFORE body parsers ───
+  // ─── File Upload Routes - Mount BEFORE body parsers ───
+  // busboy needs the raw stream before express.json() consumes it
   const recipeRoutes = require('./routes/recipes');
   app.use('/api/recipes', recipeRoutes);
+
+  // Avatar upload needs to be before body parsers so busboy can read the raw multipart stream
+  const { handleAvatarUpload, uploadAvatarHandler } = require('./routes/profileUpload');
+  app.post('/api/profile/:userId/avatar', handleAvatarUpload, uploadAvatarHandler);
 
   // ─── Body Parsing ───
   // Camera/image analysis routes need up to 15mb (base64 image data).

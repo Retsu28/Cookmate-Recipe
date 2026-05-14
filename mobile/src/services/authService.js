@@ -18,6 +18,9 @@ import {
   signOut,
   updateProfile,
   deleteUser,
+  reauthenticateWithCredential,
+  updatePassword,
+  EmailAuthProvider,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { firebaseAuth } from '../lib/firebase';
@@ -150,6 +153,26 @@ export const authService = {
     } catch (error) {
       if (error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-email') return;
       throw new Error(toFirebaseMessage(error, 'Could not send reset email. Please try again.'));
+    }
+  },
+
+  /**
+   * Re-authenticate the current Firebase user with their email/password, then
+   * update the password in Firebase Auth.
+   */
+  async changePassword(currentPassword, newPassword) {
+    const fbUser = firebaseAuth.currentUser;
+    if (!fbUser) throw new Error('You must be signed in to change your password.');
+    if (!fbUser.email) throw new Error('No email associated with this account.');
+    try {
+      const credential = EmailAuthProvider.credential(fbUser.email, currentPassword);
+      await reauthenticateWithCredential(fbUser, credential);
+      await updatePassword(fbUser, newPassword);
+    } catch (error) {
+      if (error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
+        throw new Error('Current password is incorrect.');
+      }
+      throw new Error(toFirebaseMessage(error, 'Failed to change password. Please try again.'));
     }
   },
 

@@ -15,6 +15,7 @@ import CookingModeScreen from '../screens/CookingModeScreen';
 import StartCookingSplashScreen from '../screens/StartCookingSplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AllRecipesScreen from '../screens/AllRecipesScreen';
+import SavedRecipesScreen from '../screens/SavedRecipesScreen';
 
 // Public auth-stack screens
 import LoginScreen from '../screens/LoginScreen';
@@ -187,6 +188,7 @@ function AppStack({ colors }) {
       <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={sharedOptions} />
       <Stack.Screen name="StartCookingSplash" component={StartCookingSplashScreen} options={sharedOptions} />
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={sharedOptions} />
+      <Stack.Screen name="SavedRecipes" component={SavedRecipesScreen} options={sharedOptions} />
     </Stack.Navigator>
   );
 }

@@ -51,7 +51,7 @@ function DateNavigationCard({
 
         <Text style={[st.dateRange, { color: colors.text }]}>
           {view === 'week'
-            ? `${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`
+            ? `${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}`
             : format(currentDate, 'EEEE, MMM d, yyyy')}
         </Text>
 

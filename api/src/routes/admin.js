@@ -160,7 +160,7 @@ router.get('/users', requireAdmin, async (req, res) => {
           u.cooking_skill_level, 
           u.role, 
           u.created_at, 
-          u.updated_at,
+          COALESCE(u.last_active_at, u.updated_at) AS last_active_at,
           u.deleted_at,
           COUNT(DISTINCT rv.recipe_id)::int AS recipes_viewed,
           COUNT(DISTINCT acs.id)::int AS ai_scans
@@ -174,6 +174,29 @@ router.get('/users', requireAdmin, async (req, res) => {
       pool.query('SELECT COUNT(*)::int AS total FROM users'),
     ]);
 
+    const now = Date.now();
+
+    function deriveStatus(row) {
+      if (row.deleted_at) return 'Deleted';
+      if (!row.last_active_at) return 'Inactive';
+      const diffMin = (now - new Date(row.last_active_at).getTime()) / 60000;
+      if (diffMin <= 5) return 'Online';
+      if (diffMin <= 1440) return 'Recently Active';
+      return 'Inactive';
+    }
+
+    function formatLastActive(row) {
+      if (!row.last_active_at) return 'Never';
+      const diffMin = (now - new Date(row.last_active_at).getTime()) / 60000;
+      if (diffMin < 1) return 'Just now';
+      if (diffMin < 60) return `${Math.floor(diffMin)}m ago`;
+      const diffH = diffMin / 60;
+      if (diffH < 24) return `${Math.floor(diffH)}h ago`;
+      const diffD = diffH / 24;
+      if (diffD < 7) return `${Math.floor(diffD)}d ago`;
+      return new Date(row.last_active_at).toLocaleDateString();
+    }
+
     const users = result.rows.map(row => ({
       id: row.id.toString(),
       name: row.full_name || 'Unnamed User',
@@ -181,8 +204,8 @@ router.get('/users', requireAdmin, async (req, res) => {
       skillLevel: row.cooking_skill_level || 'Beginner',
       recipesViewed: row.recipes_viewed || 0,
       aiScans: row.ai_scans || 0,
-      lastActive: new Date(row.updated_at).toLocaleDateString(),
-      status: row.deleted_at ? 'Deleted' : 'Active',
+      lastActive: formatLastActive(row),
+      status: deriveStatus(row),
       role: row.role
     }));
 
@@ -193,12 +216,19 @@ router.get('/users', requireAdmin, async (req, res) => {
   }
 });
 
-// Update user role or delete user? (Optional, but good for "make it functionality")
+// Soft-delete: sets deleted_at instead of removing the row so audit history
+// and foreign-key references (recipe_viewed, meal_plans, etc.) are preserved.
 router.delete('/users/:id', requireAdmin, auditLog('delete_user', 'user'), async (req, res) => {
   try {
-    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, full_name, email', [req.params.id]);
+    const result = await pool.query(
+      `UPDATE users
+       SET deleted_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id, full_name, email`,
+      [req.params.id]
+    );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).json({ error: 'User not found or already deleted.' });
     }
     await writeAuditLog(req, { entityId: parseInt(req.params.id, 10), metadata: { name: result.rows[0].full_name, email: result.rows[0].email } });
     res.json({ success: true });

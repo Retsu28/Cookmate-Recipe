@@ -1,12 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Keyboard, Platform } from 'react-native';
-import { VideoView, useVideoPlayer } from 'expo-video';
+
+let VideoView = null;
+let useVideoPlayer = null;
+try {
+  const mod = require('expo-video');
+  VideoView = mod.VideoView;
+  useVideoPlayer = mod.useVideoPlayer;
+} catch {
+  // Native module not available (e.g. Expo Go)
+}
 
 const backgroundVideo = require('../../assets/authformbackground.mp4');
 const AUTH_FALLBACK = '#0c0a09';
 const AUTH_OVERLAY = 'rgba(28, 25, 23, 0.35)';
 
-export default function AuthVideoBackground() {
+function VideoBackground() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   // Setup keyboard listeners to pause video when typing
@@ -70,21 +79,25 @@ export default function AuthVideoBackground() {
     };
   }, [player]);
 
+  return player ? (
+    <VideoView
+      player={player}
+      style={styles.video}
+      nativeControls={false}
+      contentFit="cover"
+      allowsPictureInPicture={false}
+      allowsFullscreen={false}
+      startsPictureInPictureAutomatically={false}
+      // Use hardware acceleration when available
+      renderMode="texture"
+    />
+  ) : null;
+}
+
+export default function AuthVideoBackground() {
   return (
     <View pointerEvents="none" style={styles.root}>
-      {player ? (
-        <VideoView
-          player={player}
-          style={styles.video}
-          nativeControls={false}
-          contentFit="cover"
-          allowsPictureInPicture={false}
-          allowsFullscreen={false}
-          startsPictureInPictureAutomatically={false}
-          // Use hardware acceleration when available
-          renderMode="texture"
-        />
-      ) : null}
+      {VideoView && useVideoPlayer ? <VideoBackground /> : null}
       <View style={styles.overlay} />
     </View>
   );

@@ -10,6 +10,10 @@
 
 import { groceryListCache, mealPlanCache, recipeCache, reminderEventCache, savedRecipeCache } from './db';
 import { isOnlineNow } from './network';
+import { preloadRecipeImages, getImageSrc } from './imageCache';
+
+// Re-export image cache helpers for screens
+export { getImageSrc, getCachedImage, isImageCached, getCacheStats as getImageCacheStats, clearImageCache } from './imageCache';
 
 type WithId = { id: string | number };
 
@@ -43,6 +47,8 @@ export async function getRecipesCached<T extends { recipes?: WithId[] } = { reci
       const items = toArray<WithId>(response);
       if (items.length > 0) {
         recipeCache.upsertMany(items).catch(() => {});
+        // Preload recipe images for offline viewing (fire-and-forget)
+        preloadRecipeImages(items as Array<{ image_url?: string; image?: string }>).catch(() => {});
       }
       return response;
     } catch (err) {

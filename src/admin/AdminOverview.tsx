@@ -154,7 +154,7 @@ export default function AdminOverview() {
               {weeklyChart.map((day) => (
                 <div key={day.id} className="flex flex-col items-center gap-2">
                   <span className="text-[10px] font-bold text-stone-400">{day.rawValue > 0 ? day.rawValue : ''}</span>
-                  <div className="flex h-44 w-full items-end rounded-2xl bg-stone-100 p-1">
+                  <div className="flex h-44 w-full items-end rounded-2xl bg-stone-100 dark:bg-stone-800 p-1">
                     <div
                       className="w-full rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 transition-all duration-500"
                       style={{ height: `${day.value}%` }}
@@ -173,12 +173,12 @@ export default function AdminOverview() {
         >
           <div className="space-y-3">
             {healthRows.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-stone-100 bg-stone-50 p-4">
+              <div key={item.id} className="rounded-2xl border border-stone-100 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-800/50">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-bold text-stone-900">{item.name}</p>
+                  <p className="font-bold text-stone-900 dark:text-stone-100">{item.name}</p>
                   <StatusBadge tone={item.tone}>{item.status}</StatusBadge>
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-stone-500">{item.description}</p>
+                <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-stone-400">{item.description}</p>
               </div>
             ))}
           </div>
@@ -196,16 +196,16 @@ export default function AdminOverview() {
               <p className="py-8 text-center text-sm text-stone-400">No recipes yet. Run the CSV import to populate.</p>
             )}
             {recentRecipeItems.map((item) => (
-              <div key={item.id} className="flex gap-4 rounded-2xl border border-stone-100 bg-white p-4">
+              <div key={item.id} className="flex gap-4 rounded-2xl border border-stone-100 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
                 <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-orange-200/60 bg-gradient-to-tr from-orange-100 to-amber-50 text-orange-600 shadow-sm">
                   <ChefHat size={18} strokeWidth={2.5} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="font-bold text-stone-900">{item.title}</p>
+                    <p className="font-bold text-stone-900 dark:text-stone-100">{item.title}</p>
                     <StatusBadge tone={item.tone}>{item.time}</StatusBadge>
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed text-stone-500">{item.description}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-stone-500 dark:text-stone-400">{item.description}</p>
                 </div>
               </div>
             ))}

@@ -1076,6 +1076,41 @@ exports.getRecommendedForMeal = async (req, res) => {
   }
 };
 
+// ─── GET /api/recipes/:id/saved-status ────────────────────────────────────
+// Returns whether the current user has saved this recipe (and the saved_id).
+exports.getSavedStatus = async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+    const result = await pool.query(
+      'SELECT id FROM saved_recipes WHERE user_id = $1 AND recipe_id = $2 LIMIT 1',
+      [userId, recipeId]
+    );
+    const saved = result.rows.length > 0;
+    res.json({ saved, saved_id: saved ? result.rows[0].id : null });
+  } catch (err) {
+    logger.error('[recipes/getSavedStatus]', err);
+    res.status(500).json({ error: 'Failed to check saved status.' });
+  }
+};
+
+// ─── DELETE /api/recipes/:id/unsave ───────────────────────────────────────
+// Removes a saved recipe by recipe_id (not saved_id) for the current user.
+exports.unsaveByRecipeId = async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+    await pool.query(
+      'DELETE FROM saved_recipes WHERE user_id = $1 AND recipe_id = $2',
+      [userId, recipeId]
+    );
+    res.json({ message: 'Recipe removed from saved.' });
+  } catch (err) {
+    logger.error('[recipes/unsaveByRecipeId]', err);
+    res.status(500).json({ error: 'Failed to remove saved recipe.' });
+  }
+};
+
 // ─── GET /api/recipes/user/:userId/saved ──────────────────────────────────
 // Returns all saved recipes for the authenticated user.
 exports.getSavedRecipes = async (req, res) => {
