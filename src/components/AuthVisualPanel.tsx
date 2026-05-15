@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useTheme } from 'next-themes';
-import { ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone, X } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone, X, Sparkles, CalendarDays, ShoppingBasket } from 'lucide-react';
 
 // ── floating icon data ──────────────────────────────────────────────
 const ICONS = [UtensilsCrossed, Flame, Cookie, Salad, Soup, Wheat, Cherry, IceCreamCone];
@@ -58,7 +58,7 @@ const DARK = {
   iconColor: 'text-orange-400/70',
   heading: 'text-stone-100',
   sub: 'text-stone-400',
-  pill: 'bg-white/[0.06] text-stone-300 border-orange-500/20',
+  pill: 'bg-white/[0.06] text-stone-300 border-orange-500/40',
   toggleBg: 'bg-stone-800/80 border-stone-700',
   toggleIcon: 'text-stone-400',
 };
@@ -176,7 +176,7 @@ export function AuthVisualPanel({
                 transition={{ delay: 0.3, duration: 0.5 }}
                 className={`text-4xl font-extrabold tracking-tight leading-tight mb-3 ${t.heading}`}
               >
-                {heading}
+                {heading.replace(/\.$/, '')}<span className="text-orange-500">.</span>
               </motion.h2>
               <motion.p
                 initial={{ opacity: 0, y: 12 }}
@@ -192,19 +192,37 @@ export function AuthVisualPanel({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.55, duration: 0.4 }}
-                className="flex flex-wrap justify-center gap-2 mt-8"
+                className="mt-8 w-full"
               >
-                {['AI Recipes', 'Meal Plans', 'Smart Pantry', 'Cooking Mode'].map((tag, i) => (
+                <div className="flex justify-center gap-2 mb-2">
+                  {([
+                    { label: 'AI Recipes', Icon: Sparkles },
+                    { label: 'Meal Plans', Icon: CalendarDays },
+                    { label: 'Smart Pantry', Icon: ShoppingBasket },
+                  ] as const).map(({ label, Icon: PillIcon }, i) => (
+                    <motion.span
+                      key={label}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.6 + i * 0.08 }}
+                      className={`inline-flex items-center gap-1.5 px-4 py-2 backdrop-blur-sm rounded-full text-sm font-semibold border shadow-sm ${t.pill}`}
+                    >
+                      <PillIcon size={14} strokeWidth={1.8} />
+                      {label}
+                    </motion.span>
+                  ))}
+                </div>
+                <div className="flex justify-center">
                   <motion.span
-                    key={tag}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.6 + i * 0.08 }}
-                    className={`px-4 py-1.5 backdrop-blur-sm rounded-full text-xs font-bold border shadow-sm ${t.pill}`}
+                    transition={{ delay: 0.84 }}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 backdrop-blur-sm rounded-full text-sm font-semibold border shadow-sm ${t.pill}`}
                   >
-                    {tag}
+                    <Flame size={14} strokeWidth={1.8} />
+                    Cooking Mode
                   </motion.span>
-                ))}
+                </div>
               </motion.div>
             </div>
           </motion.div>

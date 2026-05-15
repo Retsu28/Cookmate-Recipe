@@ -9,7 +9,7 @@ import {
   Clock, ChefHat, Users, Flame, Info,
   Printer, Share2, Heart,
   Star, ArrowLeft, Play, Pause, Volume2, VolumeX, X, Sparkles, Loader2, WifiOff,
-  Calendar, CheckCircle2
+  Calendar, CheckCircle2, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -20,6 +20,12 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/context/AuthContext';
 import { useAIChat } from '@/context/AIChatContext';
 import { AddToPlannerModal } from '@/components/meal-planner/AddToPlannerModal';
+import {
+  isRecipeDownloaded,
+  downloadRecipeForOffline,
+  removeRecipeFromOffline,
+  getOfflineVideoBlobUrl,
+} from '@/services/recipeOfflineCache';
 import StartCookingSplash from '@/components/StartCookingSplash';
 import { ReviewSection } from '@/components/recipe/ReviewSection';
 
@@ -54,6 +60,7 @@ interface DbRecipe {
   image_url: string | null;
   video_filename: string | null;
   instruction_timestamps: { start: number; end: number }[] | null;
+  video_credits: string | null;
   is_featured: boolean;
   ingredients: Ingredient[];
 }
@@ -74,6 +81,10 @@ export default function RecipeDetail() {
   const [showStartCookingSplash, setShowStartCookingSplash] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [offlineVideoUrl, setOfflineVideoUrl] = useState<string | null>(null);
   const [heartBounce, setHeartBounce] = useState(false);
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
 
@@ -115,6 +126,42 @@ export default function RecipeDetail() {
       /* silently ignore — view tracking is best-effort */
     });
   }, [recipe?.id, user?.id]);
+
+  // Check download status (async)
+  useEffect(() => {
+    if (!recipe?.id) return;
+    isRecipeDownloaded(recipe.id).then(setIsDownloaded);
+  }, [recipe?.id]);
+
+  // Resolve offline Blob URL when downloaded
+  useEffect(() => {
+    if (!isDownloaded || !recipe?.id) { setOfflineVideoUrl(null); return; }
+    getOfflineVideoBlobUrl(recipe.id).then(setOfflineVideoUrl);
+  }, [isDownloaded, recipe?.id]);
+
+  const handleDownloadToggle = async () => {
+    if (!recipe) return;
+    if (isDownloaded) {
+      await removeRecipeFromOffline(recipe.id);
+      setIsDownloaded(false);
+      toast.success('Removed from offline storage');
+      return;
+    }
+    setDownloading(true);
+    setDownloadProgress(0);
+    try {
+      await downloadRecipeForOffline(recipe as unknown as Record<string, unknown>, setDownloadProgress);
+      setIsDownloaded(true);
+      toast.success('Recipe downloaded for offline use', {
+        description: recipe.video_filename ? 'Recipe + video saved to device' : 'Recipe saved to device',
+      });
+    } catch {
+      toast.error('Download failed', { description: 'Please try again with a stable connection.' });
+    } finally {
+      setDownloading(false);
+      setDownloadProgress(0);
+    }
+  };
 
   // Check saved status
   useEffect(() => {
@@ -187,7 +234,11 @@ export default function RecipeDetail() {
   }
 
   if (isCooking && steps.length > 0) {
-    const videoUrl = recipe.video_filename || null;
+    // When offline and the recipe was downloaded, serve the video from Cache API
+    // so cooking guide works without a network connection.
+    const rawVideoFilename = recipe.video_filename || null;
+    // Use Blob URL from IndexedDB when offline + downloaded, else Cloudinary URL
+    const videoUrl = (offlineVideoUrl) ? offlineVideoUrl : rawVideoFilename;
     return (
       <GuidedCooking
         mode={{ title: recipe.title, steps }}
@@ -196,6 +247,7 @@ export default function RecipeDetail() {
         onExit={() => setIsCooking(false)}
         videoUrl={videoUrl}
         timestamps={recipe.instruction_timestamps || []}
+        videoCredits={recipe.video_credits || null}
       />
     );
   }
@@ -277,20 +329,48 @@ export default function RecipeDetail() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 onClick={() => {
-                  if (!isOnline) {
+                  if (!isOnline && !isDownloaded) {
                     toast.error('You are offline', { description: OFFLINE_MESSAGE });
                     return;
                   }
                   setCurrentStep(0);
                   setShowStartCookingSplash(true);
                 }}
-                aria-disabled={!isOnline || steps.length === 0}
-                title={!isOnline ? OFFLINE_MESSAGE : undefined}
-                className={`flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-14 font-bold text-lg gap-2 shadow-lg shadow-orange-500/20 ${!isOnline ? 'opacity-50 cursor-not-allowed hover:bg-orange-500' : ''}`}
+                aria-disabled={(!isOnline && !isDownloaded) || steps.length === 0}
+                title={!isOnline && !isDownloaded ? OFFLINE_MESSAGE : undefined}
+                className={`flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-full h-14 font-bold text-lg gap-2 shadow-lg shadow-orange-500/20 ${!isOnline && !isDownloaded ? 'opacity-50 cursor-not-allowed hover:bg-orange-500' : ''}`}
                 disabled={steps.length === 0}
               >
                 <Play size={20} fill="currentColor" /> Start Cooking Guide
               </Button>
+
+              {/* Download for Offline */}
+              <Button
+                variant="outline"
+                aria-label={isDownloaded ? 'Remove offline copy' : 'Download for offline'}
+                onClick={handleDownloadToggle}
+                disabled={downloading || (!isOnline && !isDownloaded)}
+                title={!isOnline && !isDownloaded ? 'Go online to download' : isDownloaded ? 'Remove offline copy' : 'Download for offline use'}
+                className={`relative w-14 h-14 rounded-full shrink-0 overflow-hidden transition-all
+                  ${isDownloaded
+                    ? 'border-emerald-400 text-emerald-600 bg-emerald-50 hover:bg-red-50 hover:border-red-400 hover:text-red-500 dark:bg-emerald-950/30 dark:border-emerald-700 dark:text-emerald-400'
+                    : 'border-stone-200 text-stone-500 hover:border-orange-500 hover:text-orange-500 dark:border-stone-700 dark:text-stone-400 dark:hover:text-orange-400'}`}
+              >
+                {downloading ? (
+                  <>
+                    <span
+                      className="absolute inset-0 bg-orange-100 dark:bg-orange-900/20 transition-all duration-300"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                    <Loader2 size={20} className="relative animate-spin text-orange-500" />
+                  </>
+                ) : isDownloaded ? (
+                  <CheckCircle2 size={22} />
+                ) : (
+                  <Download size={22} />
+                )}
+              </Button>
+
               <Button
                 variant="outline"
                 aria-label={isSaved ? 'Remove from saved' : 'Save recipe'}
@@ -532,9 +612,10 @@ interface GuidedCookingProps {
   onExit: () => void;
   videoUrl: string | null;
   timestamps: { start: number; end: number; interval?: number }[] | null;
+  videoCredits: string | null;
 }
 
-function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: GuidedCookingProps) {
+function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, videoCredits }: GuidedCookingProps) {
   const current = mode.steps[step];
   const progress = ((step + 1) / mode.steps.length) * 100;
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -773,6 +854,7 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: Gu
               <video
                 ref={videoRef}
                 src={videoUrl}
+                crossOrigin="anonymous"
                 autoPlay
                 playsInline
                 className="w-full h-full object-cover"
@@ -882,6 +964,36 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps }: Gu
               </div>
             </div>
           )}
+
+          {/* Video Credits */}
+          {videoUrl && videoCredits && (() => {
+            const parts = videoCredits.split('|');
+            const authorName = parts[0]?.trim() || '';
+            const creditUrl = parts[1]?.trim() || '';
+            if (!authorName) return null;
+            return (
+              <div className={`mt-2 flex items-center gap-1.5 px-1 text-xs ${isDark ? 'text-stone-500' : 'text-stone-400'}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 opacity-70">
+                  <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1C24 15.9 24 12 24 12s0-3.9-.5-5.8zM9.8 15.5V8.5l6.3 3.5-6.3 3.5z"/>
+                </svg>
+                <span>Subscribe to</span>
+                {creditUrl ? (
+                  <a
+                    href={creditUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`font-semibold underline underline-offset-2 transition-colors ${isDark ? 'text-orange-400 hover:text-orange-300' : 'text-orange-500 hover:text-orange-600'}`}
+                  >
+                    "{authorName}"
+                  </a>
+                ) : (
+                  <span className={`font-semibold ${isDark ? 'text-stone-300' : 'text-stone-600'}`}>
+                    "{authorName}"
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
         </div>
 

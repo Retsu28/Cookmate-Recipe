@@ -17,13 +17,7 @@ function RecipeCard({ recipe, horizontal, onPress }) {
         />
         <View style={st.hBody}>
           <Text style={[st.hTitle, { color: colors.text }]} numberOfLines={1}>{recipe.title}</Text>
-          <View style={st.hMeta}>
-            <Text style={[st.hTime, { color: colors.textSubtle }]}>{(recipe.time || '30 MIN').toUpperCase()}</Text>
-            <View style={st.hRating}>
-              <Ionicons name="star" size={10} color={colors.amber} />
-              <Text style={[st.hRatingText, { color: colors.text }]}>{recipe.rating || '4.5'}</Text>
-            </View>
-          </View>
+          <Text style={[st.hTime, { color: colors.textSubtle }]}>{(recipe.time || '30 MIN').toUpperCase()}</Text>
         </View>
       </TouchableOpacity>
     );

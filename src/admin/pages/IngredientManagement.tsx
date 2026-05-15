@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Image, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '../components/AdminPageHeader';
@@ -102,28 +102,13 @@ export default function IngredientManagement() {
     {
       header: 'Ingredient',
       render: (i) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-orange-100 text-orange-600">
-            {i.image_url ? (
-              <img src={i.image_url} alt={i.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <Image size={18} />
-            )}
-          </div>
-          <div>
-            <p className="font-extrabold text-stone-900">{i.name}</p>
-            <p className="text-xs font-medium text-stone-400">ID #{i.id}</p>
-          </div>
+        <div>
+          <p className="font-extrabold text-stone-900">{i.name}</p>
+          <p className="text-xs font-medium text-stone-400">ID #{i.id}</p>
         </div>
       ),
     },
-    { header: 'Category', render: (i) => <span className="font-bold text-stone-700">{i.category || '—'}</span> },
     { header: 'Used in recipes', render: (i) => <span className="font-semibold text-stone-600">{i.used_in_recipes} recipes</span> },
-    { header: 'Image', render: (i) => (
-      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${i.image_url ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
-        {i.image_url ? 'Has image' : 'No image'}
-      </span>
-    )},
     {
       header: 'Actions',
       render: (i) => (
@@ -168,29 +153,13 @@ export default function IngredientManagement() {
             <h3 className="text-lg font-extrabold text-stone-900">{editingId ? 'Edit Ingredient' : 'New Ingredient'}</h3>
             <button onClick={() => setShowForm(false)} className="rounded-full p-1 text-stone-400 hover:text-stone-600"><X size={18} /></button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-1">
             <div>
               <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-stone-500">Name *</label>
               <input
                 type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                 placeholder="e.g. Garlic"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-stone-500">Category</label>
-              <input
-                type="text" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                placeholder="e.g. Vegetables"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-stone-500">Image URL</label>
-              <input
-                type="text" value={form.image_url} onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                placeholder="https://..."
               />
             </div>
           </div>

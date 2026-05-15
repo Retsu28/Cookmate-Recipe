@@ -115,12 +115,8 @@ export default function HomeScreen({ navigation }) {
   const carouselIndexRef = useRef(0);
   const featuredLenRef = useRef(fallbackFeatured.length);
   const carouselTimerRef = useRef(null);
-  // Per-element stagger animations for text content
-  const badgeAnim   = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
-  const titleAnim   = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
-  const descAnim    = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
-  const btnAnim     = useRef({ op: new Animated.Value(1), y: new Animated.Value(0) }).current;
-  const textElems   = useRef([badgeAnim, titleAnim, descAnim, btnAnim]).current;
+  // Single fade for the whole hero text block — replaces 16-anim per-element stagger
+  const heroTextAnim = useRef(new Animated.Value(1)).current;
   const [recentRecipes, setRecentRecipes] = useState(fallbackRecent);
   const [plannedMeals, setPlannedMeals] = useState([]);
   const [plannedMealsLoading, setPlannedMealsLoading] = useState(true);
@@ -136,8 +132,10 @@ export default function HomeScreen({ navigation }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const isInitialLoading = useInitialContentLoading();
   const introAnim = useRef(new Animated.Value(0)).current;
+  const [heroImagesReady, setHeroImagesReady] = useState(false);
   const aiChatRef = useRef(null);
   const didFocusOnceRef = useRef(false);
+  const lastUnreadFetchRef = useRef(0);
   const hasRecentlyViewed = homeSections.recentlyViewedRecipes.length > 0;
   const recentlyViewedLoading = homeSectionsLoading && Boolean(user?.id);
 
@@ -231,29 +229,12 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   const goToSlide = useCallback((idx) => {
-    // 1. Stagger OUT: each element exits with a slight delay (badge → title → desc → btn)
-    const outAnims = textElems.map((el, i) =>
-      Animated.parallel([
-        Animated.timing(el.op, { toValue: 0, duration: 200, delay: i * 30, useNativeDriver: true }),
-        Animated.timing(el.y,  { toValue: 14, duration: 200, delay: i * 30, useNativeDriver: true }),
-      ])
-    );
-
-    Animated.parallel(outAnims).start(() => {
-      // 2. Swap the active index via both state (for render) and ref (for timer)
+    Animated.timing(heroTextAnim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
       carouselIndexRef.current = idx;
       setCarouselIndex(idx);
-
-      // 3. Stagger IN: elements fly up in sequence (badge first, button last)
-      const inAnims = textElems.map((el, i) =>
-        Animated.parallel([
-          Animated.timing(el.op, { toValue: 1, duration: 340, delay: i * 55, useNativeDriver: true }),
-          Animated.timing(el.y,  { toValue: 0, duration: 340, delay: i * 55, useNativeDriver: true }),
-        ])
-      );
-      Animated.parallel(inAnims).start();
+      Animated.timing(heroTextAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
     });
-  }, []); // textElems ref is stable; no state deps needed
+  }, [heroTextAnim]);
 
   const goNext = useCallback(() => {
     const len = featuredLenRef.current;
@@ -292,6 +273,9 @@ export default function HomeScreen({ navigation }) {
       setUnreadCount(0);
       return;
     }
+    const now = Date.now();
+    if (now - lastUnreadFetchRef.current < 60_000) return;
+    lastUnreadFetchRef.current = now;
     try {
       const READ_KEY = 'cookmate.readPlannerNotifications';
       const [upcomingRes, groceryRes, dbNotifsRes, storedRaw] = await Promise.all([
@@ -404,8 +388,14 @@ export default function HomeScreen({ navigation }) {
         <View style={s.headerLeft}>
           <Image source={require('../../assets/logo.png')} style={[s.logoBadge, { backgroundColor: colors.primary }]} />
           <View>
-            <Text style={[s.brandName, { color: colors.text, fontSize: fontSizes.lg }]}>CookMate</Text>
-            <Text style={[s.brandSub, { color: colors.textMuted, fontSize: fontSizes.xs }]}>KITCHEN ASSISTANT</Text>
+            <Text style={[s.brandName, { fontSize: fontSizes.lg }]}>
+              <Text style={{ color: colors.text }}>Cook</Text><Text style={{ color: colors.primary }}>Mate</Text>
+            </Text>
+            <View style={s.brandSubRow}>
+              <View style={[s.brandLine, { backgroundColor: colors.primary }]} />
+              <Text style={[s.brandSub, { color: colors.primary, fontSize: fontSizes.xs }]}>KITCHEN ASSISTANT</Text>
+              <View style={[s.brandLine, { backgroundColor: colors.primary }]} />
+            </View>
           </View>
         </View>
         <View style={s.headerRight}>
@@ -440,6 +430,7 @@ export default function HomeScreen({ navigation }) {
       <ScrollView
         style={s.flex1}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
@@ -448,51 +439,48 @@ export default function HomeScreen({ navigation }) {
         <Animated.View style={[s.content, introStyle]}>
           {/* Featured Hero Carousel */}
           <View style={s.heroWrap}>
-            {/* Single image that changes source - prevents blur from stacked images */}
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              <OptimizedImage
-                source={{ uri: featuredRecipes[carouselIndex]?.image_url || featuredRecipes[carouselIndex]?.image || 'https://picsum.photos/seed/chicken/800/800' }}
-                style={s.heroImage}
-                resizeMode="cover"
-              />
-            </View>
+            {/* Pre-mounted images — one per recipe, always in tree, opacity toggled.
+                Slide 0 loads immediately; slides 1+ mount only after slide 0's
+                onLoad fires so they don’t race for bandwidth on initial render. */}
+            {featuredRecipes.map((recipe, idx) => (
+              (idx === 0 || heroImagesReady) ? (
+                <Image
+                  key={recipe.id ?? idx}
+                  source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/chicken/800/800' }}
+                  style={[s.heroImage, StyleSheet.absoluteFill, { opacity: idx === carouselIndex ? 1 : 0 }]}
+                  resizeMode="cover"
+                  onLoad={idx === 0 ? () => setHeroImagesReady(true) : undefined}
+                />
+              ) : null
+            ))}
 
             {/* Dark gradient overlays */}
             <View style={s.heroOverlay} />
             <View style={s.heroOverlayTop} />
 
-            {/* Text content — each element animates independently (stagger) */}
-            <View style={s.heroContent}>
-              <Animated.View style={{ opacity: badgeAnim.op, transform: [{ translateY: badgeAnim.y }] }}>
-                <View style={s.heroBadge}>
-                  <Text style={s.heroBadgeText}>FEATURED TONIGHT</Text>
-                </View>
-              </Animated.View>
+            {/* Text content — single fade on the whole block */}
+            <Animated.View style={[s.heroContent, { opacity: heroTextAnim }]}>
+              <View style={s.heroBadge}>
+                <Text style={s.heroBadgeText}>FEATURED TONIGHT</Text>
+              </View>
 
-              <Animated.Text
-                style={[s.heroTitle, { opacity: titleAnim.op, transform: [{ translateY: titleAnim.y }] }]}
-              >
+              <Text style={s.heroTitle}>
                 {featuredRecipes[carouselIndex]?.title || 'Discover New Recipes'}
-              </Animated.Text>
+              </Text>
 
-              <Animated.Text
-                style={[s.heroDesc, { opacity: descAnim.op, transform: [{ translateY: descAnim.y }] }]}
-                numberOfLines={3}
-              >
+              <Text style={s.heroDesc} numberOfLines={3}>
                 {featuredRecipes[carouselIndex]?.description?.slice(0, 100) || 'A masterclass in texture and aroma.'}
                 {featuredRecipes[carouselIndex]?.total_time_minutes ? `  ·  ${featuredRecipes[carouselIndex].total_time_minutes} min` : ''}
-              </Animated.Text>
+              </Text>
 
-              <Animated.View style={{ opacity: btnAnim.op, transform: [{ translateY: btnAnim.y }] }}>
-                <TouchableOpacity
-                  style={s.heroBtn}
-                  activeOpacity={0.85}
-                  onPress={() => navigation.navigate('RecipeDetail', { id: featuredRecipes[carouselIndex]?.id || 1 })}
-                >
-                  <Text style={s.heroBtnText}>Let's Cook</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            </View>
+              <TouchableOpacity
+                style={s.heroBtn}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('RecipeDetail', { id: featuredRecipes[carouselIndex]?.id || 1 })}
+              >
+                <Text style={s.heroBtnText}>Let's Cook</Text>
+              </TouchableOpacity>
+            </Animated.View>
 
             {/* Prev / Next arrows */}
             {featuredRecipes.length > 1 && (
@@ -585,6 +573,8 @@ export default function HomeScreen({ navigation }) {
             loading={homeSectionsLoading}
             error={homeSectionsError}
             emptyText="No categories yet — once recipes are added you'll see them here."
+            colors={colors}
+            isDark={isDark}
             renderItem={({ item }) => (
               <CategoryChip
                 category={item.category}
@@ -607,6 +597,8 @@ export default function HomeScreen({ navigation }) {
             loading={homeSectionsLoading}
             error={homeSectionsError}
             emptyText="No popular recipes yet."
+            colors={colors}
+            isDark={isDark}
             renderItem={({ item }) => (
               <HomeRecipeCard
                 recipe={item}
@@ -626,6 +618,8 @@ export default function HomeScreen({ navigation }) {
               loading={recentlyViewedLoading}
               error={null}
               emptyText="No recently viewed"
+              colors={colors}
+              isDark={isDark}
               renderItem={({ item }) => (
                 <HomeRecipeCard
                   recipe={item}
@@ -640,6 +634,8 @@ export default function HomeScreen({ navigation }) {
                 title="Recently Viewed"
                 description="Pick up where you left off — your recently viewed recipes."
                 showContent={false}
+                colors={colors}
+                isDark={isDark}
               />
               <Text style={[s.historyEmptyText, { color: colors.textMuted }]}>
                 No recently viewed
@@ -659,6 +655,8 @@ export default function HomeScreen({ navigation }) {
             loading={homeSectionsLoading}
             error={homeSectionsError}
             emptyText="No recipes have been added yet."
+            colors={colors}
+            isDark={isDark}
             renderItem={({ item }) => (
               <HomeRecipeCard
                 recipe={item}
@@ -740,21 +738,28 @@ export default function HomeScreen({ navigation }) {
                 <Text style={[s.viewAllText, { color: colors.primary }]}>VIEW ALL RECIPES</Text>
               </TouchableOpacity>
             </View>
-            {recentRecipes.map((recipe, index) => (
-              <TouchableOpacity
-                key={`${recipe.id || recipe.title || index}`}
-                onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id || 1 })}
-                style={s.recentItem}
-              >
-                <OptimizedImage
-                  source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
-                  style={[s.recentImage, { borderColor: colors.borderSoft }]}
-                  resizeMode="cover"
-                />
-                <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
-                <Text style={[s.recentTime, { color: colors.textMuted }]}>{recipe.date || 'Recent recipes'}</Text>
-              </TouchableOpacity>
-            ))}
+            <FlatList
+              data={recentRecipes}
+              keyExtractor={(item, index) => `recent-row-${item.id || item.title || index}`}
+              scrollEnabled={false}
+              initialNumToRender={4}
+              maxToRenderPerBatch={4}
+              removeClippedSubviews={false}
+              renderItem={({ item: recipe }) => (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id || 1 })}
+                  style={s.recentItem}
+                >
+                  <OptimizedImage
+                    source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
+                    style={[s.recentImage, { borderColor: colors.borderSoft }]}
+                    resizeMode="cover"
+                  />
+                  <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
+                  <Text style={[s.recentTime, { color: colors.textMuted }]}>{recipe.date || 'Recent recipes'}</Text>
+                </TouchableOpacity>
+              )}
+            />
           </View>
 
           {/* AI Cooking Assistant — matches web right column dark AI panel */}
@@ -786,8 +791,10 @@ const s = StyleSheet.create({
   header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   logoBadge: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  brandName: { fontFamily: 'Geist_800ExtraBold', fontSize: 17, letterSpacing: -0.5 },
-  brandSub: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 2, textTransform: 'uppercase', marginTop: 1 },
+  brandName: { fontFamily: 'PlayfairDisplay_800ExtraBold_Italic', fontSize: 18, letterSpacing: -0.3 },
+  brandSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  brandLine: { height: 1, width: 10, opacity: 0.6 },
+  brandSub: { fontFamily: 'Geist_700Bold', fontSize: 7, letterSpacing: 2, textTransform: 'uppercase' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   notifDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, borderWidth: 1.5 },

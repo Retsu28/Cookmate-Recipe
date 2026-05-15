@@ -1,286 +1,509 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  useWindowDimensions 
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Pressable,
+  Animated,
+  ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { profileApi } from '../api/api';
 
-const ONBOARDING_STEPS = [
+/* ── Step definitions (mirrors web Onboarding.tsx) ─────────────────── */
+const STEPS = [
   {
     id: 'welcome',
+    emoji: '👨‍🍳',
+    emojiLabel: 'Chef',
+    gradientStart: '#fb923c',
+    gradientEnd:   '#fbbf24',
     title: 'Welcome to CookMate',
-    description: 'Your personal AI-powered sous-chef. Discover, cook, and master recipes with ease.',
-    icon: 'restaurant-outline',
-    primaryCta: 'Get Started',
+    description: 'Your personal AI-powered sous-chef. Discover, cook, and master Filipino and world recipes with ease.',
+    cta: 'Get Started',
+    skippable: true,
   },
   {
     id: 'discover',
+    emoji: '🔍',
+    emojiLabel: 'Search',
+    gradientStart: '#fbbf24',
+    gradientEnd:   '#facc15',
     title: 'Find Your Next Meal',
-    description: 'Browse thousands of recipes or search for exactly what you are craving.',
-    icon: 'search-outline',
-    primaryCta: 'Next',
+    description: 'Browse hundreds of recipes or search for exactly what you are craving — filtered by category, difficulty, and time.',
+    cta: 'Next',
+    skippable: true,
+  },
+  {
+    id: 'planner',
+    emoji: '📅',
+    emojiLabel: 'Planner',
+    gradientStart: '#f97316',
+    gradientEnd:   '#fb7185',
+    title: 'Plan Your Week',
+    description: "Add recipes to your weekly meal planner, generate a grocery list, and never wonder \"what's for dinner?\" again.",
+    cta: 'Next',
+    skippable: true,
   },
   {
     id: 'ai-camera',
+    emoji: '📷',
+    emojiLabel: 'Camera',
+    gradientStart: '#a78bfa',
+    gradientEnd:   '#a855f7',
     title: 'Scan Your Ingredients',
-    description: 'Not sure what to make? Scan your fridge and let our AI suggest recipes instantly. (Requires internet connection)',
-    icon: 'camera-outline',
-    primaryCta: 'Next',
+    description: 'Point your camera at your fridge — our AI identifies ingredients and instantly suggests recipes you can make right now.',
+    cta: 'Next',
+    skippable: true,
   },
   {
-    id: 'preferences',
-    title: 'Your Cooking Skills?',
-    description: 'We will use this to recommend the best recipes for you.',
-    isPreferences: true,
-    primaryCta: 'Finish',
-  }
+    id: 'skill',
+    emoji: '🎓',
+    emojiLabel: 'Skill',
+    gradientStart: '#34d399',
+    gradientEnd:   '#14b8a6',
+    title: "What's Your Cooking Level?",
+    description: "We'll personalise your recipe recommendations based on your skill. You can always change this in your profile.",
+    cta: 'Finish',
+    skippable: false,
+    isSkill: true,
+  },
 ];
 
+const SKILL_OPTIONS = [
+  { level: 'Beginner',     emoji: '🌱', desc: "I'm just starting out — keep it simple!" },
+  { level: 'Intermediate', emoji: '🍳', desc: 'I can follow most recipes confidently.' },
+  { level: 'Advanced',     emoji: '⭐', desc: 'I love complex techniques and challenges.' },
+];
+
+/* ── Component ──────────────────────────────────────────────────────── */
 export default function OnboardingScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [skillLevel, setSkillLevel] = useState(null);
+  const { user, refreshUser } = useAuth();
   const { width } = useWindowDimensions();
 
+  const [stepIndex, setStepIndex]     = useState(0);
+  const [direction, setDirection]     = useState(1);   // 1 = forward, -1 = back
+  const [skillLevel, setSkillLevel]   = useState(null);
+  const [saving, setSaving]           = useState(false);
+
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
-    const checkOnboardingStatus = async () => {
-      try {
-        const hasSeen = await AsyncStorage.getItem('hasSeenOnboarding');
-        if (hasSeen === 'true') {
-          navigation.replace('Main');
-        }
-      } catch (e) {
-        console.error('Failed to check onboarding status', e);
-      }
-    };
-    checkOnboardingStatus();
+    AsyncStorage.getItem('hasSeenOnboarding').then((v) => {
+      if (v === 'true') navigation.replace('Main');
+    });
   }, [navigation]);
 
-  const currentStep = ONBOARDING_STEPS[currentStepIndex];
+  const animateTransition = useCallback((nextIndex, dir) => {
+    const outX = dir * -width * 0.45;
+    const inX  = dir *  width * 0.45;
 
-  const handleNext = async () => {
-    if (currentStepIndex < ONBOARDING_STEPS.length - 1) {
-      setCurrentStepIndex(currentStepIndex + 1);
-    } else {
-      await completeOnboarding();
-    }
-  };
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: outX, duration: 220, useNativeDriver: true }),
+      Animated.timing(fadeAnim,  { toValue: 0,    duration: 180, useNativeDriver: true }),
+    ]).start(() => {
+      setStepIndex(nextIndex);
+      slideAnim.setValue(inX);
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }),
+        Animated.timing(fadeAnim,  { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    });
+  }, [slideAnim, fadeAnim, width]);
 
-  const completeOnboarding = async () => {
+  const step     = STEPS[stepIndex];
+  const isLast   = stepIndex === STEPS.length - 1;
+  const isSkill  = Boolean(step.isSkill);
+  const canGo    = !isSkill || skillLevel !== null;
+
+  const finish = useCallback(async () => {
+    setSaving(true);
     try {
-      if (skillLevel) {
+      if (skillLevel && user?.id) {
+        await profileApi.updateProfile(user.id, { cooking_skill_level: skillLevel });
+        await refreshUser?.();
         await AsyncStorage.setItem('userSkillLevel', skillLevel);
       }
-      await AsyncStorage.setItem('hasSeenOnboarding', 'true');
-      navigation.replace('Main');
-    } catch (e) {
-      console.error('Failed to save onboarding status', e);
-      navigation.replace('Main'); // Fallback
-    }
-  };
-
-  const skipOnboarding = async () => {
-    try {
-      await AsyncStorage.setItem('hasSeenOnboarding', 'true');
-    } catch (e) {
-      console.error('Failed to save onboarding status', e);
-    }
+    } catch { /* non-fatal */ }
+    finally { setSaving(false); }
+    await AsyncStorage.setItem('hasSeenOnboarding', 'true');
     navigation.replace('Main');
-  };
+  }, [skillLevel, user, navigation, refreshUser]);
+
+  const goNext = useCallback(async () => {
+    if (isLast) { await finish(); return; }
+    setDirection(1);
+    animateTransition(stepIndex + 1, 1);
+  }, [isLast, stepIndex, animateTransition, finish]);
+
+  const goBack = useCallback(() => {
+    if (stepIndex === 0) return;
+    setDirection(-1);
+    animateTransition(stepIndex - 1, -1);
+  }, [stepIndex, animateTransition]);
+
+  const skip = useCallback(async () => {
+    await finish();
+  }, [finish]);
+
+  const styles = useMemo(() => createStyles(colors, isDark, width), [colors, isDark, width]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        
-        <View style={styles.slideContainer}>
-          {!currentStep.isPreferences ? (
-            <>
-              <View style={styles.iconContainer}>
-                <Ionicons name={currentStep.icon} size={80} color="#f97316" />
-              </View>
-              <Text style={styles.title}>{currentStep.title}</Text>
-              <Text style={styles.description}>{currentStep.description}</Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.title}>{currentStep.title}</Text>
-              <Text style={styles.description}>{currentStep.description}</Text>
-              
-              <View style={styles.preferencesContainer}>
-                {['Beginner', 'Intermediate', 'Advanced'].map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.skillButton,
-                      skillLevel === level && styles.skillButtonActive
-                    ]}
-                    onPress={() => setSkillLevel(level)}
-                  >
-                    <Text style={[
-                      styles.skillButtonText,
-                      skillLevel === level && styles.skillButtonTextActive
-                    ]}>
-                      {level}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
-        </View>
+    <SafeAreaView style={[styles.root, { backgroundColor: isDark ? '#0c0a09' : '#fafaf9' }]}>
 
-        <View style={styles.footer}>
-          <TouchableOpacity 
-            style={styles.primaryButton}
-            onPress={handleNext}
-          >
-            <Text style={styles.primaryButtonText}>{currentStep.primaryCta}</Text>
-            <Ionicons name="chevron-forward" size={20} color="#fff" style={styles.buttonIcon} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.skipButton}
-            onPress={skipOnboarding}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
-          </TouchableOpacity>
+      {/* ── Card ─────────────────────────────────────────────────── */}
+      <View style={styles.wrapper}>
+        <View style={[styles.card, { backgroundColor: isDark ? '#1c1917' : '#ffffff' }]}>
 
-          <View style={styles.pagination}>
-            {ONBOARDING_STEPS.map((_, idx) => (
-              <View 
-                key={idx} 
-                style={[
-                  styles.dot, 
-                  idx === currentStepIndex ? styles.activeDot : null
-                ]} 
-              />
-            ))}
+          {/* Illustration area */}
+          <View style={[styles.illus, { backgroundColor: step.gradientStart }]}>
+            {/* Decorative blobs */}
+            <View style={styles.blob1} />
+            <View style={styles.blob2} />
+
+            {/* Back button */}
+            {stepIndex > 0 && (
+              <Pressable
+                onPress={goBack}
+                style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}
+                accessibilityLabel="Go back"
+              >
+                <Ionicons name="chevron-back" size={18} color="#fff" />
+              </Pressable>
+            )}
+
+            {/* Step counter */}
+            <View style={styles.stepCounter}>
+              <Text style={styles.stepCounterText}>{stepIndex + 1} / {STEPS.length}</Text>
+            </View>
+
+            {/* Animated emoji */}
+            <Animated.Text
+              style={[styles.emoji, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}
+              accessibilityLabel={step.emojiLabel}
+            >
+              {step.emoji}
+            </Animated.Text>
+          </View>
+
+          {/* Content area */}
+          <View style={styles.body}>
+
+            {/* Progress dots */}
+            <View style={styles.dots}>
+              {STEPS.map((_, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.dot,
+                    idx === stepIndex   && styles.dotActive,
+                    idx < stepIndex     && styles.dotPast,
+                  ]}
+                />
+              ))}
+            </View>
+
+            {/* Slide-animated text */}
+            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
+              <Text style={styles.title}>{step.title}</Text>
+              <Text style={styles.desc}>{step.description}</Text>
+
+              {/* Skill picker */}
+              {isSkill && (
+                <View style={styles.skillList}>
+                  {SKILL_OPTIONS.map(({ level, emoji, desc }) => {
+                    const sel = skillLevel === level;
+                    return (
+                      <Pressable
+                        key={level}
+                        onPress={() => setSkillLevel(level)}
+                        style={({ pressed }) => [
+                          styles.skillRow,
+                          sel && styles.skillRowActive,
+                          { opacity: pressed ? 0.85 : 1,
+                            borderColor: sel
+                              ? '#f97316'
+                              : isDark ? '#44403c' : '#e7e5e4' },
+                        ]}
+                      >
+                        <Text style={styles.skillEmoji}>{emoji}</Text>
+                        <View style={styles.skillInfo}>
+                          <Text style={[styles.skillLabel,
+                            { color: sel ? (isDark ? '#fdba74' : '#c2410c') : (isDark ? '#e7e5e4' : '#1c1917') }]}>
+                            {level}
+                          </Text>
+                          <Text style={styles.skillDesc}>{desc}</Text>
+                        </View>
+                        <View style={[styles.radio,
+                          { borderColor: sel ? '#f97316' : isDark ? '#57534e' : '#d6d3d1',
+                            backgroundColor: sel ? '#f97316' : 'transparent' }]}>
+                          {sel && <Ionicons name="checkmark" size={11} color="#fff" />}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </Animated.View>
+
+            {/* Actions */}
+            <View style={styles.actions}>
+              <Pressable
+                onPress={goNext}
+                disabled={!canGo || saving}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  canGo && !saving
+                    ? { backgroundColor: '#f97316', opacity: pressed ? 0.88 : 1 }
+                    : styles.primaryBtnDisabled,
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.primaryBtnText}>{step.cta}</Text>
+                    <Ionicons name="chevron-forward" size={17} color="#fff" style={{ marginLeft: 6 }} />
+                  </>
+                )}
+              </Pressable>
+
+              {step.skippable && (
+                <Pressable
+                  onPress={skip}
+                  disabled={saving}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={styles.skipText}>Skip for now</Text>
+                </Pressable>
+              )}
+            </View>
+
           </View>
         </View>
-        
+
+        {/* Brand footer */}
+        <Text style={styles.brand}>CookMate · Your AI Kitchen Companion</Text>
       </View>
     </SafeAreaView>
   );
 }
 
-function createStyles(colors, isDark) {
+/* ── Styles ─────────────────────────────────────────────────────────── */
+function createStyles(colors, isDark, screenWidth) {
   return StyleSheet.create({
-    container: {
+    root: {
       flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      flex: 1,
-      padding: 24,
-      justifyContent: 'space-between',
-    },
-    slideContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    iconContainer: {
-      marginBottom: 32,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    wrapper: {
+      width: Math.min(screenWidth - 32, 420),
+      alignItems: 'center',
+    },
+    card: {
+      width: '100%',
+      borderRadius: 28,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: isDark ? 0.45 : 0.12,
+      shadowRadius: 24,
+      elevation: 10,
+    },
+
+    /* Illustration */
+    illus: {
+      height: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    blob1: {
+      position: 'absolute',
       width: 120,
       height: 120,
       borderRadius: 60,
-      backgroundColor: colors.primarySoft,
+      backgroundColor: 'rgba(255,255,255,0.10)',
+      top: -30,
+      right: -30,
     },
-    title: {
-      fontSize: 28,
-      fontFamily: 'Geist_800ExtraBold',
-      color: isDark ? '#fafaf9' : colors.text,
-      marginBottom: 16,
-      textAlign: 'center',
-      letterSpacing: -0.5,
+    blob2: {
+      position: 'absolute',
+      width: 90,
+      height: 90,
+      borderRadius: 45,
+      backgroundColor: 'rgba(255,255,255,0.10)',
+      bottom: -20,
+      left: -20,
     },
-    description: {
-      fontSize: 16,
-      fontFamily: 'Geist_400Regular',
-      color: isDark ? '#e7e5e4' : colors.textMuted,
-      textAlign: 'center',
-      lineHeight: 24,
-      paddingHorizontal: 16,
-    },
-    preferencesContainer: {
-      width: '100%',
-      marginTop: 24,
-      gap: 12,
-    },
-    skillButton: {
-      paddingVertical: 16,
-      paddingHorizontal: 24,
+    backBtn: {
+      position: 'absolute',
+      top: 14,
+      left: 14,
+      width: 32,
+      height: 32,
       borderRadius: 16,
-      borderWidth: 2,
-      borderColor: colors.border,
-      alignItems: 'center',
-    },
-    skillButtonActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primarySoft,
-    },
-    skillButtonText: {
-      fontSize: 16,
-      fontFamily: 'Geist_500Medium',
-      color: isDark ? '#d6d3d1' : colors.textMuted,
-    },
-    skillButtonTextActive: {
-      color: isDark ? '#fed7aa' : colors.primaryDark,
-    },
-    footer: {
-      width: '100%',
-      paddingBottom: 20,
-    },
-    primaryButton: {
-      backgroundColor: colors.primary,
-      flexDirection: 'row',
+      backgroundColor: 'rgba(255,255,255,0.22)',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 18,
-      borderRadius: 16,
-      marginBottom: 16,
     },
-    primaryButtonText: {
+    stepCounter: {
+      position: 'absolute',
+      top: 14,
+      right: 14,
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+    },
+    stepCounterText: {
       color: '#fff',
-      fontSize: 18,
       fontFamily: 'Geist_700Bold',
+      fontSize: 10,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
     },
-    buttonIcon: {
-      marginLeft: 8,
+    emoji: {
+      fontSize: 90,
     },
-    skipButton: {
-      alignItems: 'center',
-      paddingVertical: 12,
+
+    /* Content */
+    body: {
+      paddingHorizontal: 24,
+      paddingTop: 20,
+      paddingBottom: 24,
     },
-    skipButtonText: {
-      color: isDark ? '#d6d3d1' : colors.textSubtle,
-      fontSize: 16,
-      fontFamily: 'Geist_500Medium',
-    },
-    pagination: {
+
+    /* Dots */
+    dots: {
       flexDirection: 'row',
       justifyContent: 'center',
-      marginTop: 24,
-      gap: 8,
+      gap: 6,
+      marginBottom: 20,
     },
     dot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.primarySoftBorder,
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: isDark ? '#44403c' : '#e7e5e4',
     },
-    activeDot: {
+    dotActive: {
       width: 24,
-      backgroundColor: colors.primary,
+      backgroundColor: '#f97316',
+    },
+    dotPast: {
+      backgroundColor: isDark ? '#92400e' : '#fdba74',
+    },
+
+    /* Text */
+    title: {
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 22,
+      letterSpacing: -0.4,
+      color: isDark ? '#fafaf9' : '#1c1917',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    desc: {
+      fontFamily: 'Geist_400Regular',
+      fontSize: 14,
+      lineHeight: 21,
+      color: isDark ? '#a8a29e' : '#78716c',
+      textAlign: 'center',
+    },
+
+    /* Skill picker */
+    skillList: {
+      marginTop: 20,
+      gap: 10,
+    },
+    skillRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      backgroundColor: 'transparent',
+    },
+    skillRowActive: {
+      backgroundColor: isDark ? 'rgba(249,115,22,0.12)' : '#fff7ed',
+    },
+    skillEmoji: {
+      fontSize: 26,
+      marginRight: 12,
+    },
+    skillInfo: {
+      flex: 1,
+    },
+    skillLabel: {
+      fontFamily: 'Geist_700Bold',
+      fontSize: 14,
+    },
+    skillDesc: {
+      fontFamily: 'Geist_400Regular',
+      fontSize: 11,
+      color: isDark ? '#78716c' : '#a8a29e',
+      marginTop: 1,
+    },
+    radio: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      borderWidth: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    /* Actions */
+    actions: {
+      marginTop: 22,
+      gap: 8,
+    },
+    primaryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      borderRadius: 18,
+    },
+    primaryBtnDisabled: {
+      backgroundColor: isDark ? '#292524' : '#e7e5e4',
+    },
+    primaryBtnText: {
+      fontFamily: 'Geist_800ExtraBold',
+      fontSize: 14,
+      color: '#fff',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    skipText: {
+      fontFamily: 'Geist_500Medium',
+      fontSize: 13,
+      color: isDark ? '#57534e' : '#a8a29e',
+      textAlign: 'center',
+      paddingVertical: 6,
+    },
+
+    /* Brand footer */
+    brand: {
+      marginTop: 20,
+      fontFamily: 'Geist_700Bold',
+      fontSize: 9,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      color: isDark ? '#44403c' : '#d6d3d1',
+      textAlign: 'center',
     },
   });
 }

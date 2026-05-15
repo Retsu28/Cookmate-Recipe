@@ -37,6 +37,20 @@ export function registerServiceWorker() {
 
         console.info(`[PWA] Service worker registered: ${swUrl}`);
 
+        // Force the waiting service worker to become active immediately
+        // This ensures offline support works right after first install
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New service worker is waiting, skip waiting
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          }
+        });
+
         window.setInterval(() => {
           if (document.visibilityState === 'visible' && !isAuthPath()) {
             registration.update().catch((error) => {

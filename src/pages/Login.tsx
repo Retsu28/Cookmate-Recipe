@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
@@ -8,6 +8,8 @@ import { isAdminUser, MfaRequiredError } from '@/services/authService';
 import { AuthVisualPanel } from '@/components/AuthVisualPanel';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { useRateLimit } from '@/hooks/useRateLimit';
+import { RateLimitIndicator } from '@/components/RateLimitIndicator';
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 10 },
@@ -44,6 +46,8 @@ export default function Login() {
   });
   const submittingRef = useRef(false);
 
+  const { rateLimit, isLocked, countdown, resetRateLimit, updateFromError } = useRateLimit();
+
   const validate = (): string | null => {
     if (!EMAIL_RE.test(email.trim())) return 'Please enter a valid email address.';
     if (!password) return 'Please enter your password.';
@@ -58,9 +62,10 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submittingRef.current) return;
+    if (submittingRef.current || isLocked) return;
 
     setError(null);
+    resetRateLimit();
     const v = validate();
     if (v) {
       setError(v);
@@ -76,6 +81,8 @@ export default function Login() {
         navigate('/mfa-verify', { state: { mfaUserId: err.mfaUserId }, replace: true });
         return;
       }
+      // Check for rate limit info in error
+      updateFromError(err);
       const msg = err instanceof Error ? err.message : 'Unable to sign in. Please try again.';
       setError(msg);
     } finally {
@@ -125,12 +132,12 @@ export default function Login() {
                     transition={{ delay: 0.05, duration: 0.4 }}
                     className="flex flex-col items-center text-center mb-8"
                   >
-                    <motion.img
-                      src="/logo.png"
-                      alt="CookMate"
+                    <motion.div
                       whileHover={{ rotate: [0, -6, 6, 0], transition: { duration: 0.5 } }}
-                      className="w-14 h-14 mb-4"
-                    />
+                      className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/30 mb-4"
+                    >
+                      <img src="/logo.png" alt="CookMate" className="w-11 h-11 object-contain" />
+                    </motion.div>
                     <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Welcome back</h1>
                     <p className="text-stone-500 text-sm mt-1">Sign in to keep cooking with CookMate.</p>
                   </motion.div>
@@ -145,10 +152,13 @@ export default function Login() {
                         type="email"
                         autoComplete="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (error) setError(null);
+                        }}
                         placeholder="you@example.com"
                         className="w-full h-12 rounded-xl border border-stone-200 bg-white px-4 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
-                        disabled={loading}
+                        disabled={loading || isLocked}
                       />
                     </motion.div>
 
@@ -162,10 +172,13 @@ export default function Login() {
                           type={showPassword ? 'text' : 'password'}
                           autoComplete="current-password"
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            if (error) setError(null);
+                          }}
                           placeholder="Your password"
                           className="w-full h-12 rounded-xl border border-stone-200 bg-white px-4 pr-12 text-stone-900 placeholder:text-stone-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
-                          disabled={loading}
+                          disabled={loading || isLocked}
                         />
                         <motion.button
                           type="button"
@@ -200,16 +213,22 @@ export default function Login() {
                         />
                         Remember me
                       </label>
-                      <Link
-                        to="/forgot-password"
-                        className="text-sm font-medium text-orange-600 hover:text-orange-700 hover:underline underline-offset-2"
-                      >
-                        Forgot password?
-                      </Link>
+                      {isLocked ? (
+                        <span className="text-sm font-medium text-stone-400 cursor-not-allowed">
+                          Forgot password?
+                        </span>
+                      ) : (
+                        <Link
+                          to="/forgot-password"
+                          className="text-sm font-medium text-orange-600 hover:text-orange-700 hover:underline underline-offset-2"
+                        >
+                          Forgot password?
+                        </Link>
+                      )}
                     </motion.div>
 
                     <AnimatePresence>
-                      {error && (
+                      {error && !isLocked && (
                         <motion.div
                           role="alert"
                           initial={{ opacity: 0, y: -6, height: 0 }}
@@ -223,17 +242,24 @@ export default function Login() {
                       )}
                     </AnimatePresence>
 
+                    {/* Rate Limit Indicator */}
+                    <RateLimitIndicator rateLimit={rateLimit} countdown={countdown} />
+
                     <motion.button
                       type="submit"
-                      disabled={loading}
-                      whileHover={{ scale: loading ? 1 : 1.015 }}
-                      whileTap={{ scale: loading ? 1 : 0.97 }}
+                      disabled={loading || isLocked}
+                      whileHover={{ scale: loading || isLocked ? 1 : 1.015 }}
+                      whileTap={{ scale: loading || isLocked ? 1 : 0.97 }}
                       transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-xl py-4 text-base font-bold disabled:opacity-70 flex items-center justify-center"
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-xl py-4 text-base font-bold disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
                     >
                       {loading ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin" /> Signing in...
+                        </span>
+                      ) : isLocked ? (
+                        <span className="flex items-center gap-2">
+                          <Lock className="w-4 h-4" /> Locked
                         </span>
                       ) : (
                         'Sign in'
@@ -248,7 +274,7 @@ export default function Login() {
                   </div>
 
                   <div className="mt-4">
-                    <GoogleSignInButton text="signin_with" onError={setError} />
+                    <GoogleSignInButton text="signin_with" onError={setError} disabled={isLocked} />
                   </div>
 
                   <motion.p
@@ -258,9 +284,15 @@ export default function Login() {
                     className="text-center text-sm text-stone-500 mt-6"
                   >
                     New to CookMate?{' '}
-                    <Link to="/signup" className="font-bold text-orange-600 hover:text-orange-700 hover:underline underline-offset-2">
-                      Create an account
-                    </Link>
+                    {isLocked ? (
+                      <span className="font-bold text-stone-400 cursor-not-allowed">
+                        Create an account
+                      </span>
+                    ) : (
+                      <Link to="/signup" className="font-bold text-orange-600 hover:text-orange-700 hover:underline underline-offset-2">
+                        Create an account
+                      </Link>
+                    )}
                   </motion.p>
                 </CardContent>
               </Card>

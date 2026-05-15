@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const logger = require('../config/logger');
 const path = require('path');
 const { pool } = require('../config/db');
@@ -64,20 +64,20 @@ async function notifyUsersAboutNewRecipe(recipeTitle, recipeId, imageUrl = null,
     // Send ONE email with opted-in users in BCC
     const bccEmails = eligibleUsers.map(u => u.email).filter(Boolean);
     logger.info(`[notifyUsersAboutNewRecipe] Sending email to ${bccEmails.length} opted-in recipients via BCC`);
-    
+
     const emailPromise = bccEmails.length > 0
       ? sendMail({
-          to: process.env.SMTP_FROM || 'noreply@cookmate.app',
-          bcc: bccEmails.join(','),
-          subject,
-          html: htmlContent,
-          text: textContent,
-        }).then(info => {
-          logger.info(`[notifyUsersAboutNewRecipe] Email sent successfully:`, info?.messageId || 'no messageId');
-          return info;
-        }).catch(err => {
-          logger.error(`[newRecipeNotify] Failed to send summary email:`, err.message);
-        })
+        to: process.env.SMTP_FROM || 'noreply@cookmate.app',
+        bcc: bccEmails.join(','),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }).then(info => {
+        logger.info(`[notifyUsersAboutNewRecipe] Email sent successfully:`, info?.messageId || 'no messageId');
+        return info;
+      }).catch(err => {
+        logger.error(`[newRecipeNotify] Failed to send summary email:`, err.message);
+      })
       : Promise.resolve();
 
     // Create in-app notifications for opted-in users
@@ -171,7 +171,7 @@ const RECIPE_COLS = `
   servings, serving_size, calories, protein_g, carbs_g, fat_g, sodium_mg, fiber_g,
   region_or_origin, category, tags, normalized_ingredients,
   image_url, is_featured, is_published, author_id,
-  video_filename, instruction_timestamps,
+  video_filename, instruction_timestamps, video_credits,
   created_at, updated_at
 `.replace(/\s+/g, ' ').trim();
 
@@ -479,7 +479,7 @@ exports.createRecipe = async (req, res) => {
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
-      instruction_timestamps,
+      instruction_timestamps, video_credits,
     } = req.body;
 
     // Handle uploaded video file
@@ -513,9 +513,9 @@ exports.createRecipe = async (req, res) => {
           difficulty, region_or_origin, category, tags,
           normalized_ingredients,
           image_url, is_featured, is_published, author_id, updated_at,
-          video_filename, instruction_timestamps
+          video_filename, instruction_timestamps, video_credits
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,CURRENT_TIMESTAMP,$24,$25)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,CURRENT_TIMESTAMP,$24,$25,$26)
        RETURNING *`,
       [
         title.trim(),
@@ -543,6 +543,7 @@ exports.createRecipe = async (req, res) => {
         req.userId || null,
         video_filename,
         JSON.stringify(timestamps),
+        video_credits || null,
       ]
     );
 
@@ -582,7 +583,7 @@ exports.updateRecipe = async (req, res) => {
       difficulty, region_or_origin, category, tags,
       normalized_ingredients, ingredients,
       image_url, is_featured, is_published,
-      instruction_timestamps, remove_video,
+      instruction_timestamps, remove_video, video_credits,
     } = req.body;
 
     if (!title || !title.trim()) {
@@ -669,6 +670,10 @@ exports.updateRecipe = async (req, res) => {
     if (instruction_timestamps !== undefined) {
       updates.push(`instruction_timestamps = $${params.length + 1}`);
       params.push(JSON.stringify(timestamps));
+    }
+    if (video_credits !== undefined) {
+      updates.push(`video_credits = $${params.length + 1}`);
+      params.push(video_credits || null);
     }
 
     params.push(id); // WHERE id = $n
@@ -1014,14 +1019,14 @@ async function notifyUsersAboutNewRecipesBatch(insertedCount, insertedRecipes, e
     const bccEmails = eligibleUsers.map(u => u.email).filter(Boolean);
     const emailPromise = bccEmails.length > 0
       ? sendMail({
-          to: process.env.SMTP_FROM || 'noreply@cookmate.app',
-          bcc: bccEmails.join(','),
-          subject,
-          html: htmlContent,
-          text: textContent,
-        }).catch(err => {
-          logger.error(`[newRecipesBatchNotify] Failed to send summary email:`, err.message);
-        })
+        to: process.env.SMTP_FROM || 'noreply@cookmate.app',
+        bcc: bccEmails.join(','),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }).catch(err => {
+        logger.error(`[newRecipesBatchNotify] Failed to send summary email:`, err.message);
+      })
       : Promise.resolve();
 
     // Create in-app notifications for opted-in users

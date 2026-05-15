@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 
@@ -39,7 +39,8 @@ export default function TabSceneAnimator({ children }) {
       directionRef.current = currentIndex >= prevIndex ? 1 : -1;
       lastFocusedTabIndex = currentIndex;
 
-      // Animate in (start from current value, not 0, to avoid flash)
+      // Reset to 0 first so the slide actually plays on every focus
+      progress.setValue(0);
       const animation = Animated.timing(progress, {
         toValue: 1,
         duration: 260,
@@ -51,23 +52,16 @@ export default function TabSceneAnimator({ children }) {
     }, [progress, myIndex]),
   );
 
-  const animatedStyle = {
-    opacity: 1,
-    transform: [
-      {
-        translateX: progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [directionRef.current * 60, 0],
-        }),
-      },
-      {
-        scale: progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.97, 1],
-        }),
-      },
-    ],
-  };
+  // Stable interpolation nodes — created once per mount, not on every render.
+  const translateX = useRef(
+    progress.interpolate({ inputRange: [0, 1], outputRange: [60, 0] })
+  ).current;
+  const scaleAnim = useRef(
+    progress.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] })
+  ).current;
+  const animatedStyle = useMemo(() => ({
+    transform: [{ translateX }, { scale: scaleAnim }],
+  }), [translateX, scaleAnim]);
 
   return <Animated.View style={[st.flex1, animatedStyle]}>{children}</Animated.View>;
 }

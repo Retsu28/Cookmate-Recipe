@@ -19,9 +19,17 @@ import { plannerApi, recipeApi } from '../api/api';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import OptimizedImage from '../components/OptimizedImage';
+import ReviewSection from '../components/ReviewSection';
+import AIAssistantWidget from '../components/AIAssistantWidget';
 import { RecipeDetailSkeleton } from '../components/SkeletonPlaceholder';
 import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
 import { getRecipeByIdCached, offlineCache } from '../offline/cacheService';
+import {
+  isRecipeDownloaded,
+  downloadRecipeForOffline,
+  removeRecipeFromOffline,
+  getLocalVideoPath,
+} from '../offline/recipeDownload';
 import { getDeviceTimezone } from '../lib/timezone';
 
 const fallbackRecipes = {
@@ -332,9 +340,8 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadedFromApi, setLoadedFromApi] = useState(false);
-  const [servings, setServings] = useState(4);
-  const [checkedIngredients, setCheckedIngredients] = useState({});
   const [plannerOpen, setPlannerOpen] = useState(false);
+  const [reviewStats, setReviewStats] = useState(null);
   const [planDate, setPlanDate] = useState(todayInputValue());
   const [planMealType, setPlanMealType] = useState('breakfast');
   const [planReminderEnabled, setPlanReminderEnabled] = useState(true);
@@ -347,7 +354,12 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [plannerKeyboardHeight, setPlannerKeyboardHeight] = useState(0);
   const [isSaved, setIsSaved] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const heartScale = useRef(new Animated.Value(1)).current;
+  const downloadScale = useRef(new Animated.Value(1)).current;
+  const aiChatRef = useRef(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
@@ -358,6 +370,48 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const endTime24 = planCustomTimeEnabled
     ? parseTime12Input(planEndTimeInput, planEndPeriod)
     : defaultMealTimes[planMealType]?.end;
+
+  // Check if already downloaded for offline
+  useEffect(() => {
+    if (!id) return;
+    isRecipeDownloaded(id).then(setIsDownloaded);
+  }, [id]);
+
+  const handleDownloadToggle = async () => {
+    if (!recipe) return;
+    if (isDownloaded) {
+      await removeRecipeFromOffline(recipe.id);
+      setIsDownloaded(false);
+      Alert.alert('Removed', 'Offline copy deleted.');
+      return;
+    }
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to download recipes.');
+      return;
+    }
+    setDownloading(true);
+    setDownloadProgress(0);
+    Animated.sequence([
+      Animated.timing(downloadScale, { toValue: 0.9, duration: 100, useNativeDriver: true }),
+      Animated.timing(downloadScale, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]).start();
+    try {
+      await downloadRecipeForOffline(recipe, setDownloadProgress);
+      setIsDownloaded(true);
+      const hasVideo = !!recipe.video_filename;
+      Alert.alert(
+        'Downloaded!',
+        hasVideo
+          ? `${recipe.title} + video saved to CookMate/recipes/`
+          : `${recipe.title} saved for offline use.`,
+      );
+    } catch (err) {
+      Alert.alert('Download failed', err?.message || 'Please try again.');
+    } finally {
+      setDownloading(false);
+      setDownloadProgress(0);
+    }
+  };
 
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -378,6 +432,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
             : r.steps || [],
           video_filename: r.video_filename || null,
           instruction_timestamps: r.instruction_timestamps || [],
+          video_credits: r.video_credits || null,
           nutrition: r.nutrition || {
             calories: r.calories || 0,
             protein: r.protein_g ? `${r.protein_g}g` : '—',
@@ -387,13 +442,11 @@ export default function RecipeDetailScreen({ route, navigation }) {
         };
         setRecipe(normalized);
         setLoadedFromApi(true);
-        setServings(normalized.servings || 4);
       } catch (error) {
         console.error('Failed to fetch recipe', error);
         const fallback = fallbackRecipes[id] || fallbackRecipes[1];
         setRecipe(fallback);
         setLoadedFromApi(false);
-        setServings(fallback.servings || 4);
       } finally {
         setLoading(false);
       }
@@ -467,10 +520,6 @@ export default function RecipeDetailScreen({ route, navigation }) {
     } finally {
       setSavingRecipe(false);
     }
-  };
-
-  const toggleIngredient = (i) => {
-    setCheckedIngredients(prev => ({ ...prev, [i]: !prev[i] }));
   };
 
   const applyPlanTimes = (start, end) => {
@@ -612,7 +661,11 @@ export default function RecipeDetailScreen({ route, navigation }) {
             <Text style={[st.recipeTitle, { color: colors.text }]}>{recipe.title}</Text>
             <View style={st.ratingBox}>
               <Ionicons name="star" size={14} color={colors.amber} />
-              <Text style={[st.ratingText, { color: colors.text }]}>{recipe.rating || '4.8'}</Text>
+              <Text style={[st.ratingText, { color: colors.text }]}>
+                {reviewStats?.avg_rating 
+                  ? Number(reviewStats.avg_rating).toFixed(1) 
+                  : (reviewStats && reviewStats.total_reviews === 0 ? '0.0' : (recipe?.avg_rating ? Number(recipe.avg_rating).toFixed(1) : '0.0'))}
+              </Text>
             </View>
           </View>
 
@@ -626,75 +679,45 @@ export default function RecipeDetailScreen({ route, navigation }) {
               { label: 'PREP TIME', value: recipe.prepTime || '15 min' },
               { label: 'COOK TIME', value: recipe.time || '35 min' },
               { label: 'DIFFICULTY', value: recipe.difficulty || 'Medium' },
-              { label: 'SERVINGS', value: `${servings}`, adjust: true },
             ].map((item, i) => (
-              <View key={i} style={[st.infoCell, { borderColor: colors.border }]}>
+              <View key={i} style={[{ width: '33.33%', paddingVertical: 16, paddingHorizontal: 4, borderWidth: 0.5, alignItems: 'center', borderColor: colors.border }]}>
                 <Text style={[st.infoCellLabel, { color: colors.textSubtle }]}>{item.label}</Text>
-                {item.adjust ? (
-                  <View style={st.servingsRow}>
-                    <TouchableOpacity onPress={() => setServings(Math.max(1, servings - 1))}>
-                      <Ionicons name="remove-circle-outline" size={18} color={colors.primary} />
-                    </TouchableOpacity>
-                    <Text style={[st.infoCellValue, { color: colors.text }]}>{servings}</Text>
-                    <TouchableOpacity onPress={() => setServings(servings + 1)}>
-                      <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <Text style={[st.infoCellValue, { color: colors.text }]}>{item.value}</Text>
-                )}
+                <Text style={[st.infoCellValue, { color: colors.text }]}>{item.value}</Text>
               </View>
             ))}
           </View>
 
-          {/* Ingredients — checkable list matching web */}
-          <View style={st.section}>
-            <View style={[st.sectionHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[st.sectionLabel, { color: colors.textSubtle }]}>INGREDIENTS ({ings.length})</Text>
-              <Text style={[st.sectionLabel, { color: colors.textSubtle }]}>AMOUNT</Text>
+          {/* Plan This Meal CTA */}
+          <View style={[st.planMealCta, { backgroundColor: isDark ? 'rgba(249,115,22,0.1)' : 'rgba(255,237,213,0.8)', borderColor: isDark ? 'rgba(249,115,22,0.2)' : 'rgba(254,215,170,0.8)' }]}>
+            <View style={st.planMealCtaText}>
+              <Text style={[st.planMealCtaTitle, { color: colors.text }]}>Plan This Meal</Text>
+              <Text style={[st.planMealCtaDesc, { color: colors.textSubtle }]}>Add to your meal planner to get a grocery list and reminders.</Text>
             </View>
+            <TouchableOpacity onPress={openPlanner} style={[st.planMealCtaBtn, { backgroundColor: colors.primary }]}>
+              <Ionicons name="calendar" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={st.planMealCtaBtnText}>Add to Meal Plan</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Ingredients - Simple List */}
+          <View style={st.section}>
+            <Text style={[st.sectionLabel, { color: colors.text, fontSize: 22, fontFamily: 'Geist_700Bold', textTransform: 'none', marginBottom: 16, letterSpacing: 0 }]}>Ingredients</Text>
             {ings.map((ing, i) => {
               const name = ing.name || ing;
               const amount = ing.amount ? `${ing.amount} ${ing.unit || ''}` : '';
-              const checked = !!checkedIngredients[i];
               return (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => toggleIngredient(i)}
-                  style={[st.ingRow, { borderBottomColor: colors.border }]}
-                  activeOpacity={0.7}
-                >
-                  <View style={st.ingLeft}>
-                    <View style={[st.checkbox, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : 'transparent' }]}>
-                      {checked && <Ionicons name="checkmark" size={12} color="#fff" />}
-                    </View>
-                    <Text style={[st.ingName, { color: checked ? colors.textSubtle : colors.text, textDecorationLine: checked ? 'line-through' : 'none' }]}>{name}</Text>
-                  </View>
-                  {amount ? <Text style={[st.ingAmount, { color: colors.textMuted }]}>{amount}</Text> : null}
-                </TouchableOpacity>
+                <View key={i} style={st.simpleIngRow}>
+                  <Text style={[st.simpleIngBullet, { color: colors.primary }]}>•</Text>
+                  <Text style={[st.simpleIngName, { color: colors.text }]}>
+                    <Text style={{ textTransform: 'capitalize' }}>{name}</Text>
+                    {amount ? <Text style={{ color: colors.textSubtle }}> — {amount}</Text> : null}
+                  </Text>
+                </View>
               );
             })}
-          </View>
-
-          {/* Step-by-step Instructions */}
-          <View style={st.section}>
-            <Text style={[st.sectionLabel, { color: colors.textSubtle, marginBottom: 14 }]}>STEP-BY-STEP INSTRUCTIONS</Text>
-            {steps.map((step, i) => (
-              <View key={i} style={[st.stepRow, i < steps.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                <View style={[st.stepNum, { backgroundColor: isDark ? colors.surfaceAlt : '#f5f5f4' }]}>
-                  <Text style={[st.stepNumText, { color: colors.text }]}>{step.number}</Text>
-                </View>
-                <View style={st.stepContent}>
-                  <Text style={[st.stepText, { color: colors.text }]}>{step.text}</Text>
-                  {step.time && (
-                    <View style={st.stepTimeRow}>
-                      <Ionicons name="timer-outline" size={12} color={colors.textSubtle} />
-                      <Text style={[st.stepTimeText, { color: colors.textSubtle }]}>{step.time}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            ))}
+            {ings.length === 0 && (
+              <Text style={[st.simpleIngName, { color: colors.textSubtle, fontStyle: 'italic' }]}>No ingredients listed for this recipe.</Text>
+            )}
           </View>
 
           {/* Nutrition Facts — matches web sidebar */}
@@ -719,12 +742,24 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </View>
 
           {/* Ask AI Assistant */}
-          <View style={[st.aiCard, { backgroundColor: colors.dark, padding: 20 }]}>
-            <View style={st.aiRow}>
-              <View style={[st.aiIcon, { backgroundColor: colors.surface }]}><Ionicons name="restaurant" size={14} color={colors.primary} /></View>
-              <Text style={[st.aiTitle, { color: colors.text }]}>Ask AI Assistant</Text>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => aiChatRef.current?.open()}
+            style={[st.aiCard, { backgroundColor: colors.primary, padding: 28 }]}
+          >
+            <View style={st.aiSparkleWrap}>
+              <Ionicons name="sparkles" size={36} color="rgba(255,255,255,0.9)" />
             </View>
-            <Text style={[st.aiDesc, { color: colors.textSubtle }]}>Get substitution ideas, scaling tips, or wine pairings for this recipe.</Text>
+            <Text style={st.aiCardTitle}>Ask AI Assistant</Text>
+            <Text style={st.aiCardDesc}>Need a substitute or want to make this recipe differently?</Text>
+            <View style={st.aiCardBtn}>
+              <Text style={st.aiCardBtnText}>Ask CookMate</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Review Section */}
+          <View style={{ marginTop: 16 }}>
+            <ReviewSection recipeId={id} onStatsChange={setReviewStats} />
           </View>
         </View>
       </ScrollView>
@@ -732,27 +767,61 @@ export default function RecipeDetailScreen({ route, navigation }) {
       {/* Bottom bar — matches web */}
       <View style={[st.bottomBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <TouchableOpacity
-          onPress={() => {
-            if (!isOnline) {
+          onPress={async () => {
+            if (!isOnline && !isDownloaded) {
               Alert.alert('You are offline', OFFLINE_MESSAGE);
               return;
             }
-            navigation.navigate('StartCookingSplash', { recipe });
+            // If downloaded, look up local video path and pass it to cooking mode
+            let recipeForCooking = recipe;
+            if (isDownloaded && recipe.video_filename) {
+              const localPath = await getLocalVideoPath(recipe.id);
+              if (localPath) {
+                recipeForCooking = { ...recipe, video_filename: localPath };
+              }
+            }
+            navigation.navigate('StartCookingSplash', { recipe: recipeForCooking });
           }}
-          activeOpacity={isOnline ? 0.7 : 0.9}
-          style={[st.cookBtn, { backgroundColor: colors.primary, opacity: isOnline ? 1 : 0.5 }]}
+          activeOpacity={(!isOnline && !isDownloaded) ? 0.9 : 0.7}
+          style={[st.cookBtn, { backgroundColor: colors.primary, opacity: (!isOnline && !isDownloaded) ? 0.5 : 1, flex: 1 }]}
         >
           <Ionicons name="play" size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={st.cookBtnText}>Start Cooking</Text>
+          <Text style={st.cookBtnText}>Start Cooking Guide</Text>
         </TouchableOpacity>
+
+        {/* Download for Offline */}
         <TouchableOpacity
-          onPress={openPlanner}
-          style={[st.planBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
-          activeOpacity={0.8}
+          onPress={handleDownloadToggle}
+          activeOpacity={0.7}
+          disabled={downloading}
+          style={[st.heartBtn, {
+            borderColor: isDownloaded ? '#10b981' : colors.border,
+            backgroundColor: isDownloaded ? '#ecfdf5' : colors.surfaceAlt,
+            overflow: 'hidden',
+          }]}
         >
-          <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ marginRight: 6 }} />
-          <Text style={[st.planBtnText, { color: colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>Add to planner</Text>
+          {/* Progress fill */}
+          {downloading && (
+            <View
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0,
+                width: `${downloadProgress}%`,
+                backgroundColor: '#fed7aa',
+                borderRadius: 999,
+              }}
+            />
+          )}
+          <Animated.View style={{ transform: [{ scale: downloadScale }] }}>
+            {downloading ? (
+              <Ionicons name="cloud-download-outline" size={22} color={colors.primary} />
+            ) : isDownloaded ? (
+              <Ionicons name="checkmark-circle" size={22} color="#10b981" />
+            ) : (
+              <Ionicons name="download-outline" size={22} color={colors.text} />
+            )}
+          </Animated.View>
         </TouchableOpacity>
+
         <TouchableOpacity
           onPress={toggleSave}
           style={[st.heartBtn, { borderColor: isSaved ? '#ef4444' : colors.border, backgroundColor: isSaved ? '#fef2f2' : colors.surfaceAlt }]}
@@ -763,6 +832,19 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </Animated.View>
         </TouchableOpacity>
       </View>
+
+      <AIAssistantWidget
+        ref={aiChatRef}
+        navigation={navigation}
+        recipeContext={recipe ? {
+          id: recipe.id,
+          title: recipe.title,
+          ingredients: (recipe.ingredients || []).map(i => i.name || i).filter(Boolean),
+          instructions: recipe.steps?.map(s => s.text),
+          category: recipe.category,
+          region: recipe.region_or_origin,
+        } : null}
+      />
 
       <Modal visible={plannerOpen} transparent animationType="slide" onRequestClose={() => setPlannerOpen(false)}>
         <KeyboardAvoidingView
@@ -985,11 +1067,12 @@ const st = StyleSheet.create({
   nutrBar: { height: 6, width: '100%' },
   nutrBarFill: { height: '100%' },
   // AI
-  aiCard: { backgroundColor: 'transparent', padding: 0, gap: 8, borderRadius: 24 },
-  aiRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  aiIcon: { width: 28, height: 28, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  aiTitle: { fontFamily: 'Geist_700Bold', fontSize: 14 },
-  aiDesc: { fontFamily: 'Geist_400Regular', fontSize: 12, lineHeight: 18 },
+  aiCard: { borderRadius: 24, alignItems: 'center', gap: 12, marginBottom: 4 },
+  aiSparkleWrap: { marginBottom: 4 },
+  aiCardTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 22, color: '#fff', textAlign: 'center' },
+  aiCardDesc: { fontFamily: 'Geist_400Regular', fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.85)', textAlign: 'center' },
+  aiCardBtn: { marginTop: 8, backgroundColor: '#0a0a0a', borderRadius: 999, paddingHorizontal: 32, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  aiCardBtnText: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff', letterSpacing: 0.2 },
   // Bottom bar
   bottomBar: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 50, gap: 10, borderTopWidth: 1, alignItems: 'center' },
   heartBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 26, borderWidth: 1 },
@@ -997,6 +1080,17 @@ const st = StyleSheet.create({
   planBtnText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 0.3, flexShrink: 1 },
   cookBtn: { flex: 1.3, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 26 },
   cookBtnText: { fontFamily: 'Geist_700Bold', fontSize: 13, letterSpacing: 0.5, color: '#fff' },
+  // Plan Meal CTA
+  planMealCta: { flexDirection: 'column', gap: 16, padding: 24, borderRadius: 24, borderWidth: 1, marginTop: 16, marginBottom: 8 },
+  planMealCtaText: { gap: 6 },
+  planMealCtaTitle: { fontFamily: 'Geist_700Bold', fontSize: 20 },
+  planMealCtaDesc: { fontFamily: 'Geist_400Regular', fontSize: 13, lineHeight: 18 },
+  planMealCtaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 48, borderRadius: 16 },
+  planMealCtaBtnText: { fontFamily: 'Geist_700Bold', color: '#fff', fontSize: 14 },
+  // Simple Ingredients
+  simpleIngRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6, paddingRight: 10 },
+  simpleIngBullet: { fontSize: 20, lineHeight: 22, marginRight: 8, fontFamily: 'Geist_800ExtraBold' },
+  simpleIngName: { fontFamily: 'Geist_500Medium', fontSize: 15, lineHeight: 22, flex: 1 },
   // Planner modal
   modalKeyboardAvoider: { flex: 1 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)', paddingTop: 80 },

@@ -138,7 +138,7 @@ export default function AuthVisualPanel({
 
   const panelHeight = fadeAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 220],
+    outputRange: [0, 270],
   });
 
   const panelOpacity = fadeAnim.interpolate({
@@ -221,34 +221,57 @@ export default function AuthVisualPanel({
 
         {/* Center content */}
         <View style={styles.content}>
+          {/* Orange rounded-square logo */}
           <View style={styles.logoBox}>
             <Image source={require('../../assets/logo.png')} style={styles.logoImg} resizeMode="contain" />
           </View>
+
+          {/* Heading with orange dot */}
           <Text style={[styles.heading, { color: colors.text }]}>
-            {heading}
+            {heading.replace(/\.$/, '')}<Text style={{ color: '#f97316' }}>.</Text>
           </Text>
+
           <Text style={[styles.subheading, { color: isDark ? colors.textMuted : '#78716c' }]}>
             {subheading}
           </Text>
 
-          {/* Feature pills */}
+          {/* Feature pills — 3 on top row, 1 centred below */}
           <View style={styles.pillRow}>
-            {['AI Recipes', 'Meal Plans', 'Smart Pantry'].map((tag) => (
+            {[
+              { label: 'AI Recipes', icon: 'sparkles-outline' },
+              { label: 'Meal Plans', icon: 'calendar-outline' },
+              { label: 'Smart Pantry', icon: 'basket-outline' },
+            ].map(({ label, icon }) => (
               <View
-                key={tag}
+                key={label}
                 style={[
                   styles.pill,
                   {
                     backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.65)',
-                    borderColor: isDark ? 'rgba(251,146,60,0.25)' : 'rgba(253,186,116,0.5)',
+                    borderColor: isDark ? 'rgba(251,146,60,0.45)' : 'rgba(253,186,116,0.6)',
                   },
                 ]}
               >
+                <Ionicons name={icon} size={12} color={isDark ? '#fb923c' : '#ea580c'} style={{ marginRight: 4 }} />
                 <Text style={[styles.pillText, { color: isDark ? colors.textMuted : '#44403c' }]}>
-                  {tag}
+                  {label}
                 </Text>
               </View>
             ))}
+          </View>
+          <View style={styles.pillRowSingle}>
+            <View
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.65)',
+                  borderColor: isDark ? 'rgba(251,146,60,0.45)' : 'rgba(253,186,116,0.6)',
+                },
+              ]}
+            >
+              <Ionicons name="flame-outline" size={12} color={isDark ? '#fb923c' : '#ea580c'} style={{ marginRight: 4 }} />
+              <Text style={[styles.pillText, { color: isDark ? colors.textMuted : '#44403c' }]}>Cooking Mode</Text>
+            </View>
           </View>
         </View>
       </Animated.View>
@@ -296,15 +319,22 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   logoBox: {
-    width: 44,
-    height: 44,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#f97316',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+    shadowColor: '#c2410c',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   logoImg: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
   },
   heading: {
     fontFamily: 'Geist_800ExtraBold',
@@ -323,18 +353,25 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 12,
+    marginTop: 10,
     flexWrap: 'wrap',
     justifyContent: 'center',
   },
+  pillRowSingle: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
   pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
     borderWidth: 1,
   },
   pillText: {
-    fontFamily: 'Geist_700Bold',
-    fontSize: 10,
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 11,
   },
 });

@@ -9,7 +9,6 @@ import {
   RefreshCcw,
   Search,
   ShieldCheck,
-  Sparkles,
   Users,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -164,15 +163,6 @@ export default function AIActivityMonitoring() {
       description: 'Accounts with saved AI Camera snapshots.',
       tone: 'info' as const,
       icon: Users,
-    },
-    {
-      id: 'today',
-      label: 'Saved today',
-      value: stats.savesToday.toLocaleString(),
-      change: 'Recent activity',
-      description: 'New saved scans from the current day.',
-      tone: 'warning' as const,
-      icon: Sparkles,
     },
     {
       id: 'matches',
@@ -380,7 +370,7 @@ export default function AIActivityMonitoring() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {statCards.map((stat, index) => (
           <AdminStatCard key={stat.id} {...stat} index={index} />
         ))}

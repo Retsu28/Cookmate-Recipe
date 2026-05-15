@@ -9,6 +9,8 @@ interface Props {
   text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
   /** Called with an error message to bubble up to the parent form. */
   onError?: (message: string) => void;
+  /** Disable the button externally (e.g. during lockout). */
+  disabled?: boolean;
 }
 
 function labelFor(text: Props['text']) {
@@ -27,7 +29,7 @@ function labelFor(text: Props['text']) {
  * "Continue with Google" button. Triggers a Firebase Google popup; the
  * resulting ID token is exchanged with /api/auth/firebase by AuthContext.
  */
-export function GoogleSignInButton({ text = 'continue_with', onError }: Props) {
+export function GoogleSignInButton({ text = 'continue_with', onError, disabled: disabledProp = false }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { loginWithGoogle } = useAuth();
@@ -37,7 +39,7 @@ export function GoogleSignInButton({ text = 'continue_with', onError }: Props) {
     (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
   const handleClick = async () => {
-    if (loading) return;
+    if (loading || disabledProp) return;
     setLoading(true);
     try {
       // Credential param is ignored now — Firebase popup provides the user.
@@ -64,8 +66,8 @@ export function GoogleSignInButton({ text = 'continue_with', onError }: Props) {
     <button
       type="button"
       onClick={handleClick}
-      disabled={loading}
-      className="w-full inline-flex items-center justify-center gap-3 h-12 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 disabled:opacity-70 transition-colors text-sm font-bold text-stone-700 dark:bg-stone-900/50 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-900"
+      disabled={loading || disabledProp}
+      className="w-full inline-flex items-center justify-center gap-3 h-12 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-bold text-stone-700 dark:bg-stone-900/50 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-900"
       aria-busy={loading}
     >
       {loading ? (

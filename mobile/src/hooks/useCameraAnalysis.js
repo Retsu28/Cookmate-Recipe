@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useContext } from 'react';
 import { Alert } from 'react-native';
 import { mlApi } from '../api/api';
 import { offlineCache } from '../offline/cacheService';
+import { AuthContext } from '../context/AuthContext';
+import { useQueueSocket } from './useQueueSocket';
 
 const MAX_SAVES = 20;
 
@@ -32,6 +34,7 @@ function apiErrorMessage(err, fallback) {
 }
 
 export function useCameraAnalysis() {
+  const { user } = useContext(AuthContext) || {};
   const [loading, setLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
@@ -39,7 +42,9 @@ export function useCameraAnalysis() {
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
   const [queueStatus, setQueueStatus] = useState(null);
+  const [myQueuePosition, setMyQueuePosition] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  const [rateLimitInfo, setRateLimitInfo] = useState(null);
   const [saves, setSaves] = useState([]);
   const [savesLoading, setSavesLoading] = useState(false);
   const [savesError, setSavesError] = useState(null);
@@ -49,7 +54,6 @@ export function useCameraAnalysis() {
   const savedRequestIdRef = useRef(0);
   const savingRequestIdRef = useRef(0);
   const cooldownRef = useRef(null);
-  const queuePollRef = useRef(null);
 
   const isCurrentRequest = (id) => id === requestIdRef.current;
 
@@ -64,21 +68,25 @@ export function useCameraAnalysis() {
     }, 1000);
   };
 
-  const stopQueuePolling = () => {
-    if (queuePollRef.current) { clearInterval(queuePollRef.current); queuePollRef.current = null; }
-  };
+  const stopQueuePolling = () => { /* no-op — realtime via socket */ };
+  const startQueuePolling = (_requestId) => { /* no-op — realtime via socket */ };
 
-  const startQueuePolling = (requestId) => {
-    stopQueuePolling();
-    const refresh = async () => {
-      try {
-        const response = await mlApi.getImageAnalysisQueue();
-        if (isCurrentRequest(requestId)) setQueueStatus(normalizeQueueStatus(response.data));
-      } catch { /* queue status is only user-facing context */ }
-    };
-    refresh();
-    queuePollRef.current = setInterval(refresh, 1500);
-  };
+  const socketRef = useQueueSocket(
+    (snapshot) => { setQueueStatus(normalizeQueueStatus(snapshot)); },
+    (pos) => { setMyQueuePosition(pos.position); },
+  );
+
+  useEffect(() => {
+    if (!user?.id) { setRateLimitInfo(null); return; }
+    mlApi.getAiCameraRateLimit()
+      .then((res) => {
+        const data = res?.data;
+        if (data && typeof data.remaining === 'number') {
+          setRateLimitInfo({ remaining: data.remaining, resetAt: data.resetAt ?? null });
+        }
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   useEffect(() => {
     return () => {
@@ -113,8 +121,17 @@ export function useCameraAnalysis() {
     setLoading(true);
     startQueuePolling(requestId);
     try {
-      const response = await mlApi.analyzeIngredients(base64);
+      const sid = socketRef?.current?.id ?? null;
+      const response = await mlApi.analyzeIngredients(base64, sid ? { 'X-Socket-Id': sid } : undefined);
       if (!isCurrentRequest(requestId)) return false;
+      const remaining = response.headers?.['ratelimit-remaining'] ?? response.headers?.['x-ratelimit-remaining'];
+      const reset = response.headers?.['ratelimit-reset'] ?? response.headers?.['x-ratelimit-reset'];
+      if (remaining !== undefined && remaining !== null) {
+        setRateLimitInfo({
+          remaining: Number(remaining),
+          resetAt: reset ? Number(reset) * 1000 : null,
+        });
+      }
       setAnalysisResult(response.data);
       setAnalysisError(null);
       setQueueStatus(normalizeQueueStatus(response.data));
@@ -125,6 +142,14 @@ export function useCameraAnalysis() {
       console.warn('[useCameraAnalysis] analyzeImage warning:', err);
       const nextQueueStatus = normalizeQueueStatus(err.response?.data);
       setQueueStatus(nextQueueStatus);
+      const rlRemaining = err.response?.headers?.['ratelimit-remaining'] ?? err.response?.headers?.['x-ratelimit-remaining'];
+      const rlReset = err.response?.headers?.['ratelimit-reset'] ?? err.response?.headers?.['x-ratelimit-reset'];
+      if (rlRemaining !== undefined && rlRemaining !== null) {
+        setRateLimitInfo({
+          remaining: Number(rlRemaining),
+          resetAt: rlReset ? Number(rlReset) * 1000 : null,
+        });
+      }
       const serverMessage = err.response?.data?.message;
       if (serverMessage) {
         const nextMessage = apiErrorMessage(err, serverMessage);
@@ -149,11 +174,29 @@ export function useCameraAnalysis() {
     try {
       const response = await mlApi.removeCameraBackground(base64);
       if (!isCurrentRequest(requestId)) return;
+      const rlRemaining = response.headers?.['ratelimit-remaining'] ?? response.headers?.['x-ratelimit-remaining'];
+      const rlReset = response.headers?.['ratelimit-reset'] ?? response.headers?.['x-ratelimit-reset'];
+      if (rlRemaining !== undefined && rlRemaining !== null) {
+        setRateLimitInfo((prev) => {
+          const next = { remaining: Number(rlRemaining), resetAt: rlReset ? Number(rlReset) * 1000 : null };
+          if (prev === null) return next;
+          return next.remaining < prev.remaining ? next : prev;
+        });
+      }
       const cutout = response.data?.cutout || response.data?.cutoutUri || response.data?.image || null;
       if (cutout) setCutoutUri(cutout);
       else console.warn('[useCameraAnalysis] removeBackground returned no cutout.');
     } catch (err) {
       if (!isCurrentRequest(requestId)) return;
+      const rlRemaining = err.response?.headers?.['ratelimit-remaining'] ?? err.response?.headers?.['x-ratelimit-remaining'];
+      const rlReset = err.response?.headers?.['ratelimit-reset'] ?? err.response?.headers?.['x-ratelimit-reset'];
+      if (rlRemaining !== undefined && rlRemaining !== null) {
+        setRateLimitInfo((prev) => {
+          const next = { remaining: Number(rlRemaining), resetAt: rlReset ? Number(rlReset) * 1000 : null };
+          if (prev === null) return next;
+          return next.remaining < prev.remaining ? next : prev;
+        });
+      }
       console.warn('[useCameraAnalysis] removeBackground warning:', apiErrorMessage(err, 'Background removal unavailable.'));
     } finally {
       if (isCurrentRequest(requestId)) { setBgRemovalDone(true); setBgRemovalProgress(''); }
@@ -246,7 +289,9 @@ export function useCameraAnalysis() {
     bgRemovalDone, setBgRemovalDone,
     bgRemovalProgress, setBgRemovalProgress,
     queueStatus, setQueueStatus,
+    myQueuePosition,
     cooldown,
+    rateLimitInfo, setRateLimitInfo,
     saves, setSaves,
     savesLoading,
     savesError, setSavesError,

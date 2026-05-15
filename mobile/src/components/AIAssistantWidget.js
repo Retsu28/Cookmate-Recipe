@@ -17,7 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
 import { AIChatTypingSkeleton } from './SkeletonPlaceholder';
-import { sendMessage, loadConversationHistory, formatChatTime } from '../services/chatService';
+import { sendMessage, loadConversationHistory, saveFeedback, getRateLimitStatus, formatChatTime } from '../services/chatService';
+import { useNetwork } from '../offline/network';
 
 // Sit above the FloatingTabBar (~76px tall + 12px bottom margin + safe-area inset).
 const TAB_BAR_CLEARANCE = 96;
@@ -32,7 +33,40 @@ const SPRING_CONFIG = {
   mass: 1,
 };
 
-const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref) {
+// Helper: dynamic welcome message based on recipe context (mirrors web)
+function getWelcomeMessage(recipeContext) {
+  if (recipeContext) {
+    return `Hi! I see you're viewing **${recipeContext.title}**. Need substitutions, scaling help, or cooking tips?`;
+  }
+  return "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?";
+}
+
+function getQuickActions(recipeContext) {
+  if (recipeContext) {
+    const mainIngredient = recipeContext.ingredients?.[0] || 'ingredient';
+    return ['Make it vegan', `Substitute ${mainIngredient}`, 'Scale for 2 people', 'Storage tips'];
+  }
+  return ['Quick dinner ideas', 'Easy breakfast recipes', 'Meal plan this week'];
+}
+
+function getStarterQuestions(recipeContext) {
+  if (recipeContext) {
+    return [
+      `How do I cook ${recipeContext.title}?`,
+      'What ingredients do I need?',
+      'How long does this take?',
+      'Make this recipe vegan',
+    ];
+  }
+  return [
+    'Find me a chicken recipe',
+    "What's a quick Filipino dinner?",
+    'Substitute for calamansi?',
+    'How to store leftover adobo?',
+  ];
+}
+
+const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress, recipeContext = null, navigation }, ref) {
   const { colors, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
@@ -46,10 +80,13 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
   const hiddenTranslateX = -Math.max(0, screenWidth - FAB_RIGHT - HIDDEN_HANDLE_WIDTH);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?", timestamp: null },
+    { role: 'assistant', content: getWelcomeMessage(recipeContext), timestamp: null },
   ]);
   const [isReplying, setIsReplying] = useState(false);
   const [error, setError] = useState(null);
+  const [lastResponse, setLastResponse] = useState(null);
+  const [feedbackGiven, setFeedbackGiven] = useState({});
+  const [rateLimit, setRateLimit] = useState(null);
   const scrollViewRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -74,24 +111,36 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
     setOpen(false);
   }, []);
 
-  // Load conversation history when chat opens
+  // Update welcome message when recipeContext or open state changes
+  useEffect(() => {
+    if (open) {
+      setMessages([{ role: 'assistant', content: getWelcomeMessage(recipeContext), timestamp: null }]);
+    }
+  }, [recipeContext, open]);
+
+  // Load conversation history + rate limit when chat opens
   useEffect(() => {
     if (open) {
       loadConversationHistory()
         .then(history => {
           if (history.length > 0) {
-            // Prepend welcome message if we have history
             setMessages([
-              { role: 'assistant', content: "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?", timestamp: null },
-              ...history
+              { role: 'assistant', content: getWelcomeMessage(recipeContext), timestamp: null },
+              ...history.slice(-19),
             ]);
           }
         })
-        .catch(err => {
-          console.error('[AIChatWidget] Failed to load history:', err);
-        });
+        .catch(err => console.error('[AIChatWidget] Failed to load history:', err));
+
+      getRateLimitStatus()
+        .then(setRateLimit)
+        .catch(err => console.error('[AIChatWidget] Failed to load rate limit:', err));
     }
   }, [open]);
+
+  const updateRateLimit = useCallback(() => {
+    getRateLimitStatus().then(setRateLimit).catch(() => {});
+  }, []);
 
   const clampFabX = useCallback((value) => (
     Math.min(0, Math.max(hiddenTranslateX, value))
@@ -269,9 +318,34 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
     },
   }), [clampFabX, fabSlideX, hiddenTranslateX, hideFab, showFab]);
 
+  const buildHistory = useCallback((currentMessages) => {
+    const welcomeContent = getWelcomeMessage(recipeContext);
+    return currentMessages
+      .filter(m => m.role !== 'assistant' || m.content !== welcomeContent)
+      .slice(-20);
+  }, [recipeContext]);
+
+  const handleChatError = useCallback((err, setMsgs) => {
+    const status = err?.response?.status;
+    const message = err?.response?.data?.error || err?.message || '';
+    const isDailyLimit = status === 429 && message.toLowerCase().includes('daily');
+    const isBurstLimit = status === 429 && !isDailyLimit;
+    const userFacingMsg = isDailyLimit
+      ? "You've reached your daily message limit. Please come back tomorrow!"
+      : isBurstLimit
+        ? "You're sending messages too quickly. Please wait a moment before trying again."
+        : "I'm having trouble connecting right now. Please try again in a moment!";
+    setMsgs(current => [
+      ...current,
+      { role: 'assistant', content: userFacingMsg, timestamp: new Date().toISOString() },
+    ]);
+  }, []);
+
+  const { isOnline } = useNetwork();
+
   const handleSend = useCallback(async () => {
     const question = input.trim();
-    if (!question || isReplying) return;
+    if (!question || isReplying || !isOnline) return;
 
     setError(null);
     const userMessage = { role: 'user', content: question, timestamp: new Date().toISOString() };
@@ -280,37 +354,60 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
     setIsReplying(true);
 
     try {
-      // Include last 10 messages for context (but not the welcome message)
-      const historyForContext = messages
-        .filter(m => m.role !== 'assistant' || m.content !== "Hi! I'm your CookMate AI assistant. Need help with a recipe or ingredient substitution?")
-        .slice(-10);
-
-      const { response } = await sendMessage(question, historyForContext);
-
+      const historyForContext = buildHistory(messages);
+      const data = await sendMessage(question, historyForContext, recipeContext);
       setMessages(current => [
         ...current,
-        { role: 'assistant', content: response, timestamp: new Date().toISOString() },
+        { role: 'assistant', content: data.response, timestamp: new Date().toISOString() },
       ]);
+      setLastResponse(data);
+      updateRateLimit();
     } catch (err) {
       console.error('[AIChatWidget] Chat error:', err);
-      const status = err?.response?.status;
-      const message = err?.response?.data?.error || err.message || '';
-      const isDailyLimit = status === 429 && message.toLowerCase().includes('daily');
-      const isBurstLimit = status === 429 && !isDailyLimit;
-      const userFacingMsg = isDailyLimit
-        ? "You've reached your daily message limit. Please come back tomorrow!"
-        : isBurstLimit
-          ? "You're sending messages too quickly. Please wait a moment before trying again."
-          : "I'm having trouble connecting right now. Please try again in a moment!";
-      setError(status === 429 ? userFacingMsg : 'Sorry, I had trouble connecting. Please try again!');
-      setMessages(current => [
-        ...current,
-        { role: 'assistant', content: userFacingMsg, timestamp: new Date().toISOString() },
-      ]);
+      handleChatError(err, setMessages);
     } finally {
       setIsReplying(false);
     }
-  }, [input, isReplying, messages]);
+  }, [input, isReplying, messages, recipeContext, buildHistory, handleChatError, updateRateLimit]);
+
+  const handleQuickAction = useCallback((action) => {
+    if (isReplying) return;
+    setError(null);
+    const userMessage = { role: 'user', content: action, timestamp: new Date().toISOString() };
+    setMessages(current => [...current, userMessage]);
+    setIsReplying(true);
+
+    const historyForContext = [
+      ...buildHistory(messages).slice(-19),
+      userMessage,
+    ];
+
+    sendMessage(action, historyForContext, recipeContext)
+      .then(data => {
+        setMessages(current => [
+          ...current,
+          { role: 'assistant', content: data.response, timestamp: new Date().toISOString() },
+        ]);
+        setLastResponse(data);
+        updateRateLimit();
+      })
+      .catch(err => {
+        console.error('[AIChatWidget] Quick action error:', err);
+        handleChatError(err, setMessages);
+      })
+      .finally(() => setIsReplying(false));
+  }, [isReplying, messages, recipeContext, buildHistory, handleChatError, updateRateLimit]);
+
+  const handleFeedback = useCallback(async (messageIndex, type) => {
+    setFeedbackGiven(prev => ({ ...prev, [messageIndex]: type }));
+    const aiMsg = messages[messageIndex]?.content || '';
+    const userMsg = messages[messageIndex - 1]?.content || '';
+    try {
+      await saveFeedback(messageIndex, type, aiMsg, userMsg);
+    } catch {
+      // best-effort
+    }
+  }, [messages]);
 
   // FAB icon rotation interpolation
   const iconRotateInterpolate = fabIconRotate.interpolate({
@@ -402,46 +499,107 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
             contentContainerStyle={st.msgListContent}
           >
             {messages.map((msg, i) => (
-              <View key={i} style={[st.messageRow, msg.role === 'user' ? st.userRow : st.aiRow]}>
-                {/* Avatar */}
-                <View style={[
-                  st.avatar,
-                  msg.role === 'user'
-                    ? { backgroundColor: colors.primary }
-                    : { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed' },
-                ]}>
-                  <Ionicons
-                    name={msg.role === 'user' ? 'person' : 'restaurant'}
-                    size={14}
-                    color={msg.role === 'user' ? '#fff' : colors.primary}
-                  />
+              <View key={i}>
+                <View style={[st.messageRow, msg.role === 'user' ? st.userRow : st.aiRow]}>
+                  {/* Avatar */}
+                  <View style={[
+                    st.avatar,
+                    msg.role === 'user'
+                      ? { backgroundColor: colors.primary }
+                      : { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed' },
+                  ]}>
+                    <Ionicons
+                      name={msg.role === 'user' ? 'person' : 'restaurant'}
+                      size={14}
+                      color={msg.role === 'user' ? '#fff' : colors.primary}
+                    />
+                  </View>
+
+                  {/* Message Bubble */}
+                  <View style={st.messageContent}>
+                    <View style={[
+                      st.msgBubble,
+                      msg.role === 'user'
+                        ? [st.userBubble, { backgroundColor: colors.primary }]
+                        : [st.aiBubble, {
+                            backgroundColor: isDark ? colors.surface : '#fff',
+                            borderColor: colors.border,
+                          }],
+                    ]}>
+                      <Text style={[st.msgText, { color: msg.role === 'user' ? '#fff' : colors.text }]}>
+                        {msg.content}
+                      </Text>
+                    </View>
+                    {/* Timestamp + Feedback */}
+                    <View style={st.metaRow}>
+                      <Text style={[st.timestamp, { color: colors.textSubtle }]}>
+                        {msg.timestamp ? formatChatTime(msg.timestamp) : 'Now'}
+                      </Text>
+                      {msg.role === 'assistant' && i > 0 && (
+                        <View style={st.feedbackRow}>
+                          <TouchableOpacity
+                            onPress={() => handleFeedback(i, 'up')}
+                            style={st.feedbackBtn}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={feedbackGiven[i] === 'up' ? 'thumbs-up' : 'thumbs-up-outline'}
+                              size={13}
+                              color={feedbackGiven[i] === 'up' ? '#22c55e' : colors.textSubtle}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleFeedback(i, 'down')}
+                            style={st.feedbackBtn}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={feedbackGiven[i] === 'down' ? 'thumbs-down' : 'thumbs-down-outline'}
+                              size={13}
+                              color={feedbackGiven[i] === 'down' ? '#ef4444' : colors.textSubtle}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 </View>
 
-                {/* Message Bubble */}
-                <View style={st.messageContent}>
-                  <View style={[
-                    st.msgBubble,
-                    msg.role === 'user'
-                      ? [st.userBubble, { backgroundColor: colors.primary }]
-                      : [st.aiBubble, {
-                          backgroundColor: isDark ? colors.surface : '#fff',
-                          borderColor: colors.border,
-                        }],
-                  ]}>
-                    <Text style={[
-                      st.msgText,
-                      { color: msg.role === 'user' ? '#fff' : colors.text }
-                    ]}>
-                      {msg.content}
-                    </Text>
+                {/* Matched recipe cards — shown after last AI response */}
+                {msg.role === 'assistant' && i === messages.length - 1 && !isReplying &&
+                 lastResponse?.matchedRecipes && lastResponse.matchedRecipes.length > 0 && (
+                  <View style={st.recipeSuggWrap}>
+                    <Text style={[st.recipeSuggLabel, { color: colors.textSubtle }]}>Suggested recipes:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {lastResponse.matchedRecipes.map(recipe => (
+                        <TouchableOpacity
+                          key={recipe.id}
+                          onPress={() => {
+                            if (navigation) {
+                              navigation.navigate('RecipeDetail', { id: recipe.id });
+                              closeChat();
+                            }
+                          }}
+                          style={[st.recipeCard, { backgroundColor: isDark ? colors.surface : '#fff', borderColor: colors.border }]}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[st.recipeCardTitle, { color: colors.text }]} numberOfLines={2}>{recipe.title}</Text>
+                          <Text style={[st.recipeCardIngr, { color: colors.textSubtle }]} numberOfLines={1}>
+                            {recipe.matchedIngredients.slice(0, 2).join(', ')}
+                            {recipe.matchedIngredients.length > 2 ? '...' : ''}
+                          </Text>
+                          <View style={st.recipeCardView}>
+                            <Ionicons name="open-outline" size={10} color={colors.primary} />
+                            <Text style={[st.recipeCardViewText, { color: colors.primary }]}>View</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
                   </View>
-                  {/* Timestamp */}
-                  <Text style={[st.timestamp, { color: colors.textSubtle }]}>
-                    {msg.timestamp ? formatChatTime(msg.timestamp) : 'Now'}
-                  </Text>
-                </View>
+                )}
               </View>
             ))}
+
             {isReplying && (
               <View style={[st.messageRow, st.aiRow]}>
                 <View style={[st.avatar, { backgroundColor: isDark ? colors.surfaceAlt : '#fff7ed' }]}>
@@ -456,38 +614,105 @@ const AIAssistantWidget = forwardRef(function AIAssistantWidget({ onPress }, ref
                   borderTopLeftRadius: 4,
                 }]}>
                   <AIChatTypingSkeleton colors={colors} />
+                  <View style={st.typingLabelRow}>
+                    <Text style={[st.typingLabel, { color: colors.textSubtle }]}>CookMate AI is typing</Text>
+                    <View style={st.dotRow}>
+                      {[0, 1, 2].map(n => (
+                        <View key={n} style={[st.dot, { backgroundColor: colors.textSubtle }]} />
+                      ))}
+                    </View>
+                  </View>
                 </View>
               </View>
             )}
+
+            {/* Starter questions — only when just the welcome message is shown */}
+            {messages.length === 1 && messages[0].role === 'assistant' && !isReplying && (
+              <View style={st.starterWrap}>
+                <Text style={[st.starterLabel, { color: colors.textSubtle }]}>Try asking:</Text>
+                <View style={st.starterChips}>
+                  {getStarterQuestions(recipeContext).map((q, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => handleQuickAction(q)}
+                      style={[st.chip, { borderColor: colors.border, backgroundColor: isDark ? colors.surfaceAlt : '#fff' }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[st.chipText, { color: colors.textSubtle }]}>{q}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View ref={messagesEndRef} style={st.messageEnd} />
           </ScrollView>
 
-          {/* Input */}
-          <View style={[st.inputRow, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
-            <TextInput
-              style={[st.input, { color: colors.text }]}
-              placeholder="Ask about recipes, ingredients, or meal ideas..."
-              placeholderTextColor={colors.textSubtle}
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              editable={!isReplying}
-              multiline={false}
-            />
-            <TouchableOpacity
-              onPress={handleSend}
-              disabled={isReplying || !input.trim()}
-              style={[
-                st.sendBtn,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: isReplying || !input.trim() ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="send" size={18} color="#fff" />
-            </TouchableOpacity>
+          {/* Input area */}
+          <View style={[st.inputArea, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
+            {/* Offline notice */}
+            {!isOnline && (
+              <View style={[st.offlineNotice, { backgroundColor: isDark ? '#292524' : '#f5f5f4' }]}>
+                <Text style={[st.offlineText, { color: colors.textSubtle }]}>📶 You're offline — AI chat is unavailable</Text>
+              </View>
+            )}
+            {/* Rate limit bar */}
+            {rateLimit && (
+              <View style={st.rateLimitWrap}>
+                <View style={st.rateLimitRow}>
+                  <Text style={[st.rateLimitText, { color: colors.textSubtle }]}>
+                    {rateLimit.remaining} messages remaining today
+                  </Text>
+                  <View style={[st.rateLimitTrack, { backgroundColor: isDark ? colors.border : '#e7e5e4' }]}>
+                    <View style={[
+                      st.rateLimitFill,
+                      {
+                        width: `${Math.max(0, Math.min(100, (rateLimit.remaining / rateLimit.dailyLimit) * 100))}%`,
+                        backgroundColor: rateLimit.remaining > 20 ? '#4ade80' : rateLimit.remaining > 10 ? '#facc15' : '#f87171',
+                      },
+                    ]} />
+                  </View>
+                </View>
+                {rateLimit.remaining <= 10 && (
+                  <Text style={st.rateLimitWarn}>⚠️ Low on messages! Use them wisely.</Text>
+                )}
+              </View>
+            )}
+            {/* Quick action chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.quickChips}>
+              {getQuickActions(recipeContext).map((action, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => handleQuickAction(action)}
+                  disabled={isReplying}
+                  style={[st.quickChip, { borderColor: colors.primary + '55', backgroundColor: isDark ? 'rgba(249,115,22,0.12)' : '#fff7ed', opacity: isReplying ? 0.5 : 1 }]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[st.quickChipText, { color: colors.primary }]}>{action}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {/* Text input + send */}
+            <View style={st.inputRow}>
+              <TextInput
+                style={[st.input, { color: colors.text, borderColor: colors.border, backgroundColor: isDark ? colors.background : '#fff' }]}
+                placeholder={!isOnline ? "You're offline — AI chat unavailable" : 'Ask about recipes, ingredients, or meal ideas...'}
+                placeholderTextColor={colors.textSubtle}
+                value={input}
+                onChangeText={setInput}
+                onSubmitEditing={handleSend}
+                returnKeyType="send"
+                editable={!isReplying && isOnline}
+                multiline={false}
+              />
+              <TouchableOpacity
+                onPress={handleSend}
+                disabled={isReplying || !input.trim() || !isOnline}
+                style={[st.sendBtn, { backgroundColor: colors.primary, opacity: isReplying || !input.trim() || !isOnline ? 0.5 : 1 }]}
+              >
+                <Ionicons name="send" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
           {/* Footer hint */}
           <View style={[st.footerHint, { backgroundColor: colors.surface }]}>
@@ -579,7 +804,7 @@ const st = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
   },
   closeBtn: { padding: 4 },
-  msgList: { maxHeight: 320 },
+  msgList: { maxHeight: 300 },
   msgListContent: { padding: 16, gap: 12 },
   messageRow: { flexDirection: 'row', gap: 8, maxWidth: '85%' },
   userRow: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
@@ -599,35 +824,66 @@ const st = StyleSheet.create({
     borderRadius: 18,
     maxWidth: '100%',
   },
-  userBubble: {
-    borderTopRightRadius: 4,
-  },
-  aiBubble: {
-    borderTopLeftRadius: 4,
-    borderWidth: 1,
-  },
+  userBubble: { borderTopRightRadius: 4 },
+  aiBubble: { borderTopLeftRadius: 4, borderWidth: 1 },
   msgText: { fontFamily: 'Geist_400Regular', fontSize: 14, lineHeight: 20 },
-  timestamp: { fontFamily: 'Geist_400Regular', fontSize: 10, marginTop: 2, marginHorizontal: 4 },
-  messageEnd: { height: 8 },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    gap: 10,
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, marginHorizontal: 4 },
+  timestamp: { fontFamily: 'Geist_400Regular', fontSize: 10 },
+  feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  feedbackBtn: { padding: 3 },
+  // Matched recipe suggestion cards
+  recipeSuggWrap: { marginLeft: 40, marginTop: 6, marginBottom: 4 },
+  recipeSuggLabel: { fontFamily: 'Geist_500Medium', fontSize: 11, marginBottom: 6 },
+  recipeCard: {
+    width: 120,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 14,
   },
+  recipeCardTitle: { fontFamily: 'Geist_700Bold', fontSize: 11, lineHeight: 15, marginBottom: 4 },
+  recipeCardIngr: { fontFamily: 'Geist_400Regular', fontSize: 10, marginBottom: 4 },
+  recipeCardView: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  recipeCardViewText: { fontFamily: 'Geist_700Bold', fontSize: 10 },
+  // Typing indicator
+  typingLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  typingLabel: { fontFamily: 'Geist_400Regular', fontSize: 11 },
+  dotRow: { flexDirection: 'row', gap: 3 },
+  dot: { width: 4, height: 4, borderRadius: 2, opacity: 0.6 },
+  // Starter questions
+  starterWrap: { marginLeft: 40, marginTop: 6 },
+  starterLabel: { fontFamily: 'Geist_400Regular', fontSize: 11, marginBottom: 6 },
+  starterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  chipText: { fontFamily: 'Geist_400Regular', fontSize: 12 },
+  messageEnd: { height: 8 },
+  // Input area
+  inputArea: { borderTopWidth: 1, paddingTop: 10, paddingHorizontal: 14, paddingBottom: 8, gap: 8 },
+  offlineNotice: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  offlineText: { fontFamily: 'Geist_600SemiBold', fontSize: 12 },
+  rateLimitWrap: { gap: 3 },
+  rateLimitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rateLimitText: { fontFamily: 'Geist_400Regular', fontSize: 10, flexShrink: 1 },
+  rateLimitTrack: { flex: 1, height: 4, borderRadius: 999, overflow: 'hidden' },
+  rateLimitFill: { height: '100%', borderRadius: 999 },
+  rateLimitWarn: { fontFamily: 'Geist_500Medium', fontSize: 10, color: '#f87171' },
+  quickChips: { gap: 6, paddingBottom: 2 },
+  quickChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  quickChipText: { fontFamily: 'Geist_600SemiBold', fontSize: 11 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: {
     flex: 1,
     fontFamily: 'Geist_400Regular',
     fontSize: 14,
     paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 22,
     maxHeight: 80,
   },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#f97316',
@@ -636,14 +892,6 @@ const st = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  footerHint: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    paddingTop: 4,
-  },
-  footerText: {
-    fontFamily: 'Geist_400Regular',
-    fontSize: 10,
-    textAlign: 'center',
-  },
+  footerHint: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 4 },
+  footerText: { fontFamily: 'Geist_400Regular', fontSize: 10, textAlign: 'center' },
 });

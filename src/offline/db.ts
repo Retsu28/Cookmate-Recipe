@@ -14,7 +14,7 @@
 // Purely additive: no existing service depends on this file.
 
 const DB_NAME = 'cookmate-offline';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_RECIPES = 'recipes';
 const STORE_SAVED = 'saved_recipes';
 const STORE_MEAL_PLANS = 'meal_plans';
@@ -22,6 +22,8 @@ const STORE_GROCERY_LISTS = 'grocery_lists';
 const STORE_REMINDER_EVENTS = 'reminder_events';
 const STORE_QUEUE = 'sync_queue';
 const STORE_IMAGES = 'images';
+const STORE_VIDEOS = 'videos';
+const STORE_DOWNLOADS = 'downloads';
 
 // Cache size limits per store (LRU eviction when exceeded)
 const CACHE_LIMITS: Record<string, number> = {
@@ -45,10 +47,36 @@ type QueueRow = {
   createdAt: number;
 };
 
+const REQUIRED_STORES = [
+  STORE_RECIPES, STORE_SAVED, STORE_MEAL_PLANS, STORE_GROCERY_LISTS,
+  STORE_REMINDER_EVENTS, STORE_QUEUE, STORE_IMAGES, STORE_VIDEOS, STORE_DOWNLOADS,
+];
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function isIndexedDbAvailable(): boolean {
   return typeof indexedDB !== 'undefined';
+}
+
+/** Delete the DB if it is missing any required stores (stale version from old tab). */
+function ensureFreshDb(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (!isIndexedDbAvailable()) { resolve(); return; }
+    const probe = indexedDB.open(DB_NAME);
+    probe.onsuccess = () => {
+      const db = probe.result;
+      const missing = REQUIRED_STORES.some((s) => !db.objectStoreNames.contains(s));
+      db.close();
+      if (!missing) { resolve(); return; }
+      // Stale DB — wipe it so the v5 upgrade runs cleanly on next open
+      const del = indexedDB.deleteDatabase(DB_NAME);
+      del.onsuccess = () => resolve();
+      del.onerror = () => resolve();
+      del.onblocked = () => resolve();
+    };
+    probe.onerror = () => resolve(); // can't probe — let openDb handle it
+    probe.onupgradeneeded = () => { probe.result.close(); resolve(); }; // brand-new DB
+  });
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -82,6 +110,14 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_IMAGES)) {
         db.createObjectStore(STORE_IMAGES, { keyPath: 'url' });
       }
+      // Videos store — stores MP4 Blobs keyed by recipeId for persistent offline playback
+      if (!db.objectStoreNames.contains(STORE_VIDEOS)) {
+        db.createObjectStore(STORE_VIDEOS, { keyPath: 'recipeId' });
+      }
+      // Downloads store — tracks what has been downloaded with metadata
+      if (!db.objectStoreNames.contains(STORE_DOWNLOADS)) {
+        db.createObjectStore(STORE_DOWNLOADS, { keyPath: 'recipeId' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB.'));
@@ -90,7 +126,7 @@ function openDb(): Promise<IDBDatabase> {
 
 export function getDb(): Promise<IDBDatabase> {
   if (!dbPromise) {
-    dbPromise = openDb().catch((err) => {
+    dbPromise = ensureFreshDb().then(openDb).catch((err) => {
       dbPromise = null;
       throw err;
     });
@@ -279,6 +315,95 @@ export const queue = {
     } catch {
       return 0;
     }
+  },
+};
+
+// ---------- Video Blob store ----------
+
+export type VideoRow = {
+  recipeId: number;
+  blob: Blob;
+  mimeType: string;
+  sizeBytes: number;
+  cachedAt: number;
+};
+
+export const videoStore = {
+  async put(row: VideoRow): Promise<void> {
+    try {
+      const db = await getDb();
+      await waitRequest(db.transaction(STORE_VIDEOS, 'readwrite').objectStore(STORE_VIDEOS).put(row));
+    } catch (e) {
+      console.warn('[videoStore] put failed:', e);
+    }
+  },
+  async get(recipeId: number): Promise<VideoRow | null> {
+    try {
+      const db = await getDb();
+      const row = await waitRequest<VideoRow | undefined>(
+        db.transaction(STORE_VIDEOS, 'readonly').objectStore(STORE_VIDEOS).get(recipeId),
+      );
+      return row ?? null;
+    } catch { return null; }
+  },
+  async delete(recipeId: number): Promise<void> {
+    try {
+      const db = await getDb();
+      await waitRequest(db.transaction(STORE_VIDEOS, 'readwrite').objectStore(STORE_VIDEOS).delete(recipeId));
+    } catch { /* best-effort */ }
+  },
+  async getAll(): Promise<VideoRow[]> {
+    try {
+      const db = await getDb();
+      return (await waitRequest<VideoRow[]>(
+        db.transaction(STORE_VIDEOS, 'readonly').objectStore(STORE_VIDEOS).getAll(),
+      )) ?? [];
+    } catch { return []; }
+  },
+};
+
+// ---------- Downloads tracking store ----------
+
+export type DownloadRow = {
+  recipeId: number;
+  title: string;
+  imageUrl: string | null;
+  hasVideo: boolean;
+  videoSizeBytes: number;
+  totalSizeBytes: number;
+  downloadedAt: number;
+};
+
+export const downloadStore = {
+  async put(row: DownloadRow): Promise<void> {
+    const db = await getDb();
+    await waitRequest(db.transaction(STORE_DOWNLOADS, 'readwrite').objectStore(STORE_DOWNLOADS).put(row));
+  },
+  async get(recipeId: number): Promise<DownloadRow | null> {
+    try {
+      const db = await getDb();
+      const row = await waitRequest<DownloadRow | undefined>(
+        db.transaction(STORE_DOWNLOADS, 'readonly').objectStore(STORE_DOWNLOADS).get(recipeId),
+      );
+      return row ?? null;
+    } catch { return null; }
+  },
+  async getAll(): Promise<DownloadRow[]> {
+    try {
+      const db = await getDb();
+      return (await waitRequest<DownloadRow[]>(
+        db.transaction(STORE_DOWNLOADS, 'readonly').objectStore(STORE_DOWNLOADS).getAll(),
+      )) ?? [];
+    } catch { return []; }
+  },
+  async delete(recipeId: number): Promise<void> {
+    try {
+      const db = await getDb();
+      await waitRequest(db.transaction(STORE_DOWNLOADS, 'readwrite').objectStore(STORE_DOWNLOADS).delete(recipeId));
+    } catch { /* best-effort */ }
+  },
+  async isDownloaded(recipeId: number): Promise<boolean> {
+    return (await this.get(recipeId)) !== null;
   },
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,14 @@ const ICONS = {
   Profile: ['person', 'person-outline'],
 };
 
-function TabItem({ route, isFocused, options, onPress, onLongPress, colors, isDark }) {
+const TabItem = React.memo(function TabItem({ route, isFocused, options, onPress, onLongPress, colors, isDark }) {
   const scale = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
+  const prevFocusedRef = useRef(isFocused);
 
   useEffect(() => {
+    // Skip animation if focus state hasn’t changed
+    if (prevFocusedRef.current === isFocused) return;
+    prevFocusedRef.current = isFocused;
     Animated.timing(scale, {
       toValue: isFocused ? 1 : 0,
       duration: 220,
@@ -39,18 +43,14 @@ function TabItem({ route, isFocused, options, onPress, onLongPress, colors, isDa
   const iconName = isFocused ? activeIcon : inactiveIcon;
   const inactiveText = isDark ? '#a8a29e' : '#78716c';
 
-  // Active orange pill sits behind icon + label and scales in on focus.
-  const activeBgStyle = {
+  // Stable interpolation — created once per TabItem mount
+  const pillScale = useRef(
+    scale.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] })
+  ).current;
+  const activeBgStyle = useRef({
     opacity: scale,
-    transform: [
-      {
-        scale: scale.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.85, 1],
-        }),
-      },
-    ],
-  };
+    transform: [{ scale: pillScale }],
+  }).current;
 
   return (
     <TouchableOpacity
@@ -90,7 +90,7 @@ function TabItem({ route, isFocused, options, onPress, onLongPress, colors, isDa
       </Text>
     </TouchableOpacity>
   );
-}
+});
 
 export default function FloatingTabBar({ state, descriptors, navigation }) {
   const { colors, isDark } = useAppTheme();

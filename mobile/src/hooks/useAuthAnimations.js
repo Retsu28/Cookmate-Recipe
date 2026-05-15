@@ -13,8 +13,8 @@ import { Animated, Easing } from 'react-native';
  *  - onPressIn / Out  : handlers for the submit button
  *  - triggerShake()   : call on validation error
  */
-export function useAuthAnimations(fieldCount = 4, direction = 1) {
-  // Mount animation
+export function useAuthAnimations(fieldCount = 4) {
+  // Card mount — spring pop-in matching web: y:24→0, scale:0.96→1
   const mount = useRef(new Animated.Value(0)).current;
   const fields = useRef(
     Array.from({ length: fieldCount }, () => new Animated.Value(0))
@@ -25,33 +25,31 @@ export function useAuthAnimations(fieldCount = 4, direction = 1) {
 
   // Error shake
   const shakeX = useRef(new Animated.Value(0)).current;
-  const entryDirection = direction >= 0 ? 1 : -1;
 
-  // Only run mount animation once on initial render
-  // Using empty dependency array to prevent re-running on every re-render
   useEffect(() => {
-    // Small delay to ensure UI is ready
     const timer = setTimeout(() => {
       Animated.parallel([
+        // Card: fast spring-like ease matching web stiffness 260 / damping 26
         Animated.timing(mount, {
           toValue: 1,
-          duration: 380,
-          easing: Easing.out(Easing.poly(4)),
+          duration: 360,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
           useNativeDriver: true,
         }),
+        // Fields: stagger 50ms each, 80ms base delay — mirrors web 0.08+i*0.05s
         Animated.stagger(
-          42,
+          50,
           fields.map((value) =>
             Animated.timing(value, {
               toValue: 1,
-              duration: 300,
-              easing: Easing.out(Easing.cubic),
+              duration: 350,
+              easing: Easing.bezier(0.22, 1, 0.36, 1),
               useNativeDriver: true,
             })
           )
         ),
       ]).start();
-    }, 50);
+    }, 80);
 
     return () => {
       clearTimeout(timer);
@@ -62,23 +60,15 @@ export function useAuthAnimations(fieldCount = 4, direction = 1) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const entranceTranslateX = mount.interpolate({
-    inputRange: [0, 1],
-    outputRange: [entryDirection * 18, 0],
-  });
-
   const cardStyle = {
     opacity: mount,
     transform: [
-      {
-        translateX: Animated.add(entranceTranslateX, shakeX),
-      },
-      {
-        translateY: mount.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
-      },
-      {
-        scale: mount.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1] }),
-      },
+      // y: 24 → 0  matching web `initial={{ y: 24 }}`
+      { translateY: mount.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
+      // scale: 0.96 → 1  matching web `initial={{ scale: 0.96 }}`
+      { scale: mount.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      // shake on error — separate so it doesn't fight the entrance
+      { translateX: shakeX },
     ],
   };
 
@@ -88,7 +78,7 @@ export function useAuthAnimations(fieldCount = 4, direction = 1) {
       {
         translateY: (fields[i] ?? mount).interpolate({
           inputRange: [0, 1],
-          outputRange: [8, 0],
+          outputRange: [10, 0],
         }),
       },
     ],

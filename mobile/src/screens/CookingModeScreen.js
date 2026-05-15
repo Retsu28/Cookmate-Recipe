@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   PanResponder,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -90,6 +91,11 @@ export default function CookingModeScreen({ route, navigation }) {
   // Get video URL from recipe - use direct URL (Cloudinary) like web
   const videoUrl = recipe.video_filename || null;
 
+  // Parse video credits: stored as "AuthorName|URL"
+  const videoCreditsParts = (recipe.video_credits || '').split('|');
+  const creditAuthor = videoCreditsParts[0]?.trim() || '';
+  const creditUrl = videoCreditsParts[1]?.trim() || '';
+
   // Setup video player with expo-video
   const player = useVideoPlayer?.(videoUrl, (p) => {
     try {
@@ -129,8 +135,9 @@ export default function CookingModeScreen({ route, navigation }) {
         console.error('[CookingMode] Player error:', error);
         setVideoError(true);
         setVideoLoading(false);
-      } else if (status === 'loading' || status === 'idle') {
-        setVideoLoading(true);
+      } else if (status === 'idle') {
+        // Only show loading on initial idle (before first play), not on seek
+        if (player.duration <= 0) setVideoLoading(true);
       }
     });
 
@@ -172,6 +179,29 @@ export default function CookingModeScreen({ route, navigation }) {
   // Track pending seek for smoother autoplay
   const pendingSeekRef = useRef(null);
 
+  // Bell sound refs
+  const bellSoundRef = useRef(null);
+  const bellIntervalRef = useRef(null);
+  const bellFinishedRef = useRef(true);
+
+  const stopBellSound = useCallback(async () => {
+    // Stop the keep-alive interval first
+    if (bellIntervalRef.current) {
+      clearInterval(bellIntervalRef.current);
+      bellIntervalRef.current = null;
+    }
+    bellFinishedRef.current = true;
+    if (bellSoundRef.current) {
+      try {
+        await bellSoundRef.current.stopAsync();
+        await bellSoundRef.current.unloadAsync();
+      } catch (e) {
+        // ignore
+      }
+      bellSoundRef.current = null;
+    }
+  }, []);
+
   // Seek to timestamp and auto-loop within range when step changes (like web)
   useEffect(() => {
     if (!player || !timestamps[currentStep] || videoError) return;
@@ -210,18 +240,18 @@ export default function CookingModeScreen({ route, navigation }) {
     const startTime = timestamps[currentStep].start || 0;
     const endTime = timestamps[currentStep].end;
 
-    // Check current time every 250ms for smoother performance
+    // Poll every 80ms — tight enough for a seamless loop without visible stutter
     const loopInterval = setInterval(() => {
       try {
         const currentTime = player.currentTime ?? 0;
-        // Loop 0.5s before end for smoother transition
-        if (currentTime >= endTime - 0.5) {
+        // Seek 0.2s before end so the loop feels continuous
+        if (currentTime >= endTime - 0.2) {
           player.currentTime = startTime;
         }
       } catch (err) {
         // Ignore loop errors silently
       }
-    }, 250);
+    }, 80);
 
     return () => clearInterval(loopInterval);
   }, [currentStep, timestamps, videoError, player]);
@@ -251,7 +281,6 @@ export default function CookingModeScreen({ route, navigation }) {
         if (prev <= 1) {
           clearInterval(timer);
           setShowIntervalComplete(true);
-          playBellSound();
           return 0;
         }
         return prev - 1;
@@ -261,21 +290,45 @@ export default function CookingModeScreen({ route, navigation }) {
     return () => clearInterval(timer);
   }, [currentStep, timestamps, addedTime]);
 
-  // Play bell sound when interval completes (like web)
-  const playBellSound = async () => {
+  // Play bell sound once when interval completes — same as web useEffect on showIntervalComplete
+  useEffect(() => {
+    if (!showIntervalComplete) return;
+    playBellSound();
+  }, [showIntervalComplete]);
+
+  // Start a single bell sound instance, return the Sound object
+  const startBellInstance = useCallback(async () => {
     try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: false,
+        playThroughEarpieceAndroid: false,
+      });
       const { sound } = await Audio.Sound.createAsync(
         require('../../sound/custom_sound.wav'),
-        { shouldPlay: true }
+        { shouldPlay: true, isLooping: false, volume: 1.0 }
       );
-      // Sound plays automatically, unload after it finishes
-      setTimeout(() => {
-        sound.unloadAsync();
-      }, 2000);
+      return sound;
     } catch (err) {
       console.log('[CookingMode] Bell sound error:', err);
+      return null;
     }
-  };
+  }, []);
+
+  // Play bell once
+  const playBellSound = useCallback(async () => {
+    await stopBellSound();
+    const sound = await startBellInstance();
+    if (!sound) return;
+    bellSoundRef.current = sound;
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.didJustFinish) {
+        sound.unloadAsync();
+        bellSoundRef.current = null;
+      }
+    });
+  }, [stopBellSound, startBellInstance]);
 
   // Text-to-speech: read step instruction aloud on step change (like web)
   const speak = useCallback((text) => {
@@ -312,6 +365,7 @@ export default function CookingModeScreen({ route, navigation }) {
 
   const handlePrevious = () => {
     if (currentStep > 0) {
+      stopBellSound();
       setAddedTime(0);
       setCurrentStep(currentStep - 1);
     }
@@ -325,6 +379,7 @@ export default function CookingModeScreen({ route, navigation }) {
   };
 
   const handleFinish = useCallback(() => {
+    stopBellSound();
     setIsCompleted(true);
     Speech.stop();
     // Trigger celebration animations
@@ -355,9 +410,10 @@ export default function CookingModeScreen({ route, navigation }) {
   }));
 
   const handleCompleteAndExit = useCallback(() => {
+    stopBellSound();
     Speech.stop();
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, stopBellSound]);
 
   // Swipe navigation (like web touch swipe)
   const panResponder = useRef(
@@ -412,7 +468,7 @@ export default function CookingModeScreen({ route, navigation }) {
                   <Text style={st.exitBtnSecondaryText}>Keep Cooking</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => { Speech.stop(); navigation.goBack(); }}
+                  onPress={() => { stopBellSound(); Speech.stop(); navigation.goBack(); }}
                   style={[st.exitBtn, st.exitBtnDanger]}
                 >
                   <Text style={st.exitBtnDangerText}>Exit</Text>
@@ -434,34 +490,16 @@ export default function CookingModeScreen({ route, navigation }) {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Progress bar with Circular Timer */}
-        <View style={st.headerProgress}>
-          <View style={st.progressBarWrap}>
-            <View style={st.progressBg}>
-              <View style={[st.progressFill, { width: `${progress}%` }]} />
-            </View>
+        {/* Progress bar */}
+        <View style={st.progressBarRow}>
+          <View style={st.progressBg}>
+            <View style={[st.progressFill, { width: `${progress}%` }]} />
           </View>
-          {/* Circular Timer - only when timestamps exist */}
-          {currentTimestamp && (
-            <View style={st.timerCircleWrap}>
-              <View style={[
-                st.timerCircle,
-                showIntervalComplete && st.timerCircleComplete
-              ]}>
-                <Text style={[st.timerCircleTime, showIntervalComplete && st.timerCircleTimeComplete]}>
-                  {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
-                </Text>
-                <Text style={[st.timerCircleLabel, showIntervalComplete && st.timerCircleLabelComplete]}>
-                  {showIntervalComplete ? 'Done!' : 'Interval'}
-                </Text>
-              </View>
-            </View>
-          )}
         </View>
 
-        {/* Main Content - Video + Step Layout */}
+        {/* Main Content - Video top half + Step bottom half */}
         <View style={st.mainContent} {...panResponder.panHandlers}>
-          {/* Video Section - Top half on mobile */}
+          {/* Video Section - top half, edge-to-edge, no black bars */}
           <View style={st.videoSection}>
             {videoUrl && !videoError && VideoView && player ? (
               <View style={st.videoContainer}>
@@ -474,7 +512,7 @@ export default function CookingModeScreen({ route, navigation }) {
                   player={player}
                   style={st.video}
                   nativeControls={false}
-                  contentFit="contain"
+                  contentFit="cover"
                   allowsPictureInPicture={false}
                   allowsFullscreen={true}
                   renderMode="texture"
@@ -496,6 +534,22 @@ export default function CookingModeScreen({ route, navigation }) {
                     </View>
                   )}
                 </TouchableOpacity>
+                {/* Timer Circle - overlaid on top-right of video */}
+                {currentTimestamp && (
+                  <View style={st.timerCircleWrap}>
+                    <View style={[
+                      st.timerCircle,
+                      showIntervalComplete && st.timerCircleComplete
+                    ]}>
+                      <Text style={[st.timerCircleTime, showIntervalComplete && st.timerCircleTimeComplete]}>
+                        {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
+                      </Text>
+                      <Text style={[st.timerCircleLabel, showIntervalComplete && st.timerCircleLabelComplete]}>
+                        {showIntervalComplete ? 'Done!' : 'Interval'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
             ) : (
               <View style={[st.videoContainer, st.noVideo]}>
@@ -506,6 +560,24 @@ export default function CookingModeScreen({ route, navigation }) {
               </View>
             )}
           </View>
+
+          {/* Video Credits */}
+          {videoUrl && creditAuthor ? (
+            <View style={st.creditsRow}>
+              <View style={st.creditsYtIcon}>
+                <Text style={st.creditsYtIconText}>▶</Text>
+              </View>
+              <Text style={st.creditsLabel}>Subscribe to </Text>
+              <TouchableOpacity
+                onPress={() => creditUrl ? Linking.openURL(creditUrl) : null}
+                activeOpacity={creditUrl ? 0.6 : 1}
+              >
+                <Text style={[st.creditsName, creditUrl && st.creditsNameLink]}>
+                  "{creditAuthor}"
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           {/* Step Text Section - Bottom half */}
           <View style={st.stepSection}>
@@ -545,19 +617,19 @@ export default function CookingModeScreen({ route, navigation }) {
         {currentTimestamp && (
           <View style={st.addTimeRow}>
             <TouchableOpacity
-              onPress={() => setAddedTime(prev => prev + 60)}
+              onPress={() => { stopBellSound(); setAddedTime(prev => prev + 60); }}
               style={st.addTimeBtn}
             >
               <Text style={st.addTimeBtnText}>+1 min</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setAddedTime(prev => prev + 300)}
+              onPress={() => { stopBellSound(); setAddedTime(prev => prev + 300); }}
               style={st.addTimeBtn}
             >
               <Text style={st.addTimeBtnText}>+5 min</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setAddedTime(0)}
+              onPress={() => { stopBellSound(); setAddedTime(0); }}
               style={st.resetTimeBtn}
             >
               <Text style={st.resetTimeBtnText}>Reset</Text>
@@ -661,24 +733,23 @@ const st = StyleSheet.create({
   headerCenter: { alignItems: 'center', flex: 1, paddingHorizontal: 12 },
   headerTitle: { fontFamily: 'Geist_700Bold', fontSize: 15, color: '#fff' },
   headerSub: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#a8a29e', marginTop: 2 },
-  // Progress with Circular Timer
-  headerProgress: { paddingHorizontal: 16, paddingVertical: 8, position: 'relative', minHeight: 60 },
-  progressBarWrap: { paddingRight: 80 },
-  progressBg: { height: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', borderRadius: 2 },
-  progressFill: { height: '100%', backgroundColor: '#f97316', borderRadius: 2 },
-  // Circular Timer
+  // Progress bar (slim, below header)
+  progressBarRow: { paddingHorizontal: 0, backgroundColor: 'transparent' },
+  progressBg: { height: 3, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#f97316' },
+  // Circular Timer - absolute on video top-right
   timerCircleWrap: {
     position: 'absolute',
-    right: 16,
-    top: -20,
+    right: 12,
+    top: 12,
     zIndex: 10,
   },
   timerCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#1c1917',
-    borderWidth: 4,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(12,10,9,0.75)',
+    borderWidth: 3,
     borderColor: '#f97316',
     alignItems: 'center',
     justifyContent: 'center',
@@ -693,13 +764,12 @@ const st = StyleSheet.create({
   timerCircleLabelComplete: { color: 'rgba(255,255,255,0.8)' },
   // Main Content
   mainContent: { flex: 1, flexDirection: 'column' },
-  // Video Section
-  videoSection: { flex: 1, padding: 12, alignItems: 'center' },
-  videoContainer: { 
-    flex: 1, 
-    width: '100%', 
-    backgroundColor: '#000', 
-    borderRadius: 16, 
+  // Video Section - top half, fixed height, edge-to-edge
+  videoSection: { height: SCREEN_HEIGHT * 0.42, width: '100%' },
+  videoContainer: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000',
     overflow: 'hidden',
     justifyContent: 'center',
     position: 'relative',
@@ -729,6 +799,27 @@ const st = StyleSheet.create({
   playPauseBtnHidden: { opacity: 0.3 },
   noVideo: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1917' },
   noVideoText: { color: '#57534e', marginTop: 8, fontFamily: 'Geist_400Regular', fontSize: 14 },
+  // Video Credits
+  creditsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    paddingTop: 2,
+  },
+  creditsYtIcon: {
+    width: 16,
+    height: 12,
+    backgroundColor: '#f97316',
+    borderRadius: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  creditsYtIconText: { color: '#fff', fontSize: 7, lineHeight: 12 },
+  creditsLabel: { fontFamily: 'Geist_400Regular', fontSize: 11, color: '#57534e' },
+  creditsName: { fontFamily: 'Geist_600SemiBold', fontSize: 11, color: '#78716c' },
+  creditsNameLink: { color: '#f97316', textDecorationLine: 'underline' },
   // Step Section
   stepSection: { padding: 16, paddingTop: 8 },
   stepHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },

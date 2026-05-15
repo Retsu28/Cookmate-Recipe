@@ -125,7 +125,7 @@ export function ThemeProvider({ children }) {
       colors: {
         ...base.colors,
         primary: colors.primary,
-        background: colors.background,
+        background: 'transparent',
         card: colors.surface,
         text: colors.text,
         border: colors.border,

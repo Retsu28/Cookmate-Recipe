@@ -96,4 +96,4 @@ const st = StyleSheet.create({
   },
 });
 
-export default OptimizedImage;
+export default React.memo(OptimizedImage);

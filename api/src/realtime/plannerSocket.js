@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const { verifyAuthToken } = require('../middleware/requireAuth');
+const { setQueueIo, getAiCameraQueueSnapshot } = require('../services/aiCameraQueue');
 
 let io = null;
 
@@ -53,6 +54,20 @@ function attachPlannerSocketServer(server, { corsOrigin, corsOrigins = [] } = {}
       server_now: new Date().toISOString(),
     });
   });
+
+  // ── Public /queue namespace — no auth required ──
+  const queueNsp = io.of('/queue');
+  queueNsp.on('connection', (socket) => {
+    // Each socket joins its own room so targeted position updates work
+    socket.join(socket.id);
+    // Send current snapshot immediately on connect / reconnect
+    socket.emit('queue:update', getAiCameraQueueSnapshot());
+    // Client sends 'queue:sync' after reconnect to get fresh snapshot
+    socket.on('queue:sync', () => {
+      socket.emit('queue:update', getAiCameraQueueSnapshot());
+    });
+  });
+  setQueueIo(queueNsp);
 
   return io;
 }

@@ -2,7 +2,7 @@
 // Stores images in file system with SQLite metadata tracking
 // Provides LRU eviction and offline image display
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getDb } from './db';
 
 const IMAGE_CACHE_DIR = `${FileSystem.cacheDirectory}cookmate-images/`;

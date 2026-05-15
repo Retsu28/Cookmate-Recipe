@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
         injectRegister: false,
         manifestFilename: 'manifest.json',
         // Include all built assets in the precache manifest
-        includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'offline.html'],
 
         manifest: {
           id: '/',
@@ -56,6 +56,8 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MB (PNG icons are ~2.9 MB)
           ...(mode === 'production' ? { importScripts: ['/planner-notification-sw.js'] } : {}),
 
@@ -64,7 +66,7 @@ export default defineConfig(({ mode }) => {
           // Includes ALL JS/CSS chunks (including manualChunks) so
           // every page is accessible offline without a network fetch.
           // -------------------------------------------------------
-          globPatterns: ['**/*.{html,js,css,woff,woff2,ttf,eot,ico,png,svg,webp}'],
+          globPatterns: ['**/*.{html,js,css,woff,woff2,ttf,eot,ico,png,svg,webp}', 'offline.html'],
 
           // -------------------------------------------------------
           // SPA navigation fallback — serve index.html for any
@@ -72,18 +74,69 @@ export default defineConfig(({ mode }) => {
           // This is what makes /planner, /camera, /recipes etc.
           // work offline in both the browser tab and the installed PWA.
           // -------------------------------------------------------
-          navigateFallback: '/index.html',
+          navigateFallback: 'index.html',
+          navigateFallbackAllowlist: [/./], // Allow all navigation requests to fallback to index.html
           navigateFallbackDenylist: [
             /^\/api\//,          // never intercept API requests
             /^\/socket\.io\//,   // never intercept WebSocket upgrade
-            /\.(?:js|css|png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf|eot)$/i,
           ],
 
           // -------------------------------------------------------
           // Runtime caching
           // -------------------------------------------------------
           runtimeCaching: [
-            // API — always network-only; data is cached in IndexedDB by the app
+            // Public read endpoints — serve cached data offline, revalidate in background
+            {
+              urlPattern: /\/api\/recipes(\?.*)?$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'cookmate-api-recipes',
+                expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /\/api\/recipes\/[^/]+(\?.*)?$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'cookmate-api-recipe-detail',
+                expiration: { maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /\/api\/meal-planner(\?.*)?$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'cookmate-api-planner',
+                expiration: { maxEntries: 50, maxAgeSeconds: 3 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /\/api\/profile(\?.*)?$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'cookmate-api-profile',
+                expiration: { maxEntries: 20, maxAgeSeconds: 3 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /\/api\/ingredients(\?.*)?$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'cookmate-api-ingredients',
+                expiration: { maxEntries: 50, maxAgeSeconds: 7 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            // Auth, admin, AI, mutations — always NetworkOnly (never serve stale)
+            {
+              urlPattern: /\/api\/(auth|admin|ml|chat|notifications|settings)\//,
+              handler: 'NetworkOnly',
+            },
+            // Fallback: all other API calls NetworkOnly
             {
               urlPattern: /\/api\//,
               handler: 'NetworkOnly',
@@ -122,6 +175,43 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: {
                   statuses: [0, 200],
                 },
+              },
+            },
+            // Cloudinary videos — CacheFirst using the same bucket the download service
+            // writes to. This makes offline video playback work in GuidedCooking.
+            {
+              urlPattern: /^https:\/\/res\.cloudinary\.com\/.+\.mp4(\?.*)?$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'cookmate-offline-videos',
+                expiration: {
+                  maxEntries: 30,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            // App shell navigation — cache index.html and serve it when offline
+            // This ensures the PWA works offline even on first navigation
+            {
+              urlPattern: /\/$|^\/index\.html$/,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'cookmate-app-shell',
+                expiration: { maxEntries: 1, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            // Offline fallback page
+            {
+              urlPattern: /\/offline\.html$/,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'cookmate-offline-fallback',
+                expiration: { maxEntries: 1, maxAgeSeconds: 365 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
               },
             },
           ],

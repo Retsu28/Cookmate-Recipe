@@ -29,6 +29,17 @@ export function AIChatWidget() {
       setMessages([{ role: 'assistant', content: getWelcomeMessage(recipeContext) }]);
     }
   }, [recipeContext, isOpen]);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline  = () => setIsOffline(false);
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online',  goOnline);
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online',  goOnline);
+    };
+  }, []);
   const [input, setInput] = useState('');
   const [isReplying, setIsReplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +85,7 @@ export function AIChatWidget() {
   const handleSend = useCallback(async () => {
     const question = input.trim();
 
-    if (!question || isReplying) return;
+    if (!question || isReplying || isOffline) return;
 
     setError(null);
     const userMessage: ChatMessage = { role: 'user', content: question };
@@ -411,6 +422,13 @@ export function AIChatWidget() {
 
             {/* Input */}
             <div className="p-4 bg-white border-t border-stone-200">
+              {/* Offline notice */}
+              {isOffline && (
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-stone-100 px-3 py-2">
+                  <span className="text-base">📶</span>
+                  <p className="text-xs font-semibold text-stone-600">You're offline — AI chat is unavailable</p>
+                </div>
+              )}
               {/* Rate Limit Indicator */}
               {rateLimit && (
                 <div className="mb-3">
@@ -460,14 +478,14 @@ export function AIChatWidget() {
                         handleSend();
                       }
                     }}
-                    placeholder="Ask about recipes, ingredients, or meal ideas..."
-                    disabled={isReplying}
-                    className="pr-4 py-3 h-auto min-h-[44px] rounded-2xl border-stone-300 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
+                    placeholder={isOffline ? 'You are offline — AI chat unavailable' : 'Ask about recipes, ingredients, or meal ideas...'}
+                    disabled={isReplying || isOffline}
+                    className="pr-4 py-3 h-auto min-h-[44px] rounded-2xl border-stone-300 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all resize-none disabled:bg-stone-50 disabled:text-stone-400"
                   />
                 </div>
                 <Button 
                   onClick={handleSend}
-                  disabled={isReplying || !input.trim()}
+                  disabled={isReplying || !input.trim() || isOffline}
                   aria-label="Send message"
                   className="rounded-full w-11 h-11 p-0 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 shadow-lg shadow-orange-500/30 disabled:opacity-50 disabled:shadow-none transition-all"
                 >

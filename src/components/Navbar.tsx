@@ -21,7 +21,16 @@ export function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <img src="/logo.png" alt="CookMate" className="w-10 h-10 rounded-xl shadow-sm shadow-orange-500/20" />
-            <span className="font-bold text-xl text-stone-900 tracking-tight">CookMate</span>
+            <span className="flex flex-col">
+              <span className="leading-none" style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic', fontWeight: 800, fontSize: '1.35rem' }}>
+                <span className="text-stone-900 dark:text-stone-100">Cook</span><span className="text-orange-500">Mate</span>
+              </span>
+              <span className="mt-1 flex items-center gap-1">
+                <span className="h-px w-2.5 bg-orange-500/70" />
+                <span className="text-[8px] font-extrabold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+                <span className="h-px w-2.5 bg-orange-500/70" />
+              </span>
+            </span>
           </Link>
 
           {/* Desktop Nav */}

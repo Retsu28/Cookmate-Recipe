@@ -37,10 +37,33 @@ if (__DEV__) {
 const api = axios.create({
   baseURL: API_URL,
   timeout: 60000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// In-memory token cache — avoids a SecureStore read on every request.
+let _cachedToken = null;
+const _origGet    = tokenStorage.getItem.bind(tokenStorage);
+const _origSet    = tokenStorage.setItem.bind(tokenStorage);
+const _origDelete = tokenStorage.deleteItem.bind(tokenStorage);
+tokenStorage.getItem = async (key) => {
+  if (key === 'userToken') {
+    if (_cachedToken !== null) return _cachedToken;
+    _cachedToken = await _origGet(key);
+    return _cachedToken;
+  }
+  return _origGet(key);
+};
+tokenStorage.setItem = async (key, value) => {
+  if (key === 'userToken') _cachedToken = value;
+  return _origSet(key, value);
+};
+tokenStorage.deleteItem = async (key) => {
+  if (key === 'userToken') _cachedToken = null;
+  return _origDelete(key);
+};
 
 // Attach JWT token to every request
 api.interceptors.request.use(
@@ -49,6 +72,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -138,13 +162,14 @@ export const recipeApi = {
 export const mlApi = {
   recommendByIngredients: (ingredients) => api.post('/api/ml/recommend', { ingredients }),
   getImageAnalysisQueue: () => api.get('/api/ml/image-analysis/queue'),
-  analyzeCameraImage: (image) => api.post('/api/ml/camera/analyze', { image }, { timeout: 130000 }),
-  analyzeIngredients: (image) => api.post('/api/ml/analyze-ingredients', { image }, { timeout: 130000 }),
+  analyzeCameraImage: (image, headers) => api.post('/api/ml/camera/analyze', { image }, { timeout: 130000, headers }),
+  analyzeIngredients: (image, headers) => api.post('/api/ml/analyze-ingredients', { image }, { timeout: 130000, headers }),
   removeCameraBackground: (image) => api.post('/api/ml/camera/remove-bg', { image }, { timeout: 100000 }),
   saveAiCameraResult: (payload) => api.post('/api/ml/ai-camera-saves', payload),
   getAiCameraSaves: (params) => api.get('/api/ml/ai-camera-saves', { params }),
   getAiCameraSave: (id) => api.get(`/api/ml/ai-camera-saves/${id}`),
   deleteAiCameraSave: (id) => api.delete(`/api/ml/ai-camera-saves/${id}`),
+  getAiCameraRateLimit: () => api.get('/api/ml/ai-camera-rate-limit'),
 };
 
 export const plannerApi = {
@@ -211,6 +236,15 @@ export const mfaApi = {
   enable: (secret, token) => api.post('/api/mfa/enable', { secret, token }),
   disable: (token) => api.post('/api/mfa/disable', { token }),
   verify: (userId, token) => api.post('/api/mfa/verify', { userId, token }),
+};
+
+export const reviewApi = {
+  getReviews: (recipeId, params) => api.get(`/api/recipes/${recipeId}/reviews`, { params }),
+  getMyReview: (recipeId) => api.get(`/api/recipes/${recipeId}/my-review`),
+  submitReview: (recipeId, data) => api.post(`/api/recipes/${recipeId}/reviews`, data),
+  deleteReview: (recipeId) => api.delete(`/api/recipes/${recipeId}/reviews`),
+  voteHelpful: (recipeId, reviewId, isHelpful) => api.post(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`, { isHelpful }),
+  removeVote: (recipeId, reviewId) => api.delete(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`),
 };
 
 export default api;

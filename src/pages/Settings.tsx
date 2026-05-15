@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, ChefHat, Heart, LogOut, PackageOpen, Paintbrush, Shield, User, type LucideIcon } from 'lucide-react';
+import { Bell, ChefHat, Heart, Info, LogOut, PackageOpen, Paintbrush, Shield, User, type LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Layout } from '@/components/Layout';
@@ -13,7 +13,7 @@ import SavedRecipesSettings from '@/components/settings/SavedRecipesSettings';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { cn } from '@/lib/utils';
 
-type SettingsTabId = 'account' | 'saved-recipes' | 'notifications' | 'appearance' | 'privacy' | 'inventory';
+type SettingsTabId = 'account' | 'saved-recipes' | 'notifications' | 'appearance' | 'privacy' | 'inventory' | 'about';
 
 type SettingsTab = {
   id: SettingsTabId;
@@ -67,9 +67,17 @@ const tabs: SettingsTab[] = [
     disabled: true,
     badge: 'Coming Soon',
   },
+  {
+    id: 'about',
+    label: 'About CookMate',
+    mobileLabel: 'About',
+    description: 'Version, features, and contact',
+    icon: Info,
+  },
 ];
 
-function renderTabContent(activeTab: SettingsTabId) {
+function renderTabContent(activeTab: SettingsTabId, navigate: ReturnType<typeof useNavigate>) {
+  if (activeTab === 'about') { navigate('/about'); return null; }
   if (activeTab === 'account') return <AccountSettings />;
   if (activeTab === 'saved-recipes') return <SavedRecipesSettings />;
   if (activeTab === 'notifications') return <NotificationSettings />;
@@ -240,7 +248,7 @@ export default function Settings() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
-                {renderTabContent(activeTab)}
+                {renderTabContent(activeTab, navigate)}
               </motion.div>
             </AnimatePresence>
           </section>

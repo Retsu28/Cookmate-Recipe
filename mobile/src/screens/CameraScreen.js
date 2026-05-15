@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,22 @@ import { CameraAnalysisSkeleton, CameraPermissionSkeleton } from '../components/
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { useNetwork, OFFLINE_MESSAGE } from '../offline/network';
 import Animated from 'react-native-reanimated';
+import { mlApi } from '../api/api';
 import { useCamera } from '../hooks/useCamera';
 import { useCameraAnalysis } from '../hooks/useCameraAnalysis';
 import { useCameraScanAnimation, PHASES as P } from '../hooks/useCameraScanAnimation';
 
 const { width: SW } = Dimensions.get('window');
+
+function formatRlCountdown(secs) {
+  if (secs <= 0) return '';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${s}s`;
+}
 
 export default function CameraScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
@@ -36,6 +47,8 @@ export default function CameraScreen({ navigation }) {
   const [showMoreRecipes, setShowMoreRecipes] = useState(false);
   const [showSaves, setShowSaves] = useState(false);
   const [isResultHidden, setIsResultHidden] = useState(false);
+  const [rlCountdown, setRlCountdown] = useState(0);
+  const rlCountdownRef = useRef(null);
 
   /* ── Hooks ── */
   const {
@@ -51,7 +64,9 @@ export default function CameraScreen({ navigation }) {
     bgRemovalDone, setBgRemovalDone,
     bgRemovalProgress, setBgRemovalProgress,
     queueStatus, setQueueStatus,
+    myQueuePosition,
     cooldown,
+    rateLimitInfo, setRateLimitInfo,
     saves, setSaves,
     savesLoading, savesError, setSavesError,
     restoringSaveId,
@@ -76,6 +91,32 @@ export default function CameraScreen({ navigation }) {
     onGoDone: () => setPhase(P.DONE),
   });
 
+  /* ── Rate limit countdown ── */
+  useEffect(() => {
+    if (rateLimitInfo?.remaining === 0 && rateLimitInfo.resetAt) {
+      const secsLeft = Math.max(0, Math.ceil((rateLimitInfo.resetAt - Date.now()) / 1000));
+      setRlCountdown(secsLeft);
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+      rlCountdownRef.current = setInterval(() => {
+        setRlCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(rlCountdownRef.current);
+            rlCountdownRef.current = null;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+      rlCountdownRef.current = null;
+      setRlCountdown(0);
+    }
+    return () => {
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+    };
+  }, [rateLimitInfo?.remaining, rateLimitInfo?.resetAt]);
+
   /* ── Initial load ── */
   useEffect(() => {
     loadCameraSaves();
@@ -90,6 +131,7 @@ export default function CameraScreen({ navigation }) {
   /* ── Capture + analyze ── */
   const takePicture = async () => {
     if (cooldown > 0) return;
+    if (rateLimitInfo?.remaining === 0) return;
     const photo = await capturePhoto();
     if (!photo) return;
 
@@ -136,6 +178,14 @@ export default function CameraScreen({ navigation }) {
     setIsResultHidden(false);
     reset();
     setPhase(P.IDLE);
+    mlApi.getAiCameraRateLimit()
+      .then((res) => {
+        const data = res?.data;
+        if (data && typeof data.remaining === 'number') {
+          setRateLimitInfo({ remaining: data.remaining, resetAt: data.resetAt ?? null });
+        }
+      })
+      .catch(() => { setRateLimitInfo(null); });
   };
 
   const hideResult = useCallback(() => {
@@ -175,6 +225,12 @@ export default function CameraScreen({ navigation }) {
       </Text>
     </View>
   );
+
+  const AI_CAMERA_RATE_LIMIT = 3;
+  const rlRemaining = rateLimitInfo?.remaining ?? null;
+  const rlColor = rlRemaining === 0 ? '#dc2626' : rlRemaining === 1 ? '#d97706' : '#f97316';
+  const rlBg = rlRemaining === 0 ? 'rgba(220,38,38,0.15)' : rlRemaining === 1 ? 'rgba(217,119,6,0.15)' : 'rgba(249,115,22,0.12)';
+  const rlBorder = rlRemaining === 0 ? 'rgba(220,38,38,0.4)' : rlRemaining === 1 ? 'rgba(217,119,6,0.4)' : 'rgba(249,115,22,0.3)';
 
   const displayLabels = {
     [P.SCAN]: 'Scanning image...',
@@ -263,7 +319,7 @@ export default function CameraScreen({ navigation }) {
                   <View style={st.queueBadge}>
                     <Text style={st.queueBadgeText}>
                       {queueStatus.queueLabel}
-                      {queueStatus.queuePosition ? ` - Position ${queueStatus.queuePosition}` : ''}
+                      {myQueuePosition ? ` — You are #${myQueuePosition}` : queueStatus.queuePosition ? ` — Position ${queueStatus.queuePosition}` : ''}
                     </Text>
                   </View>
                 )}
@@ -297,8 +353,8 @@ export default function CameraScreen({ navigation }) {
                   </View>
                 </View>
                 <View style={st.resultActions}>
-                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0} style={[st.retakeBtn, { borderColor: colors.border }, cooldown > 0 && { opacity: 0.5 }]}>
-                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : 'TRY AGAIN'}</Text>
+                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0 || rlRemaining === 0} style={[st.retakeBtn, { borderColor: colors.border }, (cooldown > 0 || rlRemaining === 0) && { opacity: 0.5 }]}>
+                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : rlRemaining === 0 ? 'LIMIT REACHED' : 'TRY AGAIN'}</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -351,10 +407,28 @@ export default function CameraScreen({ navigation }) {
                       {hasDetectedIngredients
                         ? `${detectedIngredients.length} ingredient${detectedIngredients.length !== 1 ? 's' : ''} detected`
                         : 'No ingredients detected'}
-                      {queueStatus?.queueLabel ? ` - ${queueStatus.queueLabel}` : ''}
+                      {queueStatus?.queueLabel ? ` · ${queueStatus.queueLabel}` : ''}
                     </Text>
                   </View>
                 </View>
+                {rateLimitInfo !== null && (
+                  <View style={[st.resultRlPill, { backgroundColor: rlBg, borderColor: rlBorder }]}>
+                    <View style={[st.rlDot, { backgroundColor: rlColor }]} />
+                    <Text style={[st.resultRlText, { color: rlColor }]}>
+                      {rlRemaining === 0
+                        ? rlCountdown > 0 ? `Daily limit reached — resets in ${formatRlCountdown(rlCountdown)}` : 'Daily limit reached — resets tomorrow'
+                        : `${rlRemaining} / ${AI_CAMERA_RATE_LIMIT} AI analyses remaining today`}
+                    </Text>
+                    <View style={st.rlBars}>
+                      {Array.from({ length: AI_CAMERA_RATE_LIMIT }).map((_, i) => (
+                        <View
+                          key={i}
+                          style={[st.rlBar, { backgroundColor: i < (AI_CAMERA_RATE_LIMIT - rlRemaining) ? rlColor : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)') }]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                )}
 
                 {/* Detected ingredients with descriptions */}
                 {detectedIngredients.length > 0 && (
@@ -472,8 +546,8 @@ export default function CameraScreen({ navigation }) {
 
                 {/* Actions */}
                 <View style={st.resultActions}>
-                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0} style={[st.retakeBtn, { borderColor: colors.border }, cooldown > 0 && { opacity: 0.5 }]}>
-                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : 'RETAKE'}</Text>
+                  <TouchableOpacity onPress={handleRetake} disabled={cooldown > 0 || rlRemaining === 0} style={[st.retakeBtn, { borderColor: colors.border }, (cooldown > 0 || rlRemaining === 0) && { opacity: 0.5 }]}>
+                    <Text style={[st.retakeBtnText, { color: colors.text }]}>{cooldown > 0 ? `WAIT ${cooldown}s` : rlRemaining === 0 ? 'LIMIT REACHED' : 'RETAKE'}</Text>
                   </TouchableOpacity>
                   {topRecipe ? (
                     <TouchableOpacity
@@ -533,8 +607,26 @@ export default function CameraScreen({ navigation }) {
               </TouchableOpacity>
             </View>
             <View style={st.bottomBar}>
+              {rateLimitInfo !== null && (
+                <View style={[st.rlPill, { backgroundColor: rlBg, borderColor: rlBorder }]}>
+                  <View style={[st.rlDot, { backgroundColor: rlColor }]} />
+                  <Text style={[st.rlText, { color: rlColor }]}>
+                    {rlRemaining === 0
+                      ? rlCountdown > 0 ? `Daily limit reached — resets in ${formatRlCountdown(rlCountdown)}` : 'Daily limit reached — resets tomorrow'
+                      : `${rlRemaining}/${AI_CAMERA_RATE_LIMIT} AI analyses left today`}
+                  </Text>
+                  <View style={st.rlBars}>
+                    {Array.from({ length: AI_CAMERA_RATE_LIMIT }).map((_, i) => (
+                      <View
+                        key={i}
+                        style={[st.rlBar, { backgroundColor: i < rlRemaining ? rlColor : 'rgba(255,255,255,0.2)' }]}
+                      />
+                    ))}
+                  </View>
+                </View>
+              )}
               <View style={st.hintPill}>
-                <Text style={st.hintText}>{cooldown > 0 ? `Please wait ${cooldown}s` : 'Point at ingredients or a dish'}</Text>
+                <Text style={st.hintText}>{cooldown > 0 ? `Please wait ${cooldown}s` : rateLimitInfo?.remaining === 0 ? 'Daily limit reached' : 'Point at ingredients or a dish'}</Text>
               </View>
               <View style={st.captureRow}>
                 <TouchableOpacity style={st.sideBtn} onPress={() => { setShowSaves(true); loadCameraSaves(); }}>
@@ -545,7 +637,7 @@ export default function CameraScreen({ navigation }) {
                     </View>
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={takePicture} disabled={cooldown > 0} style={[st.captureOuter, cooldown > 0 && { opacity: 0.4 }]}><View style={st.captureInner} /></TouchableOpacity>
+                <TouchableOpacity onPress={takePicture} disabled={cooldown > 0 || rateLimitInfo?.remaining === 0} style={[st.captureOuter, (cooldown > 0 || rateLimitInfo?.remaining === 0) && { opacity: 0.4 }]}><View style={st.captureInner} /></TouchableOpacity>
                 <TouchableOpacity style={st.sideBtn}><Ionicons name="flash-outline" size={20} color="#fff" /></TouchableOpacity>
               </View>
             </View>
@@ -682,6 +774,13 @@ const st = StyleSheet.create({
   bottomBar: { alignItems: 'center', gap: 20 },
   hintPill: { backgroundColor: 'rgba(0,0,0,0.3)', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   hintText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1, color: '#fff' },
+  rlPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  rlDot: { width: 6, height: 6, borderRadius: 3 },
+  rlText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 0.5 },
+  rlBars: { flexDirection: 'row', gap: 3, marginLeft: 2 },
+  rlBar: { width: 14, height: 4, borderRadius: 2 },
+  resultRlPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, borderWidth: 1, marginHorizontal: 16, marginBottom: 10 },
+  resultRlText: { flex: 1, fontFamily: 'Geist_700Bold', fontSize: 11, letterSpacing: 0.3 },
   captureRow: { flexDirection: 'row', alignItems: 'center', gap: 32 },
   sideBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   captureOuter: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#f97316' },

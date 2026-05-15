@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Search, Calendar, Camera, User, BookOpen,
-  Bell, Menu, ShieldCheck, X
+  Bell, Menu, ShieldCheck, X, Download
 } from 'lucide-react';
 import { AIChatWidget } from './AIChatWidget';
 import { useAIChat } from '@/context/AIChatContext';
@@ -129,12 +129,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { name: 'Recipes', path: '/recipes', icon: BookOpen },
     { name: 'Planner', path: '/planner', icon: Calendar },
     { name: 'AI Camera', path: '/camera', icon: Camera },
+    { name: 'Downloads', path: '/downloads', icon: Download },
     { name: 'Profile', path: '/profile', icon: User },
   ];
   const navLinks = isAdmin
     ? [...baseNavLinks, { name: 'Admin Dashboard', path: '/admin', icon: ShieldCheck }]
     : baseNavLinks;
-  const bottomNavLinks = navLinks.filter((link) => ['Home', 'Search', 'Recipes', 'Planner', 'AI Camera', 'Profile'].includes(link.name));
+  const bottomNavLinks = navLinks.filter((link) => ['Home', 'Search', 'Recipes', 'Planner', 'Downloads', 'Profile'].includes(link.name));
 
   return (
     <div className="flex h-screen overflow-hidden bg-orange-50/50 font-sans text-stone-900 dark:bg-stone-950 dark:text-stone-100">
@@ -145,8 +146,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/" className="group flex items-center gap-3">
             <img src="/logo.png" alt="CookMate" className="h-11 w-11 transition-transform group-hover:scale-105" />
             <span className="flex flex-col">
-              <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+              <span className="leading-none" style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic', fontWeight: 800, fontSize: '1.5rem' }}>
+                <span className="text-stone-900 dark:text-stone-100">Cook</span><span className="text-orange-500">Mate</span>
+              </span>
+              <span className="mt-1.5 flex items-center gap-1">
+                <span className="h-px w-3 bg-orange-500/70" />
+                <span className="text-[6px] font-extrabold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+                <span className="h-px w-3 bg-orange-500/70" />
+              </span>
             </span>
           </Link>
         </div>
@@ -206,8 +213,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
                 <img src="/logo.png" alt="CookMate" className="h-10 w-10" />
                 <div className="flex flex-col">
-                  <span className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">CookMate</span>
-                  <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+                  <span className="leading-none" style={{ fontFamily: '"Playfair Display", serif', fontStyle: 'italic', fontWeight: 800, fontSize: '1.5rem' }}>
+                    <span className="text-stone-900 dark:text-stone-100">Cook</span><span className="text-orange-500">Mate</span>
+                  </span>
+                  <span className="mt-1.5 flex items-center gap-1">
+                    <span className="h-px w-3 bg-orange-500/70" />
+                    <span className="text-[9px] font-extrabold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-400">Kitchen Assistant</span>
+                    <span className="h-px w-3 bg-orange-500/70" />
+                  </span>
                 </div>
               </Link>
               <button onClick={() => setMobileMenuOpen(false)} className="rounded-full bg-orange-50 p-2 text-orange-600 transition-colors hover:bg-orange-100 dark:bg-stone-800 dark:hover:bg-stone-700">

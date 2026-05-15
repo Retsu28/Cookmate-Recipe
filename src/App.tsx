@@ -13,6 +13,7 @@ import SplashScreen from '@/components/SplashScreen';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import PlannerReminderBridge from '@/notifications/PlannerReminderBridge';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AIChatProvider } from '@/context/AIChatContext';
 import AuthGate, { GuestGate } from '@/auth/AuthGate';
@@ -38,6 +39,9 @@ import Settings from './pages/Settings';
 import Onboarding from './pages/Onboarding';
 
 import RecipeDetail from './pages/RecipeDetail';
+import DownloadsPage from './pages/DownloadsPage';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import About from './pages/About';
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const MLAnalytics = lazy(() => import('./admin/pages/MLAnalytics'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
@@ -86,6 +90,7 @@ export default function App() {
         <Router>
           <AIChatProvider>
           <PlannerReminderBridge />
+          <OfflineBanner />
           <Routes>
             <Route element={<AdminGate />}>
               <Route path="admin" element={<AdminLayout />}>
@@ -126,6 +131,9 @@ export default function App() {
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="camera" element={<AICamera />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="downloads" element={<DownloadsPage />} />
+                <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="about" element={<About />} />
               </Route>
             </Route>
           </Routes>

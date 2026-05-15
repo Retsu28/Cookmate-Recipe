@@ -1,29 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Bell, Menu, ShieldCheck } from 'lucide-react';
+import { Menu, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import api from '@/services/api';
 
 interface AdminTopbarProps {
   onMenuClick: () => void;
 }
 
 export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchUnread = useCallback(() => {
-    api.get<{ count: number }>('/api/admin/notifications/unread-count')
-      .then((data) => setUnreadCount(data.count ?? 0))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchUnread]);
-
   const openUserApp = () => {
     try {
       localStorage.setItem('hasSeenOnboarding', 'true');
@@ -49,18 +33,6 @@ export function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
           <ShieldCheck size={14} />
           Admin dashboard
         </Badge>
-        <Link
-          to="/admin/notifications"
-          aria-label={`Admin notifications${unreadCount > 0 ? ` (${unreadCount} new)` : ''}`}
-          className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-500 shadow-sm ring-1 ring-stone-200 transition-colors hover:text-orange-600 dark:bg-stone-800 dark:text-stone-400 dark:ring-stone-700 dark:hover:text-orange-400"
-        >
-          <Bell size={18} />
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-extrabold text-white ring-2 ring-white">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </Link>
         <Link
           to="/"
           onClick={openUserApp}

@@ -415,7 +415,7 @@ export default function Dashboard() {
               <div className="mb-6 rounded-2xl border border-white/20 bg-white/10 p-5">
                 <p className="text-white text-xs italic font-medium">"What can I use instead of heavy cream for this sauce?"</p>
               </div>
-              <Button onClick={openChat} className="w-full rounded-full bg-[#1c1917] py-6 text-[10px] font-bold uppercase tracking-widest text-[#ea580c] hover:bg-stone-800 border-0">
+              <Button onClick={() => openChat()} className="w-full rounded-full bg-[#1c1917] py-6 text-[10px] font-bold uppercase tracking-widest text-[#ea580c] hover:bg-stone-800 border-0">
                 Start Conversation
               </Button>
             </section>

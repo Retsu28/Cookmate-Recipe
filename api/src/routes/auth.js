@@ -5,14 +5,15 @@ const { requireAuth } = require('../middleware/requireAuth');
 
 const router = Router();
 
-// Login — tightest limit; only failed attempts count toward the cap
+// Login — lightweight in-memory guard (burst protection only).
+// Real DB-backed IP+email lockout is handled inside authController.login().
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                   // 10 failed attempts per IP per window
+  windowMs: 60 * 1000,       // 1 minute burst window
+  max: 30,                   // max 30 requests per IP per minute (handles rapid fire)
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many failed login attempts. Please try again in 15 minutes.' },
+  message: { error: 'Too many login attempts. Please slow down.' },
 });
 
 // Signup — slightly looser; one person rarely creates many accounts legitimately

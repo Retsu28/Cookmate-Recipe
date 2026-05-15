@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle, ChevronLeft, ChevronRight, Bookmark, X } from 'lucide-react';
+import { Camera, Upload, Sparkles, RefreshCcw, ChefHat, ArrowRight, ScanLine, Focus, AlertTriangle, ChevronLeft, ChevronRight, Bookmark, X, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 import api from '@/services/api';
@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { AICameraPageSkeleton, CameraAnalysisSkeleton } from '@/components/SkeletonScreen';
 import { useInitialContentLoading } from '@/hooks/useInitialContentLoading';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useAuth } from '@/context/AuthContext';
+import { subscribeQueueUpdates } from '@/notifications/queueRealtime';
 
 type Phase = 'idle' | 'scanning' | 'selecting' | 'selected' | 'sticker' | 'done';
 
@@ -51,6 +53,23 @@ interface QueueStatus {
   queueLabel: string;
   queuePosition?: number;
   queueFullMessage?: string;
+}
+
+const AI_CAMERA_RATE_LIMIT = 3;
+
+function formatRlCountdown(secs: number): string {
+  if (secs <= 0) return '';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${s}s`;
+}
+
+interface RateLimitInfo {
+  remaining: number;
+  resetAt: number | null;
 }
 
 const MAX_UPLOAD_FILE_SIZE = 12 * 1024 * 1024;
@@ -210,22 +229,15 @@ function isAbortError(err: unknown) {
 }
 
 function normalizeQueueStatus(value: unknown): QueueStatus | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
+  if (!value || typeof value !== 'object') return null;
   const data = value as Partial<QueueStatus>;
-  const queueCount = Number(data.queueCount);
+  const queueCount = Number(data.queueCount ?? 0);
   const queueLimit = Number(data.queueLimit || 50);
-
-  if (!Number.isFinite(queueCount) || queueCount <= 0 || !Number.isFinite(queueLimit) || queueLimit <= 0) {
-    return null;
-  }
-
+  if (!Number.isFinite(queueCount) || !Number.isFinite(queueLimit) || queueLimit <= 0) return null;
   return {
     queueCount,
     queueLimit,
-    queueLabel: data.queueLabel || `Queue: ${queueCount}/${queueLimit}`,
+    queueLabel: data.queueLabel || (queueCount > 0 ? `Queue: ${queueCount}/${queueLimit}` : 'Ready'),
     queuePosition: data.queuePosition,
     queueFullMessage: data.queueFullMessage,
   };
@@ -307,9 +319,14 @@ export default function AICamera() {
   const [bgRemovalDone, setBgRemovalDone] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState('');
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+  const [myQueuePosition, setMyQueuePosition] = useState<number | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
+  const [rlCountdown, setRlCountdown] = useState(0);
+  const rlCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const queuePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const queueUnsubRef = useRef<{ socketId: () => string | null; unsubscribe: () => void } | null>(null);
+  const socketIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activePreviewUrlRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
@@ -358,35 +375,69 @@ export default function AICamera() {
   }, []);
 
   const stopQueuePolling = useCallback(() => {
-    if (queuePollRef.current) {
-      clearInterval(queuePollRef.current);
-      queuePollRef.current = null;
-    }
+    // no-op kept so call-sites don't need changes
   }, []);
 
-  const startQueuePolling = useCallback((requestId: number) => {
-    stopQueuePolling();
+  const startQueuePolling = useCallback((_requestId: number) => {
+    // realtime via socket — no polling needed
+  }, []);
 
-    const refresh = async () => {
-      try {
-        const status = await api.get<QueueStatus>('/api/ml/image-analysis/queue');
-        if (requestIdRef.current === requestId) {
-          setQueueStatus(normalizeQueueStatus(status));
+  // Subscribe to realtime queue updates for the lifetime of the page
+  useEffect(() => {
+    const sub = subscribeQueueUpdates(
+      (snapshot) => {
+        setQueueStatus(normalizeQueueStatus(snapshot));
+        socketIdRef.current = sub.socketId();
+      },
+      (pos) => {
+        setMyQueuePosition(pos.position);
+      },
+    );
+    queueUnsubRef.current = sub;
+    return () => { sub.unsubscribe(); queueUnsubRef.current = null; };
+  }, []);
+
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.id) { setRateLimitInfo(null); return; }
+    api.get<{ remaining: number; resetAt: number | null; limit: number }>('/api/ml/ai-camera-rate-limit')
+      .then((data) => {
+        if (typeof data?.remaining === 'number') {
+          setRateLimitInfo({ remaining: data.remaining, resetAt: data.resetAt ?? null });
         }
-      } catch {
-        // Queue status is helpful context, not a blocker for analysis.
-      }
-    };
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
-    refresh();
-    queuePollRef.current = setInterval(refresh, 1500);
-  }, [stopQueuePolling]);
+  useEffect(() => {
+    if (rateLimitInfo?.remaining === 0 && rateLimitInfo.resetAt) {
+      const secsLeft = Math.max(0, Math.ceil((rateLimitInfo.resetAt - Date.now()) / 1000));
+      setRlCountdown(secsLeft);
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+      rlCountdownRef.current = setInterval(() => {
+        setRlCountdown((prev) => {
+          if (prev <= 1) {
+            if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+            rlCountdownRef.current = null;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
+      rlCountdownRef.current = null;
+      setRlCountdown(0);
+    }
+  }, [rateLimitInfo?.remaining, rateLimitInfo?.resetAt]);
 
   useEffect(() => {
     return () => {
       requestIdRef.current += 1;
       abortInFlightRequests();
       stopQueuePolling();
+      if (rlCountdownRef.current) clearInterval(rlCountdownRef.current);
       if (cooldownRef.current) clearInterval(cooldownRef.current);
       if (activePreviewUrlRef.current?.startsWith('blob:')) {
         URL.revokeObjectURL(activePreviewUrlRef.current);
@@ -459,14 +510,36 @@ export default function AICamera() {
     setCutoutUrl(null);
     setBgRemovalProgress('Removing background...');
     try {
-      const result = await api.post<BackgroundRemovalResult>(
-        '/api/ml/camera/remove-bg',
-        { image: imageDataUrl },
-        undefined,
-        { signal: controller.signal }
-      );
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '';
+      const token = (() => { try { return localStorage.getItem('cookmate.auth.token'); } catch { return null; } })();
+      const csrfCookie = (() => { try { return document.cookie.split('; ').find(r => r.startsWith('cookmate.csrf='))?.split('=')[1] ?? null; } catch { return null; } })();
+      const bgHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) bgHeaders['Authorization'] = `Bearer ${token}`;
+      if (csrfCookie) bgHeaders['X-CSRF-Token'] = csrfCookie;
+      const res = await fetch(`${apiBase}/api/ml/camera/remove-bg`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: bgHeaders,
+        body: JSON.stringify({ image: imageDataUrl }),
+        signal: controller.signal,
+      });
+      const rlRemaining = res.headers.get('RateLimit-Remaining') ?? res.headers.get('X-RateLimit-Remaining');
+      const rlReset = res.headers.get('RateLimit-Reset') ?? res.headers.get('X-RateLimit-Reset');
+      if (rlRemaining !== null) {
+        setRateLimitInfo((prev) => {
+          const next = { remaining: Number(rlRemaining), resetAt: rlReset ? Number(rlReset) * 1000 : null };
+          if (prev === null) return next;
+          return next.remaining < prev.remaining ? next : prev;
+        });
+      }
       if (requestIdRef.current !== requestId) return;
-      const nextCutout = result.cutout || result.cutoutUri || result.image || null;
+      if (!res.ok) {
+        console.warn('Background removal warning: status', res.status, '— original photo will be used.');
+        return;
+      }
+      let result: BackgroundRemovalResult | null = null;
+      try { result = await res.json() as BackgroundRemovalResult; } catch { /* noop */ }
+      const nextCutout = result?.cutout || result?.cutoutUri || result?.image || null;
       if (nextCutout) {
         setCutoutUrl(nextCutout);
       }
@@ -494,6 +567,12 @@ export default function AICamera() {
     }
     if (cooldown > 0) {
       setError(`Please wait ${cooldown}s before analyzing another image.`);
+      e.target.value = '';
+      return;
+    }
+    if (rateLimitInfo?.remaining === 0) {
+      const msg = rlCountdown > 0 ? `Daily limit reached. Try again in ${formatRlCountdown(rlCountdown)}.` : 'Daily limit reached. Try again tomorrow.';
+      toast.error('Daily AI Camera limit reached', { description: msg });
       e.target.value = '';
       return;
     }
@@ -553,12 +632,40 @@ export default function AICamera() {
     setError(null);
     startQueuePolling(requestId);
     try {
-      const result = await api.post<AnalysisResult>(
-        '/api/ml/analyze-ingredients',
-        { image: base64 },
-        undefined,
-        { signal: controller.signal }
-      );
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '';
+      const token = (() => { try { return localStorage.getItem('cookmate.auth.token'); } catch { return null; } })();
+      const csrfCookie = (() => { try { return document.cookie.split('; ').find(r => r.startsWith('cookmate.csrf='))?.split('=')[1] ?? null; } catch { return null; } })();
+      const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) fetchHeaders['Authorization'] = `Bearer ${token}`;
+      if (csrfCookie) fetchHeaders['X-CSRF-Token'] = csrfCookie;
+      const sid = socketIdRef.current ?? queueUnsubRef.current?.socketId() ?? null;
+      if (sid) fetchHeaders['X-Socket-Id'] = sid;
+      const res = await fetch(`${apiBase}/api/ml/analyze-ingredients`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: fetchHeaders,
+        body: JSON.stringify({ image: base64 }),
+        signal: controller.signal,
+      });
+      const remaining = res.headers.get('RateLimit-Remaining') ?? res.headers.get('X-RateLimit-Remaining');
+      const reset = res.headers.get('RateLimit-Reset') ?? res.headers.get('X-RateLimit-Reset');
+      if (remaining !== null) {
+        setRateLimitInfo({
+          remaining: Number(remaining),
+          resetAt: reset ? Number(reset) * 1000 : null,
+        });
+      }
+      let result: AnalysisResult;
+      if (!res.ok) {
+        let errData: any = null;
+        try { errData = await res.json(); } catch { /* noop */ }
+        const errMsg = errData?.error || errData?.message || `Request failed (${res.status})`;
+        const err = new Error(errMsg) as Error & { data?: unknown; status?: number };
+        err.data = errData;
+        err.status = res.status;
+        throw err;
+      }
+      result = await res.json() as AnalysisResult;
       if (requestIdRef.current === requestId) {
         setAnalysis(result);
         setQueueStatus(normalizeQueueStatus(result));
@@ -569,13 +676,18 @@ export default function AICamera() {
       if (requestIdRef.current !== requestId) return;
       console.warn('Analysis warning:', err);
       const nextQueueStatus = normalizeQueueStatus(err?.data);
-      const nextMessage = cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.');
+      const is429 = err?.status === 429;
+      const nextMessage = is429
+        ? rlCountdown > 0
+          ? `Daily limit reached. You can analyze again in ${formatRlCountdown(rlCountdown)}.`
+          : 'Daily AI Camera limit reached. Try again tomorrow.'
+        : cameraWarningMessage(err, 'Analysis is temporarily unavailable. Please try again.');
       setQueueStatus(nextQueueStatus);
       setError(nextMessage);
-      if (nextQueueStatus?.queueFullMessage) {
-        toast.warning('AI Camera Busy', {
-          description: nextMessage,
-        });
+      if (is429) {
+        toast.error('Daily AI Camera limit reached', { description: nextMessage });
+      } else if (nextQueueStatus?.queueFullMessage) {
+        toast.warning('AI Camera Busy', { description: nextMessage });
       }
       startCooldown();
     } finally {
@@ -596,7 +708,23 @@ export default function AICamera() {
     replacePreviewImage(null); setAnalysis(null); setError(null); setPhase('idle');
     setCutoutUrl(null); setBgRemovalDone(false); setBgRemovalProgress(''); setQueueStatus(null); setLoading(false);
     setCurrentSavePayload(null);
-    fileInputRef.current?.click();
+    api.get<{ remaining: number; resetAt: number | null }>('/api/ml/ai-camera-rate-limit')
+      .then((data) => {
+        if (typeof data?.remaining === 'number') {
+          const info = { remaining: data.remaining, resetAt: data.resetAt ?? null };
+          setRateLimitInfo(info);
+          if (info.remaining > 0) {
+            fileInputRef.current?.click();
+          } else {
+            const secs = info.resetAt ? Math.max(0, Math.ceil((info.resetAt - Date.now()) / 1000)) : 0;
+            const msg = secs > 0 ? `Daily limit reached. Try again in ${formatRlCountdown(secs)}.` : 'Daily limit reached. Try again tomorrow.';
+            toast.error('Daily AI Camera limit reached', { description: msg });
+          }
+        } else {
+          fileInputRef.current?.click();
+        }
+      })
+      .catch(() => { setRateLimitInfo(null); fileInputRef.current?.click(); });
   };
 
   useEffect(() => {
@@ -719,6 +847,43 @@ export default function AICamera() {
             </div>
           </div>
         )}
+        {rateLimitInfo !== null && (() => {
+          const used = AI_CAMERA_RATE_LIMIT - rateLimitInfo.remaining;
+          const isOut = rateLimitInfo.remaining === 0;
+          const isWarn = rateLimitInfo.remaining === 1;
+          return (
+            <div className={cn(
+              'mb-4 flex items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 text-xs font-bold transition-colors',
+              isOut
+                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-300'
+                : isWarn
+                ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-300'
+                : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-950/30 dark:text-orange-300'
+            )}>
+              <div className="flex items-center gap-2">
+                <Zap size={13} className="shrink-0" />
+                <span>
+                  {isOut
+                    ? `Daily AI Camera limit reached${rlCountdown > 0 ? ` — resets in ${formatRlCountdown(rlCountdown)}` : ' — resets tomorrow'}`
+                    : `${rateLimitInfo.remaining} / ${AI_CAMERA_RATE_LIMIT} AI analyses remaining today`}
+                </span>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                {Array.from({ length: AI_CAMERA_RATE_LIMIT }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      'h-2 w-6 rounded-full transition-colors',
+                      i < used
+                        ? isOut ? 'bg-red-400 dark:bg-red-500' : isWarn ? 'bg-amber-400 dark:bg-amber-500' : 'bg-orange-300 dark:bg-orange-600'
+                        : 'bg-orange-400 dark:bg-orange-400'
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         <div className="text-center space-y-4 mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-orange-600 font-bold text-sm mb-4 dark:bg-emerald-500/10 dark:border dark:border-emerald-500/20 dark:text-emerald-400">
             <Sparkles size={16} /> Powered by Gemini AI
@@ -730,10 +895,12 @@ export default function AICamera() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           {/* ════ Camera / Upload ════ */}
           <div className="w-full">
-            <div onClick={() => { if (!image && isOnline) fileInputRef.current?.click(); }} className={cn(
+            <div onClick={() => { if (!image && isOnline && !(rateLimitInfo?.remaining === 0)) fileInputRef.current?.click(); }} className={cn(
               "aspect-[4/5] sm:aspect-square w-full rounded-[2.5rem] overflow-hidden relative transition-all shadow-xl",
               !isOnline && !image
                 ? "border-4 border-dashed border-orange-200 bg-orange-50/60 cursor-not-allowed flex flex-col items-center justify-center dark:border-orange-500/20 dark:bg-orange-950/10"
+                : rateLimitInfo?.remaining === 0 && !image
+                ? "border-4 border-dashed border-red-200 bg-red-50/60 cursor-not-allowed flex flex-col items-center justify-center opacity-60 dark:border-red-500/20 dark:bg-red-950/10"
                 : image ? "border-none shadow-stone-200/50 dark:shadow-black/50" : "border-4 border-dashed border-stone-200 bg-white hover:border-orange-400 cursor-pointer flex flex-col items-center justify-center group dark:border-stone-700 dark:bg-stone-900/50 dark:hover:border-orange-500/60"
             )}>
               {image ? (
@@ -844,8 +1011,8 @@ export default function AICamera() {
                     {phase === 'done' && (
                       <motion.div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-900/80 via-stone-900/20 to-transparent flex flex-col justify-end p-8 z-30"
                         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                        <Button onClick={handleReset} disabled={cooldown > 0} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg disabled:opacity-50">
-                          <RefreshCcw size={20} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : 'Retake Photo'}
+                        <Button onClick={handleReset} disabled={cooldown > 0 || rateLimitInfo?.remaining === 0} variant="secondary" className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border-none rounded-full py-6 font-bold shadow-lg disabled:opacity-50" title={rateLimitInfo?.remaining === 0 ? 'Daily AI Camera limit reached' : undefined}>
+                          <RefreshCcw size={20} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : rateLimitInfo?.remaining === 0 ? 'Limit Reached' : 'Retake Photo'}
                         </Button>
                       </motion.div>
                     )}
@@ -883,7 +1050,7 @@ export default function AICamera() {
                   </div>
                   <CardContent className="p-8 space-y-6">
                     <p className="text-stone-600 dark:text-stone-300">{error}</p>
-                    <Button onClick={handleReset} disabled={cooldown > 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-full py-6 font-bold disabled:opacity-50"><RefreshCcw size={18} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : 'Try Again'}</Button>
+                    <Button onClick={handleReset} disabled={cooldown > 0 || rateLimitInfo?.remaining === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-full py-6 font-bold disabled:opacity-50" title={rateLimitInfo?.remaining === 0 ? 'Daily AI Camera limit reached' : undefined}><RefreshCcw size={18} className="mr-2" /> {cooldown > 0 ? `Wait ${cooldown}s` : rateLimitInfo?.remaining === 0 ? 'Limit Reached' : 'Try Again'}</Button>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -892,7 +1059,7 @@ export default function AICamera() {
                 {visibleQueueStatus && (
                   <div className="rounded-[1.5rem] border border-orange-100 bg-white px-5 py-3 text-sm font-bold text-orange-700 shadow-sm dark:border-orange-500/20 dark:bg-stone-900 dark:text-orange-300">
                     {visibleQueueStatus.queueLabel}
-                    {visibleQueueStatus.queuePosition ? ` - Position ${visibleQueueStatus.queuePosition}` : ''}
+                    {myQueuePosition ? ` — You are #${myQueuePosition}` : visibleQueueStatus.queuePosition ? ` — Position ${visibleQueueStatus.queuePosition}` : ''}
                   </div>
                 )}
                 <CameraAnalysisSkeleton />

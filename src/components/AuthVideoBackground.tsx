@@ -1,6 +1,7 @@
 import React from 'react';
 
-const AUTH_BACKGROUND_VIDEO = '/video/authformbackground.mp4';
+const AUTH_BACKGROUND_VIDEO =
+  'https://res.cloudinary.com/drtr06hnf/video/upload/v1778771966/authformbackground_mk5gei.mp4';
 
 export function AuthVideoBackground() {
   return (

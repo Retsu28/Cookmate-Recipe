@@ -40,6 +40,69 @@ async function startServer() {
     logger.warn({ err }, '[server] MFA column migration skipped');
   }
 
+  // Ensure login-lockout columns exist (idempotent migration)
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
+    `);
+  } catch (err) {
+    logger.warn({ err }, '[server] login-lockout column migration skipped');
+  }
+
+  // Ensure email_rate_limits table exists (idempotent migration)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_rate_limits (
+        email              TEXT PRIMARY KEY,
+        failed_attempts    INTEGER NOT NULL DEFAULT 0,
+        locked_until       TIMESTAMP WITH TIME ZONE,
+        last_attempt_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_email_rate_limits_locked_until ON email_rate_limits (locked_until);
+    `);
+  } catch (err) {
+    logger.warn({ err }, '[server] email_rate_limits migration skipped');
+  }
+
+  // Ensure ip_rate_limits table exists (idempotent migration)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ip_rate_limits (
+        ip                 TEXT PRIMARY KEY,
+        failed_attempts    INTEGER NOT NULL DEFAULT 0,
+        locked_until       TIMESTAMP WITH TIME ZONE,
+        last_attempt_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ip_rate_limits_locked_until ON ip_rate_limits (locked_until);
+    `);
+  } catch (err) {
+    logger.warn({ err }, '[server] ip_rate_limits migration skipped');
+  }
+
+  // Ensure video_credits column exists (idempotent migration)
+  try {
+    await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS video_credits TEXT;`);
+  } catch (err) {
+    logger.warn({ err }, '[server] video_credits migration skipped');
+  }
+
+  // Ensure ai_camera_rate_limits table exists (idempotent migration)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_camera_rate_limits (
+        user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        uses_count      INTEGER NOT NULL DEFAULT 0,
+        window_start_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_camera_rate_limits_window
+        ON ai_camera_rate_limits (user_id, window_start_at);
+    `);
+  } catch (err) {
+    logger.warn({ err }, '[server] ai_camera_rate_limits migration skipped');
+  }
+
   // Ensure last_active_at column exists (idempotent migration)
   try {
     await pool.query(`
@@ -131,7 +194,11 @@ async function startServer() {
     // don't use cookies so CSRF doesn't apply to them).
     const skipPath = [...CSRF_SKIP_PATHS].some(p => req.originalUrl.startsWith(p));
     const hasBearerToken = /^Bearer\s+\S+/.test(req.headers['authorization'] || '');
-    if (!csrfJustIssued && !CSRF_SAFE_METHODS.has(req.method) && !skipPath && !hasBearerToken) {
+    // Skip CSRF if client has never sent the cookie (native mobile clients don't
+    // have a browser cookie store — double-submit only applies when the client
+    // demonstrably received and is echoing back a previously-issued cookie).
+    const hasCsrfCookie = Boolean(req.cookies[CSRF_COOKIE]);
+    if (!csrfJustIssued && !CSRF_SAFE_METHODS.has(req.method) && !skipPath && !hasBearerToken && hasCsrfCookie) {
       const headerToken = req.headers['x-csrf-token'];
       if (!headerToken || headerToken !== req.csrfToken) {
         return res.status(403).json({ error: 'Invalid or missing CSRF token.' });

@@ -200,6 +200,9 @@ function RecipeFormBase({ initialForm, initialIngredientRows, initialInstruction
         formData.append('remove_video', 'true');
       }
 
+      // Video credits
+      formData.append('video_credits', form.video_credits || '');
+
       await onSave(formData);
     } finally {
       setSaving(false);
@@ -500,6 +503,35 @@ function RecipeFormBase({ initialForm, initialIngredientRows, initialInstruction
               <Upload size={16} />
               {existingVideo || videoFile ? 'Replace Video' : 'Upload MP4 Video'}
             </button>
+          </div>
+
+          {/* YouTube / Video Credits */}
+          <div className="mt-3 space-y-2">
+            <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-stone-400">
+              Video Credits
+            </label>
+            <input
+              type="text"
+              value={(() => { const p = (form.video_credits || '').split('|'); return p[0] || ''; })()}
+              onChange={(e) => {
+                const parts = (form.video_credits || '').split('|');
+                const url = parts[1] || '';
+                setForm({ ...form, video_credits: `${e.target.value}|${url}` });
+              }}
+              className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
+              placeholder="Video author name (e.g. Panlasang Pinoy)"
+            />
+            <input
+              type="text"
+              value={(() => { const p = (form.video_credits || '').split('|'); return p[1] || ''; })()}
+              onChange={(e) => {
+                const parts = (form.video_credits || '').split('|');
+                const name = parts[0] || '';
+                setForm({ ...form, video_credits: `${name}|${e.target.value}` });
+              }}
+              className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm outline-none focus:border-orange-300"
+              placeholder="YouTube / source URL (e.g. https://youtu.be/...)"
+            />
           </div>
         </div>
 

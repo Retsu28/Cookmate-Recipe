@@ -28,6 +28,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { profileApi, settingsApi, recipeApi, mfaApi, apiBaseUrl } from '../api/api';
 import OptimizedImage from '../components/OptimizedImage';
 import { ProfileContentSkeleton } from '../components/SkeletonPlaceholder';
+import MFADisableModal from '../components/MFADisableModal';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { useFontSizes } from '../hooks/useFontSizes';
 
@@ -261,6 +262,7 @@ export default function ProfileScreen({ navigation }) {
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
   const [mfaDisableLoading, setMfaDisableLoading] = useState(false);
+  const [showMfaDisable, setShowMfaDisable] = useState(false);
 
   // Fetch MFA status from DB whenever: user changes, tab switches to privacy, or screen regains focus
   const fetchMfaStatus = React.useCallback(() => {
@@ -294,43 +296,18 @@ export default function ProfileScreen({ navigation }) {
 
   const handleMfaToggle = () => {
     if (mfaEnabled) {
-      // Disable flow: prompt for code then disable
-      Alert.prompt(
-        'Disable Two-Factor Authentication',
-        'Enter the 6-digit code from your authenticator app to confirm.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Disable MFA',
-            style: 'destructive',
-            onPress: async (code) => {
-              if (!code || !/^\d{6}$/.test(code.trim())) {
-                Alert.alert('Invalid Code', 'Please enter a valid 6-digit code.');
-                return;
-              }
-              setMfaDisableLoading(true);
-              try {
-                await mfaApi.disable(code.trim());
-                setMfaEnabled(false);
-                Alert.alert('MFA Disabled', 'Two-Factor Authentication has been turned off.');
-              } catch (err) {
-                Alert.alert('Error', err?.response?.data?.error || 'Failed to disable MFA. Please try again.');
-              } finally {
-                setMfaDisableLoading(false);
-              }
-            },
-          },
-        ],
-        'plain-text',
-        '',
-        'number-pad'
-      );
+      setShowMfaDisable(true);
     } else {
-      // Enable flow: go to setup screen
       navigation.navigate('MFASetup', {
         onEnabled: () => setMfaEnabled(true),
       });
     }
+  };
+
+  const handleMfaDisabled = () => {
+    setShowMfaDisable(false);
+    setMfaEnabled(false);
+    Alert.alert('MFA Disabled', 'Two-Factor Authentication has been turned off.');
   };
 
   // Check for unsaved changes
@@ -1285,17 +1262,13 @@ export default function ProfileScreen({ navigation }) {
                         </View>
                       </View>
                     </View>
-                    {mfaDisableLoading ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Switch
-                        value={mfaEnabled}
-                        onValueChange={handleMfaToggle}
-                        disabled={mfaStatusLoading || mfaDisableLoading}
-                        trackColor={{ false: colors.border, true: colors.primary }}
-                        thumbColor={'#ffffff'}
-                      />
-                    )}
+                    <Switch
+                      value={mfaEnabled}
+                      onValueChange={handleMfaToggle}
+                      disabled={mfaStatusLoading}
+                      trackColor={{ false: colors.border, true: colors.primary }}
+                      thumbColor={'#ffffff'}
+                    />
                   </View>
                 </View>
 
@@ -1319,12 +1292,23 @@ export default function ProfileScreen({ navigation }) {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => {}}
-                    style={[st.settingRow, { borderBottomWidth: 0 }]}
+                    onPress={() => navigation.navigate('PrivacyPolicy')}
+                    style={[st.settingRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}
                   >
                     <View style={st.settingLeft}>
                       <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
                       <Text style={[st.settingLabel, { color: colors.text }]}>Privacy policy</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('About')}
+                    style={[st.settingRow, { borderBottomWidth: 0 }]}
+                  >
+                    <View style={st.settingLeft}>
+                      <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+                      <Text style={[st.settingLabel, { color: colors.text }]}>About CookMate</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
                   </TouchableOpacity>
@@ -1369,6 +1353,12 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <MFADisableModal
+        visible={showMfaDisable}
+        onClose={() => setShowMfaDisable(false)}
+        onDisabled={handleMfaDisabled}
+      />
     </SafeAreaView>
   );
 }

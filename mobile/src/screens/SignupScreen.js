@@ -24,6 +24,7 @@ import AuthThemeToggle from '../components/AuthThemeToggle';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 const EMAIL_RE = /^[^\s@]+@gmail\.com$/i;
 const MIN_PASSWORD_LEN = 8;
 const PASSWORD_SUCCESS_COLOR = '#22c55e';
@@ -61,7 +62,7 @@ export default function SignupScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { cardStyle, fieldStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
-    useAuthAnimations(5, 1);
+    useAuthAnimations(5);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -129,6 +130,7 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView
@@ -150,7 +152,9 @@ export default function SignupScreen({ navigation }) {
 
             <Animated.View style={[styles.card, cardStyle]}>
               <View style={styles.brand}>
-                <Image source={require('../../assets/logo.png')} style={styles.logo} />
+                <View style={styles.logoContainer}>
+                  <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+                </View>
                 <Text style={styles.title}>Create your CookMate</Text>
                 <Text style={styles.subtitle}>Save recipes, plan meals, and cook with AI.</Text>
               </View>
@@ -370,14 +374,23 @@ function createStyles(colors, isDark) {
       elevation: isDark ? 0 : 4,
     },
     brand: { alignItems: 'center', marginBottom: 24 },
-    logo: {
-      width: 56,
-      height: 56,
+    logoContainer: {
+      width: 64,
+      height: 64,
       borderRadius: 18,
-      backgroundColor: colors.primary,
+      backgroundColor: '#f97316',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 12,
+      marginBottom: 14,
+      shadowColor: '#c2410c',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    logo: {
+      width: 44,
+      height: 44,
     },
     title: {
       fontFamily: 'Geist_800ExtraBold',

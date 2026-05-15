@@ -24,42 +24,27 @@ import SignupScreen from '../screens/SignupScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import MFAVerificationScreen from '../screens/MFAVerificationScreen';
 import MFASetupScreen from '../screens/MFASetupScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import AboutScreen from '../screens/AboutScreen';
 
 const Stack = createStackNavigator();
 
 const authTransitionSpec = {
   animation: 'timing',
   config: {
-    duration: 320,
+    duration: 300,
     easing: Easing.bezier(0.22, 1, 0.36, 1),
   },
 };
 
-function authCardStyleInterpolator({ current, next, layouts }) {
-  const screenWidth = layouts?.screen?.width || 400;
-
-  const opacity = current.progress.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0.3, 1],
-  });
-
-  // Determine direction: next exists and moving means going back (slide from left)
-  const isGoingBack = next && next.progress.__getValue() > 0;
-
-  const translateX = current.progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [isGoingBack ? -screenWidth * 0.35 : screenWidth * 0.35, 0],
-  });
-
-  const scale = current.progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.92, 1],
-  });
-
+function authCardStyleInterpolator({ current }) {
+  // Pure fade — no scale/translate so the shared video background stays seamless
   return {
     cardStyle: {
-      opacity,
-      transform: [{ translateX }, { scale }],
+      opacity: current.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+      }),
     },
   };
 }
@@ -195,6 +180,8 @@ function AppStack({ colors }) {
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={sharedOptions} />
       <Stack.Screen name="SavedRecipes" component={SavedRecipesScreen} options={sharedOptions} />
       <Stack.Screen name="MFASetup" component={MFASetupScreen} options={sharedOptions} />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={sharedOptions} />
+      <Stack.Screen name="About" component={AboutScreen} options={sharedOptions} />
     </Stack.Navigator>
   );
 }

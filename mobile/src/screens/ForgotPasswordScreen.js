@@ -20,13 +20,14 @@ import AuthVisualPanel from '../components/AuthVisualPanel';
 import AuthThemeToggle from '../components/AuthThemeToggle';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { cardStyle, fieldStyle, buttonStyle, onPressIn, onPressOut, triggerShake } =
-    useAuthAnimations(2, 0);
+    useAuthAnimations(2);
 
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -69,6 +70,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+
       <SafeAreaView style={styles.safeArea}>
         <AuthThemeToggle />
         <KeyboardAvoidingView

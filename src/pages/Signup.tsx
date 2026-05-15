@@ -157,12 +157,12 @@ export default function Signup() {
                 transition={{ delay: 0.05, duration: 0.4 }}
                 className="flex flex-col items-center text-center mb-8"
               >
-                <motion.img
-                  src="/logo.png"
-                  alt="CookMate"
+                <motion.div
                   whileHover={{ rotate: [0, -6, 6, 0], transition: { duration: 0.5 } }}
-                  className="w-14 h-14 mb-4"
-                />
+                  className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/30 mb-4"
+                >
+                  <img src="/logo.png" alt="CookMate" className="w-11 h-11 object-contain" />
+                </motion.div>
                 <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">Create your CookMate</h1>
                 <p className="text-stone-500 text-sm mt-1">Save recipes, plan meals, and cook with AI.</p>
               </motion.div>

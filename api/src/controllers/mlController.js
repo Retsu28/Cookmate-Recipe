@@ -36,8 +36,71 @@ const {
 
 const MAX_BASE64_LENGTH = 7 * 1024 * 1024;
 const MAX_SAVE_IMAGE_DATA_LENGTH = 8 * 1024 * 1024;
+const MAX_AI_CAMERA_SAVES_PER_USER = 20;
 const MAX_AI_CAMERA_SAVE_LIST = 50;
 const BG_REMOVAL_TIMEOUT_MS = Number(process.env.BG_REMOVAL_TIMEOUT_MS || 90000);
+const AI_CAMERA_DAILY_LIMIT = 3;
+const AI_CAMERA_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// ─── DB-backed AI Camera rate limit ─────────────────────────────────────────
+// Returns { allowed, remaining, resetAt (ms), usesCount }
+// When allowed=false the caller should return 429.
+async function checkAndIncrementDbRateLimit(userId) {
+  const windowSecs = AI_CAMERA_WINDOW_MS / 1000;
+  const result = await pool.query(
+    `INSERT INTO ai_camera_rate_limits (user_id, uses_count, window_start_at, updated_at)
+     VALUES ($1, 1, NOW(), NOW())
+     ON CONFLICT (user_id) DO UPDATE
+       SET uses_count = CASE
+             WHEN ai_camera_rate_limits.window_start_at < NOW() - ($2 || ' seconds')::INTERVAL
+             THEN 1
+             ELSE ai_camera_rate_limits.uses_count + 1
+           END,
+           window_start_at = CASE
+             WHEN ai_camera_rate_limits.window_start_at < NOW() - ($2 || ' seconds')::INTERVAL
+             THEN NOW()
+             ELSE ai_camera_rate_limits.window_start_at
+           END,
+           updated_at = NOW()
+     RETURNING uses_count, window_start_at`,
+    [userId, windowSecs]
+  );
+  const row = result.rows[0];
+  const usesCount = Number(row.uses_count);
+  const resetAt = new Date(row.window_start_at).getTime() + AI_CAMERA_WINDOW_MS;
+  const remaining = Math.max(0, AI_CAMERA_DAILY_LIMIT - usesCount);
+  const allowed = usesCount <= AI_CAMERA_DAILY_LIMIT;
+  return { allowed, remaining, resetAt, usesCount };
+}
+
+// Read-only: get current rate limit status without incrementing
+async function readDbRateLimit(userId) {
+  const result = await pool.query(
+    `SELECT uses_count, window_start_at FROM ai_camera_rate_limits WHERE user_id = $1`,
+    [userId]
+  );
+  if (result.rowCount === 0) {
+    return { remaining: AI_CAMERA_DAILY_LIMIT, resetAt: Date.now() + AI_CAMERA_WINDOW_MS, usesCount: 0 };
+  }
+  const row = result.rows[0];
+  const windowStart = new Date(row.window_start_at).getTime();
+  const resetAt = windowStart + AI_CAMERA_WINDOW_MS;
+  if (Date.now() > resetAt) {
+    return { remaining: AI_CAMERA_DAILY_LIMIT, resetAt: Date.now() + AI_CAMERA_WINDOW_MS, usesCount: 0 };
+  }
+  const usesCount = Number(row.uses_count);
+  return { remaining: Math.max(0, AI_CAMERA_DAILY_LIMIT - usesCount), resetAt, usesCount };
+}
+
+function setRateLimitHeaders(res, remaining, resetAt) {
+  const resetSecs = Math.ceil(resetAt / 1000);
+  res.setHeader('RateLimit-Limit', AI_CAMERA_DAILY_LIMIT);
+  res.setHeader('RateLimit-Remaining', Math.max(0, remaining));
+  res.setHeader('RateLimit-Reset', resetSecs);
+  res.setHeader('X-RateLimit-Limit', AI_CAMERA_DAILY_LIMIT);
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, remaining));
+  res.setHeader('X-RateLimit-Reset', resetSecs);
+}
 
 function parseImagePayload(image) {
   const trimmed = image.trim();
@@ -332,13 +395,22 @@ exports.createAiCameraSave = async (req, res) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO ai_camera_saves (
-        user_id, original_image_data, removed_background_image_data,
-        thumbnail_image_data, detected_ingredient_name, detected_ingredient_description,
-        recommended_recipe_ids, other_recipe_ids, full_analysis_result, source_type
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::int[], $8::int[], $9::jsonb, $10)
-      RETURNING *`,
+      `WITH overflow AS (
+         SELECT id FROM ai_camera_saves
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         OFFSET $11
+       ),
+       pruned AS (
+         DELETE FROM ai_camera_saves WHERE id IN (SELECT id FROM overflow)
+       )
+       INSERT INTO ai_camera_saves (
+         user_id, original_image_data, removed_background_image_data,
+         thumbnail_image_data, detected_ingredient_name, detected_ingredient_description,
+         recommended_recipe_ids, other_recipe_ids, full_analysis_result, source_type
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::int[], $8::int[], $9::jsonb, $10)
+       RETURNING *`,
       [
         req.userId,
         originalImageData,
@@ -350,6 +422,7 @@ exports.createAiCameraSave = async (req, res) => {
         otherRecipeIds,
         JSON.stringify(analysisResult),
         sourceType,
+        MAX_AI_CAMERA_SAVES_PER_USER - 1,
       ]
     );
 
@@ -463,6 +536,21 @@ exports.analyzeImage = async (req, res) => {
     });
   }
 
+  // ── DB rate limit check ──
+  if (req.userId) {
+    try {
+      const rl = await checkAndIncrementDbRateLimit(req.userId);
+      setRateLimitHeaders(res, rl.remaining, rl.resetAt);
+      if (!rl.allowed) {
+        return res.status(429).json({
+          error: 'Daily AI camera limit reached. You can analyze 3 images per day. Try again tomorrow.',
+        });
+      }
+    } catch (rlErr) {
+      logger.warn('[ml/camera/analyze] DB rate limit check failed, proceeding:', rlErr.message);
+    }
+  }
+
   // ── Check API key ──
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
@@ -497,6 +585,7 @@ Rules:
 - Do not recommend recipes; the app will choose recipes from its own database
 - Only return valid JSON, no markdown or extra text`;
 
+    const socketId = req.headers['x-socket-id'] || null;
     const { result, modelName, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
       if (queueInfo.queued) {
         logger.warn(`[ml/camera/analyze] ${AI_CAMERA_QUEUE_WARNING}`);
@@ -513,7 +602,7 @@ Rules:
         ...queueInfo,
         ...geminiResponse,
       };
-    });
+    }, { socketId });
 
     const responseText = result.response.text();
 
@@ -704,6 +793,23 @@ exports.analyzeIngredients = async (req, res) => {
     });
   }
 
+  if (req.userId) {
+    try {
+      const rl = await checkAndIncrementDbRateLimit(req.userId);
+      setRateLimitHeaders(res, rl.remaining, rl.resetAt);
+      if (!rl.allowed) {
+        return res.status(429).json({
+          success: false,
+          detectedIngredients: [],
+          matchedRecipes: [],
+          message: 'Daily AI camera limit reached. You can analyze 3 images per day. Try again tomorrow.',
+        });
+      }
+    } catch (rlErr) {
+      logger.warn('[ml/analyze-ingredients] DB rate limit check failed, proceeding:', rlErr.message);
+    }
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     return res.status(503).json({
@@ -752,6 +858,7 @@ Rules:
 - normalizedName should be singular form: "tomato" not "tomatoes", "egg" not "eggs"
 - Only return valid JSON, no markdown or extra text`;
 
+    const socketId = req.headers['x-socket-id'] || null;
     const { result, ...queueInfo } = await enqueueAiCameraAnalysis(async (queueInfo) => {
       if (queueInfo.queued) {
         logger.warn(`[ml/analyze-ingredients] ${AI_CAMERA_QUEUE_WARNING}`);
@@ -763,7 +870,7 @@ Rules:
         base64Data,
       });
       return { ...queueInfo, ...geminiResponse };
-    });
+    }, { socketId });
 
     const responseText = result.response.text();
 
@@ -954,6 +1061,17 @@ exports.imageAnalysisQueueStatus = (_req, res) => {
   res.json(getAiCameraQueueSnapshot());
 };
 
+exports.getAiCameraRateLimit = async (req, res) => {
+  if (!req.userId) return res.json({ remaining: AI_CAMERA_DAILY_LIMIT, resetAt: null, usesCount: 0 });
+  try {
+    const { remaining, resetAt, usesCount } = await readDbRateLimit(req.userId);
+    return res.json({ remaining, resetAt, usesCount, limit: AI_CAMERA_DAILY_LIMIT });
+  } catch (err) {
+    logger.error('[ml/ai-camera-rate-limit]', err);
+    return res.json({ remaining: AI_CAMERA_DAILY_LIMIT, resetAt: null, usesCount: 0 });
+  }
+};
+
 // ─── POST /api/ml/camera/remove-bg ─────────────────────────────────────────
 // Accepts { image: "data:image/...;base64,..." }
 // Returns { cutout: "data:image/png;base64,..." }
@@ -971,6 +1089,20 @@ exports.removeBackground = async (req, res) => {
 
   if (!isValidBase64(base64Data)) {
     return res.status(400).json({ error: 'Invalid image format. Expected base64-encoded image data.' });
+  }
+
+  if (req.userId) {
+    try {
+      const rl = await readDbRateLimit(req.userId);
+      setRateLimitHeaders(res, rl.remaining, rl.resetAt);
+      if (rl.remaining <= 0) {
+        return res.status(429).json({
+          error: 'Daily AI camera limit reached. You can analyze 3 images per day. Try again tomorrow.',
+        });
+      }
+    } catch (rlErr) {
+      logger.warn('[ml/camera/remove-bg] DB rate limit check failed, proceeding:', rlErr.message);
+    }
   }
 
   try {

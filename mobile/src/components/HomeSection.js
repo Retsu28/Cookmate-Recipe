@@ -30,8 +30,12 @@ export default function HomeSection({
   emptyText = 'Nothing here yet — check back soon.',
   itemSpacing = 12,
   showContent = true,
+  colors: colorsProp,
+  isDark: isDarkProp,
 }) {
-  const { colors, isDark } = useAppTheme();
+  const theme = useAppTheme();
+  const colors = colorsProp ?? theme.colors;
+  const isDark  = isDarkProp  ?? theme.isDark;
 
   return (
     <View style={st.section}>

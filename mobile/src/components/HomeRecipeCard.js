@@ -50,11 +50,11 @@ function HomeRecipeCard({ recipe, onPress }) {
         ) : null}
       </View>
       <View style={st.body}>
-        <Text style={[st.title, { color: colors.text }]} numberOfLines={2}>
+        <Text style={[st.title, { color: colors.text }]} numberOfLines={1}>
           {recipe?.title || 'Untitled recipe'}
         </Text>
-        <Text style={[st.meta, { color: colors.textSubtle }]} numberOfLines={1}>
-          {meta.toString().toUpperCase()}
+        <Text style={[st.meta, { color: colors.textSubtle, marginTop: 4 }]}>
+          {time ? time : meta.toString().toUpperCase()}
         </Text>
       </View>
     </TouchableOpacity>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export default function useInitialContentLoading(duration = 650) {
+export default function useInitialContentLoading(duration = 300) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Animated,
+  Easing,
   Pressable,
   ScrollView,
   KeyboardAvoidingView,
@@ -90,12 +91,33 @@ export default function MFAVerificationScreen({ navigation, route }) {
 
   const isLocked = attempts >= MAX_ATTEMPTS;
 
+  const mountAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const t = setTimeout(() => {
+      Animated.timing(mountAnim, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+        useNativeDriver: true,
+      }).start();
+    }, 80);
+    return () => clearTimeout(t);
+  }, []);
+
+  const cardEntranceStyle = {
+    opacity: mountAnim,
+    transform: [
+      { translateY: mountAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
+      { scale: mountAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+    ],
+  };
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={[styles.container, { backgroundColor: isDark ? '#0c0a09' : '#fafaf9' }]}>
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <SafeAreaView style={{ flex: 1 }}>
           <ScrollView
             contentContainerStyle={styles.scroll}
@@ -103,11 +125,11 @@ export default function MFAVerificationScreen({ navigation, route }) {
             showsVerticalScrollIndicator={false}
           >
             <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7}>
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
-              <Text style={[styles.backText, { color: colors.textMuted }]}>Back to Sign In</Text>
+              <Ionicons name="chevron-back" size={22} color="rgba(255,255,255,0.85)" />
+              <Text style={[styles.backText, { color: 'rgba(255,255,255,0.75)' }]}>Back to Sign In</Text>
             </TouchableOpacity>
 
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, cardEntranceStyle]}>
               <View style={styles.iconWrap}>
                 <View style={[styles.iconCircle, { backgroundColor: colors.primarySoft }]}>
                   <Ionicons name="shield-checkmark" size={32} color={colors.primary} />
@@ -131,7 +153,6 @@ export default function MFAVerificationScreen({ navigation, route }) {
                   placeholderTextColor={colors.textSubtle}
                   keyboardType="number-pad"
                   maxLength={6}
-                  autoFocus
                   editable={!loading && !isLocked}
                   style={[
                     styles.codeInput,
@@ -171,11 +192,11 @@ export default function MFAVerificationScreen({ navigation, route }) {
               <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.cancelBtn}>
                 <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel Sign In</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </ScrollView>
         </SafeAreaView>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -183,6 +204,7 @@ function createStyles(colors, isDark) {
   return StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: 'transparent',
     },
     scroll: {
       flexGrow: 1,

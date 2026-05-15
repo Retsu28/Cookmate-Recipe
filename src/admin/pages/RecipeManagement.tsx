@@ -34,6 +34,7 @@ interface DbRecipe {
   image_url: string | null;
   video_filename: string | null;
   instruction_timestamps: { start: number; end: number; interval?: number }[] | null;
+  video_credits: string | null;
   is_featured: boolean;
   is_published: boolean;
   created_at: string;
@@ -52,7 +53,7 @@ const emptyForm = {
   prep_time_minutes: '', cook_time_minutes: '', servings: '', serving_size: '',
   calories: '', protein_g: '', carbs_g: '', fat_g: '', sodium_mg: '', fiber_g: '',
   tags: '', normalized_ingredients: '', image_url: '',
-  is_featured: false, is_published: true,
+  is_featured: false, is_published: true, video_credits: '',
 };
 
 interface InstructionRow {
@@ -139,6 +140,7 @@ export default function RecipeManagement() {
       image_url: r.image_url || '',
       is_featured: r.is_featured,
       is_published: r.is_published,
+      video_credits: r.video_credits || '',
     });
     
     // Set video filename

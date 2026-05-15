@@ -250,8 +250,31 @@ export default function PrivacySettings() {
           </div>
         </div>
 
+        {/* Privacy Policy link */}
+        <div className="mb-4">
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400">Legal</h3>
+          <button
+            type="button"
+            onClick={() => navigate('/privacy-policy')}
+            className="flex w-full items-center justify-between rounded-2xl border border-stone-200 bg-white px-4 py-3.5 text-left transition-colors hover:border-orange-200 hover:bg-orange-50/40 dark:border-stone-700 dark:bg-stone-800/50 dark:hover:border-orange-500/30 dark:hover:bg-orange-950/10"
+          >
+            <span className="flex items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
+                <ShieldCheck className="size-4" />
+              </span>
+              <span>
+                <span className="block text-sm font-extrabold text-stone-900 dark:text-stone-100">Privacy Policy</span>
+                <span className="block text-xs font-medium text-stone-500 dark:text-stone-400">Read how CookMate handles your data</span>
+              </span>
+            </span>
+            <svg className="size-4 shrink-0 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
         <div className="grid gap-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Visibility</h3>
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-stone-400">Visibility</h3>
           {rows.map((row) => (
             <ToggleRow
               key={row.id}
