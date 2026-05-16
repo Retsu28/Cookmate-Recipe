@@ -1,5 +1,5 @@
 -- CookMate Database Schema
--- Reflects all migrations through 2026-05-16.
+-- Reflects all migrations through 2026-05-17.
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Extensions
@@ -504,6 +504,44 @@ CREATE TABLE seasonal_data (
     data        JSONB NOT NULL,
     updated_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- User settings (per-user key/value JSON store)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE user_settings (
+    id             SERIAL PRIMARY KEY,
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    settings_key   VARCHAR(100) NOT NULL,
+    settings_value JSONB NOT NULL DEFAULT '{}',
+    updated_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT user_settings_user_key_unique UNIQUE (user_id, settings_key)
+);
+
+CREATE INDEX idx_user_settings_user_id ON user_settings (user_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- User recipe views (legacy alias — see also recipe_viewed)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE user_recipe_views (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipe_id  INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    viewed_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, recipe_id)
+);
+
+CREATE INDEX idx_user_recipe_views_user_recent ON user_recipe_views (user_id, viewed_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Schema migration tracking (managed by api/src/config/migrator.js)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE schema_migrations (
+    filename   TEXT PRIMARY KEY,
+    applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════════
