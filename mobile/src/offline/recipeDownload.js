@@ -3,7 +3,7 @@
 // downloads the hero image via imageCache, and downloads
 // the cooking video into documentDirectory/CookMate/recipes/.
 
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { recipeCache } from './db';
 import { cacheImage } from './imageCache';
 import { isOnlineNow } from './network';

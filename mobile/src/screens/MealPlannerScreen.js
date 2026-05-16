@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 import { MealPlannerContentSkeleton } from '../components/SkeletonPlaceholder';
 import {
@@ -136,6 +137,7 @@ function slotWindowLabel(slotId, slotMeals) {
 
 export default function MealPlannerScreen({ navigation, route }) {
   const { colors, isDark } = useAppTheme();
+  const { user } = useAuth();
   const { isOnline } = useNetwork();
   const isInitialLoading = useInitialContentLoading();
 
@@ -158,7 +160,7 @@ export default function MealPlannerScreen({ navigation, route }) {
     updatePlan,
     removePlan,
     confirmRemoveSavedList,
-  } = useMealPlannerData({ isOnline });
+  } = useMealPlannerData({ isOnline, userId: user?.id });
 
   const plansByDateAndType = (() => {
     const grouped = new Map();

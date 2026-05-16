@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Star, Trash2, Edit2, Loader2, MessageSquare, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Star, Trash2, Edit2, Loader2, MessageSquare, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, Filter, ChefHat, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { reviewService, type Review, type ReviewStats, type ReviewSort } from '@/services/reviewService';
+import { reviewService, type Review, type ReviewStats, type ReviewSort, type HelpfulnessLevel } from '@/services/reviewService';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 
@@ -44,6 +44,8 @@ export function ReviewSection({ recipeId }: ReviewSectionProps) {
   const [submitting, setSubmitting] = useState(false);
   const [myReview, setMyReview] = useState<{ id: number; rating: number; comment: string | null; created_at: string } | null>(null);
   const [editing, setEditing] = useState(false);
+  const [hasCooked, setHasCooked] = useState(false);
+  const [checkingCooked, setCheckingCooked] = useState(false);
 
   // Pagination & Sorting
   const [page, setPage] = useState(1);
@@ -81,9 +83,22 @@ export function ReviewSection({ recipeId }: ReviewSectionProps) {
     }
   };
 
+  const fetchCookedStatus = async () => {
+    if (!user) return;
+    setCheckingCooked(true);
+    try {
+      const data = await reviewService.checkCooked(recipeId);
+      setHasCooked(data.hasCooked);
+    } catch {
+      // ignore
+    } finally {
+      setCheckingCooked(false);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchReviews(1, 'newest'), fetchMyReview()]).finally(() => setLoading(false));
+    Promise.all([fetchReviews(1, 'newest'), fetchMyReview(), fetchCookedStatus()]).finally(() => setLoading(false));
   }, [recipeId, user?.id]);
 
   // Refetch when sort changes
@@ -155,15 +170,14 @@ export function ReviewSection({ recipeId }: ReviewSectionProps) {
 
   const displayRating = hoverRating || rating;
 
-  const handleVote = async (reviewId: number, isHelpful: boolean) => {
+  const handleVote = async (reviewId: number, level: HelpfulnessLevel) => {
     if (!user) {
       toast.error('Sign in to vote');
       return;
     }
     try {
-      await reviewService.voteHelpful(recipeId, reviewId, isHelpful);
+      await reviewService.voteHelpful(recipeId, reviewId, level);
       await fetchReviews(page, sort);
-      toast.success('Vote recorded');
     } catch {
       toast.error('Failed to vote');
     }
@@ -235,6 +249,25 @@ export function ReviewSection({ recipeId }: ReviewSectionProps) {
                 <Button variant="ghost" size="sm" onClick={handleDelete} className="text-red-500">
                   <Trash2 size={16} />
                 </Button>
+              </div>
+            </div>
+          ) : checkingCooked ? (
+            <div className="flex items-center gap-2 text-stone-500 dark:text-stone-400">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Checking eligibility...</span>
+            </div>
+          ) : !hasCooked && !myReview ? (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/30">
+                <Lock size={24} className="text-orange-500" />
+              </div>
+              <p className="font-semibold text-stone-900 dark:text-stone-100">Finish cooking first!</p>
+              <p className="text-sm text-stone-500 dark:text-stone-400 max-w-xs">
+                Complete the step-by-step cooking tutorial to unlock the ability to leave a review.
+              </p>
+              <div className="flex items-center gap-2 mt-1 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 rounded-full">
+                <ChefHat size={16} className="text-orange-500" />
+                <span className="text-xs font-medium text-orange-600 dark:text-orange-400">Click "Start Cooking" above to begin</span>
               </div>
             </div>
           ) : (
@@ -354,21 +387,35 @@ export function ReviewSection({ recipeId }: ReviewSectionProps) {
                 <p className="text-stone-700 dark:text-stone-300 mb-3 break-words overflow-wrap-anywhere max-w-full">{review.comment}</p>
               )}
               {/* Helpfulness voting */}
-              <div className="flex items-center gap-3 text-sm text-stone-500 dark:text-stone-400">
-                <span>Helpful?</span>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-stone-500 dark:text-stone-400">
+                <span className="shrink-0">Helpful?</span>
                 <button
-                  onClick={() => handleVote(review.id, true)}
-                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-700"
+                  onClick={() => handleVote(review.id, 0)}
+                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  title="Not helpful"
                 >
-                  <ThumbsUp size={14} />
-                  <span>{review.helpful_count || 0}</span>
+                  <ThumbsDown size={13} />
+                  <span className="text-xs">{review.not_helpful_count || 0}</span>
+                  <span className="text-xs hidden sm:inline">Not helpful</span>
                 </button>
                 <button
-                  onClick={() => handleVote(review.id, false)}
-                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-stone-100 dark:hover:bg-stone-700"
+                  onClick={() => handleVote(review.id, 1)}
+                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                  title="Helpful"
                 >
-                  <ThumbsDown size={14} />
-                  <span>{review.unhelpful_count || 0}</span>
+                  <ThumbsUp size={13} />
+                  <span className="text-xs">{review.helpful_count || 0}</span>
+                  <span className="text-xs hidden sm:inline">Helpful</span>
+                </button>
+                <button
+                  onClick={() => handleVote(review.id, 2)}
+                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+                  title="Very helpful"
+                >
+                  <ThumbsUp size={13} className="fill-current" />
+                  <ThumbsUp size={13} className="fill-current -ml-2" />
+                  <span className="text-xs">{review.very_helpful_count || 0}</span>
+                  <span className="text-xs hidden sm:inline">Very helpful</span>
                 </button>
               </div>
             </div>

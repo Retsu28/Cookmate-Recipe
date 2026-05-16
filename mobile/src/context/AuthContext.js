@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext();
+export { AuthContext };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

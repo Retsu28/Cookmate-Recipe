@@ -5,13 +5,17 @@ import { getMealPlansCached, offlineCache } from '../offline/cacheService';
 import { OFFLINE_MESSAGE } from '../offline/network';
 import { syncPlannerLocalNotifications } from '../notifications/plannerNotifications';
 
-export default function useMealPlannerData({ isOnline }) {
+export default function useMealPlannerData({ isOnline, userId } = {}) {
   const [plannedMeals, setPlannedMeals] = useState([]);
   const [savedLists, setSavedLists] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [loadingSaved, setLoadingSaved] = useState(false);
 
   const loadPlans = useCallback(async ({ showLoader = true } = {}) => {
+    if (!userId) {
+      if (showLoader) setLoadingPlans(false);
+      return;
+    }
     if (showLoader) setLoadingPlans(true);
     try {
       const response = await getMealPlansCached(() => plannerApi.getPlan());
@@ -24,7 +28,7 @@ export default function useMealPlannerData({ isOnline }) {
     } finally {
       if (showLoader) setLoadingPlans(false);
     }
-  }, []);
+  }, [userId]);
 
   const loadSavedLists = useCallback(async () => {
     if (!isOnline) return;

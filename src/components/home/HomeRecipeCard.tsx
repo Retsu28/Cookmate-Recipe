@@ -3,6 +3,29 @@ import { Link } from 'react-router-dom';
 import { Clock, ChefHat, Star } from 'lucide-react';
 import type { HomeRecipe } from './types';
 
+function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(fullStars)].map((_, i) => (
+        <Star key={`full-${i}`} size={size} fill="#f59e0b" stroke="#f59e0b" />
+      ))}
+      {hasHalfStar && (
+        <div className="relative" style={{ width: size, height: size }}>
+          <Star size={size} className="absolute text-amber-500" fill="#f59e0b" stroke="#f59e0b" style={{ clipPath: 'inset(0 50% 0 0)' }} />
+          <Star size={size} className="absolute text-stone-400" />
+        </div>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <Star key={`empty-${i}`} size={size} className="text-stone-400" />
+      ))}
+    </div>
+  );
+}
+
 interface HomeRecipeCardProps {
   recipe: HomeRecipe;
   width?: 'sm' | 'md' | 'lg';
@@ -58,9 +81,17 @@ export function HomeRecipeCard({ recipe, width = 'md' }: HomeRecipeCardProps) {
         <h3 className="line-clamp-2 text-sm font-bold leading-snug text-stone-900 transition-colors group-hover:text-orange-600 dark:text-stone-100 dark:group-hover:text-orange-400">
           {recipe.title}
         </h3>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
-          {meta}
-        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 dark:text-stone-500">
+            {meta}
+          </p>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <StarRating rating={recipe.avg_rating || 0} size={14} />
+          <span className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+            {(recipe.avg_rating || 0).toFixed(1)}
+          </span>
+        </div>
       </div>
     </Link>
   );

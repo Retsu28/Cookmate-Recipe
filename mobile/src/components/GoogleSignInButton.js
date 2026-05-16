@@ -40,7 +40,12 @@ const DEFAULT_GOOGLE_AUTH_REDIRECT_URI =
 
 async function loadNativeGoogleSignIn() {
   if (!nativeGoogleSignInModule) {
-    nativeGoogleSignInModule = await import('@react-native-google-signin/google-signin');
+    try {
+      nativeGoogleSignInModule = await import('@react-native-google-signin/google-signin');
+    } catch (e) {
+      console.warn('[GoogleSignIn] Native module not available:', e?.message || e);
+      nativeGoogleSignInModule = null;
+    }
   }
   return nativeGoogleSignInModule;
 }
@@ -140,7 +145,11 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
   const [loading, setLoading] = useState(false);
 
   const handleNativeSignIn = async () => {
-    const { GoogleSignin } = await loadNativeGoogleSignIn();
+    const nativeModule = await loadNativeGoogleSignIn();
+    if (!nativeModule) {
+      throw new Error('Google Sign-In native module is not available. Use Expo Go proxy instead.');
+    }
+    const { GoogleSignin } = nativeModule;
 
     GoogleSignin.configure({
       webClientId,

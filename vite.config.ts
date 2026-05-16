@@ -254,6 +254,24 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'http://127.0.0.1:5000',
           changeOrigin: true,
+          // Prevent ECONNABORTED by configuring keep-alive and timeouts
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException, _req, _res) => {
+              // Silently ignore proxy socket errors to prevent console spam
+              if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET') {
+                return;
+              }
+              console.error('[vite] proxy error:', err.message);
+            });
+            proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
+              socket.on('error', (err: NodeJS.ErrnoException) => {
+                if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET') {
+                  return;
+                }
+                console.error('[vite] proxy ws socket error:', err.message);
+              });
+            });
+          },
         },
         '/uploads': {
           target: 'http://127.0.0.1:5000',
@@ -263,6 +281,14 @@ export default defineConfig(({ mode }) => {
           target: 'http://127.0.0.1:5000',
           changeOrigin: true,
           ws: true,
+          configure: (proxy) => {
+            proxy.on('error', (err: NodeJS.ErrnoException) => {
+              if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET') {
+                return;
+              }
+              console.error('[vite] socket.io proxy error:', err.message);
+            });
+          },
         },
       },
     },

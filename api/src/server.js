@@ -20,6 +20,10 @@ const { attachPlannerSocketServer } = require('./realtime/plannerSocket');
 const { purgeDeletedAccounts } = require('./jobs/purgeDeletedAccounts');
 const { purgeExpiredRefreshTokens } = require('./config/refreshToken');
 const { pool } = require('./config/db');
+const { runMigrations } = require('./config/migrator');
+const { connectRedis } = require('./config/redis');
+const { startWorkers: startQueueWorkers } = require('./queues');
+require('./events'); // Register event bus listeners on startup
 
 async function startServer() {
   await testDbConnection();
@@ -30,88 +34,22 @@ async function startServer() {
     logger.warn({ err }, 'Admin bootstrap skipped — run database/schema.sql then restart.');
   }
 
-  // Ensure MFA columns exist (idempotent migration)
-  try {
-    await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_secret TEXT;
-    `);
-  } catch (err) {
-    logger.warn({ err }, '[server] MFA column migration skipped');
-  }
+  // Run all pending SQL migrations from database/migrations/
+  await runMigrations();
 
-  // Ensure login-lockout columns exist (idempotent migration)
-  try {
-    await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
-    `);
-  } catch (err) {
-    logger.warn({ err }, '[server] login-lockout column migration skipped');
-  }
+  // Connect Redis (non-blocking — app works without it)
+  const { isRedisConnected } = require('./config/redis');
+  await connectRedis();
 
-  // Ensure email_rate_limits table exists (idempotent migration)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS email_rate_limits (
-        email              TEXT PRIMARY KEY,
-        failed_attempts    INTEGER NOT NULL DEFAULT 0,
-        locked_until       TIMESTAMP WITH TIME ZONE,
-        last_attempt_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_email_rate_limits_locked_until ON email_rate_limits (locked_until);
-    `);
-  } catch (err) {
-    logger.warn({ err }, '[server] email_rate_limits migration skipped');
-  }
-
-  // Ensure ip_rate_limits table exists (idempotent migration)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS ip_rate_limits (
-        ip                 TEXT PRIMARY KEY,
-        failed_attempts    INTEGER NOT NULL DEFAULT 0,
-        locked_until       TIMESTAMP WITH TIME ZONE,
-        last_attempt_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_ip_rate_limits_locked_until ON ip_rate_limits (locked_until);
-    `);
-  } catch (err) {
-    logger.warn({ err }, '[server] ip_rate_limits migration skipped');
-  }
-
-  // Ensure video_credits column exists (idempotent migration)
-  try {
-    await pool.query(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS video_credits TEXT;`);
-  } catch (err) {
-    logger.warn({ err }, '[server] video_credits migration skipped');
-  }
-
-  // Ensure ai_camera_rate_limits table exists (idempotent migration)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS ai_camera_rate_limits (
-        user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        uses_count      INTEGER NOT NULL DEFAULT 0,
-        window_start_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_ai_camera_rate_limits_window
-        ON ai_camera_rate_limits (user_id, window_start_at);
-    `);
-  } catch (err) {
-    logger.warn({ err }, '[server] ai_camera_rate_limits migration skipped');
-  }
-
-  // Ensure last_active_at column exists (idempotent migration)
-  try {
-    await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMP WITH TIME ZONE;
-      UPDATE users SET last_active_at = updated_at WHERE last_active_at IS NULL;
-    `);
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_users_last_active_at ON users (last_active_at DESC)');
-  } catch (err) {
-    logger.warn({ err }, '[server] last_active_at migration skipped');
+  // Start BullMQ queue workers only when Redis is available
+  if (isRedisConnected()) {
+    try {
+      startQueueWorkers();
+    } catch (err) {
+      logger.warn({ err: err.message }, '[server] Queue workers not started');
+    }
+  } else {
+    logger.info('[server] Redis not connected — queue workers skipped');
   }
 
   try {

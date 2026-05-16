@@ -17,6 +17,9 @@ import StartCookingSplashScreen from '../screens/StartCookingSplashScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AllRecipesScreen from '../screens/AllRecipesScreen';
 import SavedRecipesScreen from '../screens/SavedRecipesScreen';
+import DownloadsScreen from '../screens/DownloadsScreen';
+import SeasonalGuideScreen from '../screens/SeasonalGuideScreen';
+import CookingSkillsScreen from '../screens/CookingSkillsScreen';
 
 // Public auth-stack screens
 import LoginScreen from '../screens/LoginScreen';
@@ -179,9 +182,12 @@ function AppStack({ colors }) {
       <Stack.Screen name="StartCookingSplash" component={StartCookingSplashScreen} options={sharedOptions} />
       <Stack.Screen name="CookingMode" component={CookingModeScreen} options={sharedOptions} />
       <Stack.Screen name="SavedRecipes" component={SavedRecipesScreen} options={sharedOptions} />
+      <Stack.Screen name="Downloads" component={DownloadsScreen} options={sharedOptions} />
       <Stack.Screen name="MFASetup" component={MFASetupScreen} options={sharedOptions} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={sharedOptions} />
       <Stack.Screen name="About" component={AboutScreen} options={sharedOptions} />
+      <Stack.Screen name="SeasonalGuide" component={SeasonalGuideScreen} options={sharedOptions} />
+      <Stack.Screen name="CookingSkills" component={CookingSkillsScreen} options={sharedOptions} />
     </Stack.Navigator>
   );
 }

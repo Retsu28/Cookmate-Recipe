@@ -13,27 +13,45 @@ const mlRoutes = require('./ml');
 const mlAnalyticsRoutes = require('./mlAnalytics');
 const adminRoutes = require('./admin');
 const mfaRoutes = require('./mfa');
+const seasonalRoutes = require('./seasonal');
 
+// ─── Versioned API Router (v1) ──────────────────────────────────────────────
+const v1 = Router();
+
+v1.get('/health', (_req, res) => {
+  res.json({ status: 'ok', version: 'v1', message: 'Express API is running' });
+});
+
+v1.use('/auth', authRoutes);
+v1.use('/recipes', recipeRoutes);
+v1.use('/ingredients', ingredientRoutes);
+v1.use('/meal-planner', mealPlannerRoutes);
+v1.use('/shopping-list', shoppingListRoutes);
+v1.use('/notifications', notificationRoutes);
+v1.use('/profile', profileRoutes);
+v1.use('/inventory', inventoryRoutes);
+v1.use('/chat', chatRoutes);
+v1.use('/ml', mlRoutes);
+v1.use('/ml-analytics', mlAnalyticsRoutes);
+v1.use('/admin', adminRoutes);
+v1.use('/mfa', mfaRoutes);
+v1.use('/seasonal', seasonalRoutes);
+
+// ─── Root Router ─────────────────────────────────────────────────────────────
+// Mounts v1 at /v1 and also at / for backward compatibility.
+// Existing clients using /api/auth/login continue to work.
+// New clients can optionally use /api/v1/auth/login.
 const router = Router();
 
-// Health check
+// Health check at root (unversioned)
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Express API is running' });
 });
 
-// Mount sub-routers
-router.use('/auth', authRoutes);
-router.use('/recipes', recipeRoutes);
-router.use('/ingredients', ingredientRoutes);
-router.use('/meal-planner', mealPlannerRoutes);
-router.use('/shopping-list', shoppingListRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/profile', profileRoutes);
-router.use('/inventory', inventoryRoutes);
-router.use('/chat', chatRoutes);
-router.use('/ml', mlRoutes);
-router.use('/ml-analytics', mlAnalyticsRoutes);
-router.use('/admin', adminRoutes);
-router.use('/mfa', mfaRoutes);
+// Versioned path: /api/v1/*
+router.use('/v1', v1);
+
+// Backward-compatible path: /api/* (same as v1)
+router.use('/', v1);
 
 module.exports = router;

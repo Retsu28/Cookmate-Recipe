@@ -37,6 +37,7 @@
       "expo-secure-store",
       "expo-font",
       "expo-video",
+      "expo-audio",
       "expo-sqlite",
       "expo-web-browser",
       [
@@ -51,7 +52,6 @@
           "androidCollapsedTitle": "CookMate Reminders"
         }
       ],
-      "@react-native-google-signin/google-signin",
       "@react-native-community/datetimepicker",
       "expo-image-picker"
     ],

@@ -38,13 +38,19 @@ export function HomeSections() {
         const cached = rows
           .map((r) => r.data)
           .filter(Boolean) as unknown as HomeSectionsResponse['recentlyAddedRecipes'];
-        if (!cancelled && cached.length > 0) {
+        // Ensure cached recipes have rating fields (add defaults if missing)
+        const withRatings = cached.map((r) => ({
+          ...r,
+          avg_rating: (r as { avg_rating?: number }).avg_rating ?? 0,
+          review_count: (r as { review_count?: number }).review_count ?? 0,
+        }));
+        if (!cancelled && withRatings.length > 0) {
           setData((prev) => ({
             ...prev,
-            recentlyAddedRecipes: cached.slice(0, 12),
+            recentlyAddedRecipes: withRatings.slice(0, 12),
             popularFilipinoRecipes: prev.popularFilipinoRecipes.length
               ? prev.popularFilipinoRecipes
-              : cached.slice(0, 12),
+              : withRatings.slice(0, 12),
           }));
           return true;
         }
@@ -55,7 +61,7 @@ export function HomeSections() {
     };
 
     api
-      .get<HomeSectionsResponse>('/api/recipes/home-sections')
+      .get<HomeSectionsResponse>(`/api/recipes/home-sections?_t=${Date.now()}`)
       .then((res) => {
         if (cancelled) return;
         const next = {

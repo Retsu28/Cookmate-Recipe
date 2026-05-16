@@ -226,9 +226,14 @@ exports.getAll = async (req, res) => {
 
     params.push(limit, offset);
     const result = await pool.query(
-      `SELECT ${RECIPE_COLS} FROM recipes ${where}
-       ${orderBy}
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT r.*,
+        COALESCE(rv.avg_rating, 0)::float AS avg_rating,
+        COALESCE(rv.review_count, 0)::int AS review_count
+       FROM (SELECT ${RECIPE_COLS} FROM recipes ${where} ${orderBy} LIMIT $${params.length - 1} OFFSET $${params.length}) r
+       LEFT JOIN (
+         SELECT recipe_id, COUNT(*)::int AS review_count, AVG(rating)::float AS avg_rating
+         FROM reviews GROUP BY recipe_id
+       ) rv ON rv.recipe_id = r.id`,
       params
     );
 
@@ -347,7 +352,9 @@ exports.getHomeSections = async (req, res) => {
 
     // 2) Popular Filipino recipes
     const popularFilipinoQ = pool.query(
-      `SELECT ${HOME_COLS}, ${POPULARITY_SCORE} AS popularity_score
+      `SELECT ${HOME_COLS}, ${POPULARITY_SCORE} AS popularity_score,
+        COALESCE(rv.avg_rating, 0)::float AS avg_rating,
+        COALESCE(rv.review_count, 0)::int AS review_count
        FROM recipes r
        ${POPULARITY_JOINS}
        WHERE r.is_published = true AND ${FILIPINO_PREDICATE}
@@ -358,8 +365,14 @@ exports.getHomeSections = async (req, res) => {
 
     // 3) Recently added recipes
     const recentQ = pool.query(
-      `SELECT ${HOME_COLS}
+      `SELECT ${HOME_COLS},
+        COALESCE(rv.avg_rating, 0)::float AS avg_rating,
+        COALESCE(rv.review_count, 0)::int AS review_count
        FROM recipes r
+       LEFT JOIN (
+         SELECT recipe_id, COUNT(*)::int AS review_count, AVG(rating)::float AS avg_rating
+         FROM reviews GROUP BY recipe_id
+       ) rv ON rv.recipe_id = r.id
        WHERE r.is_published = true
        ORDER BY r.created_at DESC, r.id DESC
        LIMIT $1`,
@@ -371,9 +384,15 @@ exports.getHomeSections = async (req, res) => {
     let recentlyViewedRows = [];
     if (userId) {
       const recentlyViewedRes = await pool.query(
-        `SELECT ${HOME_COLS}, rv.viewed_at
+        `SELECT ${HOME_COLS}, rv.viewed_at,
+          COALESCE(rev.avg_rating, 0)::float AS avg_rating,
+          COALESCE(rev.review_count, 0)::int AS review_count
          FROM recipe_viewed rv
          JOIN recipes r ON r.id = rv.recipe_id
+         LEFT JOIN (
+           SELECT recipe_id, COUNT(*)::int AS review_count, AVG(rating)::float AS avg_rating
+           FROM reviews GROUP BY recipe_id
+         ) rev ON rev.recipe_id = r.id
          WHERE rv.user_id = $1 AND r.is_published = true
          ORDER BY rv.viewed_at DESC
          LIMIT $2`,
@@ -391,7 +410,9 @@ exports.getHomeSections = async (req, res) => {
     // recipes overall so the section is never blank.
     if (popularFilipinoRecipes.length === 0) {
       const fallback = await pool.query(
-        `SELECT ${HOME_COLS}, ${POPULARITY_SCORE} AS popularity_score
+        `SELECT ${HOME_COLS}, ${POPULARITY_SCORE} AS popularity_score,
+          COALESCE(rv.avg_rating, 0)::float AS avg_rating,
+          COALESCE(rv.review_count, 0)::int AS review_count
          FROM recipes r
          ${POPULARITY_JOINS}
          WHERE r.is_published = true

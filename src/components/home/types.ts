@@ -16,6 +16,8 @@ export interface HomeRecipe {
   tags: string[] | null;
   is_featured?: boolean;
   created_at?: string;
+  avg_rating?: number;
+  review_count?: number;
 }
 
 export interface HomeCategory {

@@ -153,14 +153,17 @@ router.get('/:id/reviews', async (req, res) => {
       newest: 'rv.created_at DESC',
       highest: 'rv.rating DESC, rv.created_at DESC',
       lowest: 'rv.rating ASC, rv.created_at DESC',
-      helpful: 'helpful_count DESC, rv.created_at DESC',
+      helpful: 'total_helpful_count DESC, rv.created_at DESC',
     };
     const orderBy = orderByMap[sort] || orderByMap.newest;
 
     const result = await pool.query(
       `SELECT rv.id, rv.rating, rv.comment, rv.created_at,
               u.id AS user_id, u.full_name, u.avatar_url,
-              COUNT(CASE WHEN rh.is_helpful = true THEN 1 END)::int AS helpful_count,
+              COUNT(CASE WHEN rh.helpfulness_level = 0 THEN 1 END)::int AS not_helpful_count,
+              COUNT(CASE WHEN rh.helpfulness_level = 1 THEN 1 END)::int AS helpful_count,
+              COUNT(CASE WHEN rh.helpfulness_level = 2 THEN 1 END)::int AS very_helpful_count,
+              COUNT(CASE WHEN rh.is_helpful = true THEN 1 END)::int AS total_helpful_count,
               COUNT(CASE WHEN rh.is_helpful = false THEN 1 END)::int AS unhelpful_count
        FROM reviews rv
        JOIN users u ON u.id = rv.user_id
@@ -231,6 +234,46 @@ router.get('/:id/my-review', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/recipes/:id/cooking-complete - Mark recipe as cooked by the current user
+router.post('/:id/cooking-complete', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    if (!Number.isFinite(recipeId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+    await pool.query(
+      `INSERT INTO recipe_cooking_sessions (user_id, recipe_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, recipe_id) DO UPDATE SET completed_at = CURRENT_TIMESTAMP`,
+      [userId, recipeId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('[recipes/:id/cooking-complete POST] failed:', err);
+    res.status(500).json({ error: 'Failed to record cooking completion.' });
+  }
+});
+
+// GET /api/recipes/:id/cooking-complete - Check if current user has cooked this recipe
+router.get('/:id/cooking-complete', requireAuth, async (req, res) => {
+  try {
+    const recipeId = parseInt(req.params.id, 10);
+    const userId = req.user?.id;
+    if (!Number.isFinite(recipeId) || !userId) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+    const result = await pool.query(
+      'SELECT id FROM recipe_cooking_sessions WHERE user_id = $1 AND recipe_id = $2',
+      [userId, recipeId]
+    );
+    res.json({ hasCooked: result.rowCount > 0 });
+  } catch (err) {
+    logger.error('[recipes/:id/cooking-complete GET] failed:', err);
+    res.status(500).json({ error: 'Failed to check cooking status.' });
+  }
+});
+
 // POST /api/recipes/:id/reviews - Submit or update a review
 router.post('/:id/reviews', requireAuth, async (req, res) => {
   try {
@@ -246,6 +289,21 @@ router.post('/:id/reviews', requireAuth, async (req, res) => {
     }
     if (comment && comment.length > 500) {
       return res.status(400).json({ error: 'Comment must be 500 characters or less.' });
+    }
+
+    // Check if user has cooked this recipe (allow if they already have a review = editing)
+    const existingReview = await pool.query(
+      'SELECT id FROM reviews WHERE recipe_id = $1 AND user_id = $2',
+      [recipeId, userId]
+    );
+    if (existingReview.rowCount === 0) {
+      const cooked = await pool.query(
+        'SELECT id FROM recipe_cooking_sessions WHERE user_id = $1 AND recipe_id = $2',
+        [userId, recipeId]
+      );
+      if (cooked.rowCount === 0) {
+        return res.status(403).json({ error: 'You must complete the cooking tutorial before leaving a review.' });
+      }
     }
 
     // Upsert review (insert or update if user already reviewed this recipe)
@@ -287,18 +345,25 @@ router.delete('/:id/reviews', requireAuth, async (req, res) => {
 });
 
 // POST /api/recipes/:id/reviews/:reviewId/helpful - Vote on review helpfulness
+// Body: { helpfulnessLevel: 0 | 1 | 2 }  (0=not helpful, 1=helpful, 2=very helpful)
 router.post('/:id/reviews/:reviewId/helpful', requireAuth, async (req, res) => {
   try {
     const recipeId = parseInt(req.params.id, 10);
     const reviewId = parseInt(req.params.reviewId, 10);
     const userId = req.user?.id;
-    const { isHelpful } = req.body;
+    // Support new helpfulnessLevel (0/1/2) and legacy isHelpful boolean
+    let helpfulnessLevel = req.body.helpfulnessLevel;
+    if (helpfulnessLevel === undefined || helpfulnessLevel === null) {
+      // Legacy boolean fallback
+      helpfulnessLevel = req.body.isHelpful === true ? 1 : 0;
+    }
+    helpfulnessLevel = parseInt(helpfulnessLevel, 10);
 
     if (!Number.isFinite(recipeId) || !Number.isFinite(reviewId) || !userId) {
       return res.status(400).json({ error: 'Invalid request.' });
     }
-    if (typeof isHelpful !== 'boolean') {
-      return res.status(400).json({ error: 'isHelpful must be true or false.' });
+    if (![0, 1, 2].includes(helpfulnessLevel)) {
+      return res.status(400).json({ error: 'helpfulnessLevel must be 0, 1, or 2.' });
     }
 
     // Verify review exists and belongs to this recipe
@@ -312,12 +377,12 @@ router.post('/:id/reviews/:reviewId/helpful', requireAuth, async (req, res) => {
 
     // Upsert helpfulness vote
     const result = await pool.query(
-      `INSERT INTO review_helpfulness (review_id, user_id, is_helpful)
-       VALUES ($1, $2, $3)
+      `INSERT INTO review_helpfulness (review_id, user_id, is_helpful, helpfulness_level)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (review_id, user_id)
-       DO UPDATE SET is_helpful = $3, created_at = CURRENT_TIMESTAMP
-       RETURNING id, is_helpful`,
-      [reviewId, userId, isHelpful]
+       DO UPDATE SET is_helpful = $3, helpfulness_level = $4, created_at = CURRENT_TIMESTAMP
+       RETURNING id, is_helpful, helpfulness_level`,
+      [reviewId, userId, helpfulnessLevel >= 1, helpfulnessLevel]
     );
 
     res.json({ vote: result.rows[0] });

@@ -42,6 +42,8 @@ import RecipeDetail from './pages/RecipeDetail';
 import DownloadsPage from './pages/DownloadsPage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import About from './pages/About';
+import SeasonalGuide from './pages/SeasonalGuide';
+import CookingSkills from './pages/CookingSkills';
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const MLAnalytics = lazy(() => import('./admin/pages/MLAnalytics'));
 const RecipeManagement = lazy(() => import('./admin/pages/RecipeManagement'));
@@ -54,6 +56,7 @@ const Reports = lazy(() => import('./admin/pages/Reports'));
 const ReviewsFeedback = lazy(() => import('./admin/pages/ReviewsFeedback'));
 const SystemStatus = lazy(() => import('./admin/pages/SystemStatus'));
 const AuditLog = lazy(() => import('./admin/pages/AuditLog'));
+const SeasonalIngredientsAdmin = lazy(() => import('./admin/pages/SeasonalIngredientsAdmin'));
 
 function PostLoginSplash() {
   const { showPostLoginSplash, finishPostLoginSplash } = useAuth();
@@ -106,6 +109,7 @@ export default function App() {
                 <Route path="system-status" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><SystemStatus /></Suspense></PageErrorBoundary>} />
                 <Route path="ml-analytics" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><MLAnalytics /></Suspense></PageErrorBoundary>} />
                 <Route path="audit-log" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><AuditLog /></Suspense></PageErrorBoundary>} />
+                <Route path="seasonal-ingredients" element={<PageErrorBoundary><Suspense fallback={<ContentSkeleton />}><SeasonalIngredientsAdmin /></Suspense></PageErrorBoundary>} />
               </Route>
             </Route>
 
@@ -134,6 +138,8 @@ export default function App() {
                 <Route path="downloads" element={<DownloadsPage />} />
                 <Route path="privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="about" element={<About />} />
+                <Route path="seasonal-guide" element={<SeasonalGuide />} />
+                <Route path="cooking-skills" element={<CookingSkills />} />
               </Route>
             </Route>
           </Routes>

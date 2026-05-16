@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,17 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
+function Separator({ width }) {
+  return <View style={{ width }} />;
+}
+
 /**
  * Shared section frame for the homepage discovery rows. Renders a small
  * eyebrow + title + optional "View all" link, then a horizontal FlatList
  * of items. Handles loading, error, and empty states so each caller stays
  * focused on the data it owns.
  */
-export default function HomeSection({
+function HomeSection({
   eyebrow,
   title,
   description,
@@ -36,6 +40,7 @@ export default function HomeSection({
   const theme = useAppTheme();
   const colors = colorsProp ?? theme.colors;
   const isDark  = isDarkProp  ?? theme.isDark;
+  const SeparatorComponent = useMemo(() => () => <Separator width={itemSpacing} />, [itemSpacing]);
 
   return (
     <View style={st.section}>
@@ -92,7 +97,7 @@ export default function HomeSection({
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{ paddingRight: 16 }}
-          ItemSeparatorComponent={() => <View style={{ width: itemSpacing }} />}
+          ItemSeparatorComponent={SeparatorComponent}
           initialNumToRender={4}
           maxToRenderPerBatch={4}
           windowSize={3}
@@ -127,3 +132,5 @@ const st = StyleSheet.create({
   },
   emptyText: { fontFamily: 'Geist_500Medium', fontSize: 12, flex: 1 },
 });
+
+export default memo(HomeSection);

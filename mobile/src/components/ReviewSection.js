@@ -43,6 +43,8 @@ export default function ReviewSection({ recipeId, onStatsChange }) {
   const [submitting, setSubmitting] = useState(false);
   const [myReview, setMyReview] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [hasCooked, setHasCooked] = useState(false);
+  const [checkingCooked, setCheckingCooked] = useState(false);
 
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -82,9 +84,22 @@ export default function ReviewSection({ recipeId, onStatsChange }) {
     }
   };
 
+  const fetchCookedStatus = async () => {
+    if (!user) return;
+    setCheckingCooked(true);
+    try {
+      const res = await reviewApi.checkCooked(recipeId);
+      setHasCooked(res.data.hasCooked);
+    } catch {
+      // ignore
+    } finally {
+      setCheckingCooked(false);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchReviews(1, 'newest'), fetchMyReview()]).finally(() => setLoading(false));
+    Promise.all([fetchReviews(1, 'newest'), fetchMyReview(), fetchCookedStatus()]).finally(() => setLoading(false));
   }, [recipeId, user]);
 
   useEffect(() => {
@@ -155,15 +170,15 @@ export default function ReviewSection({ recipeId, onStatsChange }) {
     setEditing(false);
   };
 
-  const handleVote = async (reviewId, isHelpful) => {
+  const handleVote = async (reviewId, helpfulnessLevel) => {
     if (!user) {
       Alert.alert('Sign in required', 'Please sign in to vote on reviews.');
       return;
     }
     try {
-      await reviewApi.voteHelpful(recipeId, reviewId, isHelpful);
+      await reviewApi.voteHelpful(recipeId, reviewId, helpfulnessLevel);
       fetchReviews(page, sort);
-    } catch (err) {
+    } catch {
       // Ignored or handle already voted
     }
   };
@@ -236,6 +251,25 @@ export default function ReviewSection({ recipeId, onStatsChange }) {
                   <TouchableOpacity onPress={startEditing}><Ionicons name="pencil" size={18} color={colors.textSubtle} /></TouchableOpacity>
                   <TouchableOpacity onPress={handleDelete}><Ionicons name="trash" size={18} color="#ef4444" /></TouchableOpacity>
                 </View>
+              </View>
+            </View>
+          ) : checkingCooked ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={{ color: colors.textSubtle, fontSize: 13 }}>Checking eligibility...</Text>
+            </View>
+          ) : !hasCooked && !myReview ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20, gap: 10 }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(249,115,22,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="lock-closed" size={24} color={colors.primary} />
+              </View>
+              <Text style={{ fontFamily: 'Geist_700Bold', color: colors.text, fontSize: 15 }}>Finish cooking first!</Text>
+              <Text style={{ color: colors.textSubtle, fontSize: 13, textAlign: 'center', maxWidth: 260 }}>
+                Complete the step-by-step cooking tutorial to unlock the ability to leave a review.
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(249,115,22,0.08)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999 }}>
+                <Ionicons name="restaurant" size={14} color={colors.primary} />
+                <Text style={{ fontSize: 12, color: colors.primary, fontFamily: 'Geist_500Medium' }}>Tap "Start Cooking" to begin</Text>
               </View>
             </View>
           ) : (
@@ -329,15 +363,31 @@ export default function ReviewSection({ recipeId, onStatsChange }) {
                 {review.comment ? (
                   <Text style={{ color: colors.text, lineHeight: 22, marginBottom: 16 }}>{review.comment}</Text>
                 ) : null}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                   <Text style={{ fontSize: 12, color: colors.textSubtle }}>Helpful?</Text>
-                  <TouchableOpacity onPress={() => handleVote(review.id, true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="thumbs-up-outline" size={16} color={colors.textSubtle} />
-                    <Text style={{ fontSize: 12, color: colors.textSubtle }}>{review.helpful_count || 0}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleVote(review.id, 0)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.07)' }}
+                  >
+                    <Ionicons name="thumbs-down-outline" size={13} color="#ef4444" />
+                    <Text style={{ fontSize: 11, color: '#ef4444' }}>{review.not_helpful_count || 0}</Text>
+                    <Text style={{ fontSize: 11, color: '#ef4444' }}>Not helpful</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleVote(review.id, false)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="thumbs-down-outline" size={16} color={colors.textSubtle} />
-                    <Text style={{ fontSize: 12, color: colors.textSubtle }}>{review.unhelpful_count || 0}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleVote(review.id, 1)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(34,197,94,0.07)' }}
+                  >
+                    <Ionicons name="thumbs-up-outline" size={13} color="#22c55e" />
+                    <Text style={{ fontSize: 11, color: '#22c55e' }}>{review.helpful_count || 0}</Text>
+                    <Text style={{ fontSize: 11, color: '#22c55e' }}>Helpful</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleVote(review.id, 2)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(249,115,22,0.07)' }}
+                  >
+                    <Ionicons name="thumbs-up" size={13} color={colors.primary} />
+                    <Text style={{ fontSize: 11, color: colors.primary }}>{review.very_helpful_count || 0}</Text>
+                    <Text style={{ fontSize: 11, color: colors.primary }}>Very helpful</Text>
                   </TouchableOpacity>
                 </View>
               </View>

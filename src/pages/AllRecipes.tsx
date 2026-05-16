@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarPlus, ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight, Search, WifiOff } from 'lucide-react';
+import { CalendarPlus, ChefHat, Clock, ArrowLeft, SlidersHorizontal, X, ChevronLeft, ChevronRight, Search, WifiOff, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Layout } from '../components/Layout';
 import { SearchResultsSkeleton, RecipeCardSkeleton } from '@/components/SkeletonScreen';
@@ -27,6 +27,31 @@ interface Recipe {
   category: string | null;
   region_or_origin: string | null;
   image_url: string | null;
+  avg_rating?: number;
+  review_count?: number;
+}
+
+function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(fullStars)].map((_, i) => (
+        <Star key={`full-${i}`} size={size} fill="#f59e0b" stroke="#f59e0b" />
+      ))}
+      {hasHalfStar && (
+        <div className="relative" style={{ width: size, height: size }}>
+          <Star size={size} className="absolute text-amber-500" fill="#f59e0b" stroke="#f59e0b" style={{ clipPath: 'inset(0 50% 0 0)' }} />
+          <Star size={size} className="absolute text-stone-400" />
+        </div>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <Star key={`empty-${i}`} size={size} className="text-stone-400" />
+      ))}
+    </div>
+  );
 }
 
 interface RecipeCategory {
@@ -130,9 +155,15 @@ export default function AllRecipesPage() {
         try {
           const rows = await offlineCache.recipes.getAll({ limit: 500 });
           const cached = rows.map((r) => r.data).filter(Boolean) as unknown as Recipe[];
+          // Ensure cached recipes have rating fields
+          const withRatings = cached.map((r) => ({
+            ...r,
+            avg_rating: (r as { avg_rating?: number }).avg_rating ?? 0,
+            review_count: (r as { review_count?: number }).review_count ?? 0,
+          }));
           const filtered = activeCategory
-            ? cached.filter((r) => r.category === activeCategory)
-            : cached;
+            ? withRatings.filter((r) => r.category === activeCategory)
+            : withRatings;
           const searched = debouncedQuery.trim()
             ? filtered.filter((r) => r.title?.toLowerCase().includes(debouncedQuery.trim().toLowerCase()))
             : filtered;
@@ -500,6 +531,12 @@ export default function AllRecipesPage() {
                       <p className="text-sm text-stone-500 dark:text-stone-400">
                         {meta} &middot; {recipe.difficulty || 'Any level'}
                       </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <StarRating rating={recipe.avg_rating || 0} size={14} />
+                        <span className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+                          {(recipe.avg_rating || 0).toFixed(1)}
+                        </span>
+                      </div>
                     </Link>
 
                     {plannerRecipe?.id !== recipe.id && (

@@ -10,12 +10,13 @@ import {
   Dimensions,
   StyleSheet,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { plannerApi, recipeApi, notificationApi } from '../api/api';
+import { plannerApi, recipeApi, notificationApi, apiBaseUrl } from '../api/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getMealPlansCached, offlineCache } from '../offline/cacheService';
 import OfflineIndicator from '../offline/OfflineIndicator';
@@ -27,10 +28,34 @@ import CategoryChip from '../components/CategoryChip';
 import AIAssistantWidget from '../components/AIAssistantWidget';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { apiBaseUrl } from '../api/api';
 import { HomeContentSkeleton } from '../components/SkeletonPlaceholder';
 import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { useFontSizes } from '../hooks/useFontSizes';
+
+const StarRating = React.memo(function StarRating({ rating, size = 14 }) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+      {[...Array(fullStars)].map((_, i) => (
+        <Ionicons key={`full-${i}`} name="star" size={size} color="#f59e0b" />
+      ))}
+      {hasHalfStar && (
+        <View style={{ position: 'relative', width: size, height: size }}>
+          <Ionicons name="star" size={size} color="#f59e0b" style={{ position: 'absolute', left: 0, top: 0 }} />
+          <View style={{ position: 'absolute', left: size / 2, top: 0, width: size / 2, height: size, backgroundColor: 'transparent' }}>
+            <Ionicons name="star" size={size} color="#d6d3d1" style={{ position: 'absolute', left: -size / 2, top: 0 }} />
+          </View>
+        </View>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <Ionicons key={`empty-${i}`} name="star" size={size} color="#d6d3d1" />
+      ))}
+    </View>
+  );
+});
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -93,11 +118,22 @@ const mealPlanSlots = [
   { id: 'dinner', slot: 'Dinner', dotColor: '#f97316' },
 ];
 
-const seasonalIngredients = [
-  { name: 'Asparagus', status: 'Peak Season', image: 'https://picsum.photos/seed/asparagus/100/100' },
-  { name: 'Strawberries', status: 'Just In', image: 'https://picsum.photos/seed/strawberry/100/100' },
-  { name: 'Rhubarb', status: 'Limited Time', image: 'https://picsum.photos/seed/rhubarb/100/100' },
-];
+const phSeasonalByMonth = {
+  0:  [{ name: 'Repolyo (Cabbage)', status: 'Peak Season', emoji: '🥬' }, { name: 'Carrots', status: 'Peak Season', emoji: '🥕' }, { name: 'Patatas (Potato)', status: 'Peak Season', emoji: '🥔' }],
+  1:  [{ name: 'Repolyo (Cabbage)', status: 'Peak Season', emoji: '🥬' }, { name: 'Broccoli', status: 'Peak Season', emoji: '🥦' }, { name: 'Carrots', status: 'Peak Season', emoji: '🥕' }],
+  2:  [{ name: 'Mangga (Mango)', status: 'Just In', emoji: '🥭' }, { name: 'Pakwan (Watermelon)', status: 'Just In', emoji: '🍉' }, { name: 'Melon', status: 'Just In', emoji: '🍈' }],
+  3:  [{ name: 'Mangga (Mango)', status: 'Peak Season', emoji: '🥭' }, { name: 'Pakwan (Watermelon)', status: 'Peak Season', emoji: '🍉' }, { name: 'Nangka (Jackfruit)', status: 'Just In', emoji: '🌿' }],
+  4:  [{ name: 'Mangga (Mango)', status: 'Peak Season', emoji: '🥭' }, { name: 'Nangka (Jackfruit)', status: 'Peak Season', emoji: '🌿' }, { name: 'Durian', status: 'Peak Season', emoji: '🌿' }],
+  5:  [{ name: 'Kangkong', status: 'Peak Season', emoji: '🌿' }, { name: 'Sitaw (String Beans)', status: 'Peak Season', emoji: '🫛' }, { name: 'Mais (Corn)', status: 'Just In', emoji: '🌽' }],
+  6:  [{ name: 'Kangkong', status: 'Peak Season', emoji: '🌿' }, { name: 'Mais (Corn)', status: 'Peak Season', emoji: '🌽' }, { name: 'Pechay (Bok Choy)', status: 'Peak Season', emoji: '🥬' }],
+  7:  [{ name: 'Kangkong', status: 'Peak Season', emoji: '🌿' }, { name: 'Mais (Corn)', status: 'Peak Season', emoji: '🌽' }, { name: 'Gabi (Taro)', status: 'Peak Season', emoji: '🌿' }],
+  8:  [{ name: 'Pechay (Bok Choy)', status: 'Peak Season', emoji: '🥬' }, { name: 'Gabi (Taro)', status: 'Peak Season', emoji: '🌿' }, { name: 'Kamote (Sweet Potato)', status: 'Peak Season', emoji: '🍠' }],
+  9:  [{ name: 'Kamote (Sweet Potato)', status: 'Peak Season', emoji: '🍠' }, { name: 'Gabi (Taro)', status: 'Peak Season', emoji: '🌿' }, { name: 'Carrots', status: 'Just In', emoji: '🥕' }],
+  10: [{ name: 'Repolyo (Cabbage)', status: 'Just In', emoji: '🥬' }, { name: 'Carrots', status: 'Peak Season', emoji: '🥕' }, { name: 'Pineapple', status: 'Peak Season', emoji: '🍍' }],
+  11: [{ name: 'Repolyo (Cabbage)', status: 'Peak Season', emoji: '🥬' }, { name: 'Pineapple', status: 'Peak Season', emoji: '🍍' }, { name: 'Broccoli', status: 'Just In', emoji: '🥦' }],
+};
+const _currentMonthSeasonal = phSeasonalByMonth[new Date().getMonth()] ?? phSeasonalByMonth[0];
+const seasonalIngredients = _currentMonthSeasonal.map((i) => ({ ...i, image: null }));
 
 const withFallback = (items, fallback) => {
   if (Array.isArray(items) && items.length > 0) {
@@ -115,7 +151,6 @@ export default function HomeScreen({ navigation }) {
   const carouselIndexRef = useRef(0);
   const featuredLenRef = useRef(fallbackFeatured.length);
   const carouselTimerRef = useRef(null);
-  // Single fade for the whole hero text block — replaces 16-anim per-element stagger
   const heroTextAnim = useRef(new Animated.Value(1)).current;
   const [recentRecipes, setRecentRecipes] = useState(fallbackRecent);
   const [plannedMeals, setPlannedMeals] = useState([]);
@@ -130,8 +165,7 @@ export default function HomeScreen({ navigation }) {
   const [homeSectionsError, setHomeSectionsError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const isInitialLoading = useInitialContentLoading();
-  const introAnim = useRef(new Animated.Value(0)).current;
+  const isInitialLoading = useInitialContentLoading(800);
   const [heroImagesReady, setHeroImagesReady] = useState(false);
   const aiChatRef = useRef(null);
   const didFocusOnceRef = useRef(false);
@@ -157,6 +191,10 @@ export default function HomeScreen({ navigation }) {
   }), [colors, isDark]);
 
   const loadMealPlans = useCallback(async ({ showLoader = true } = {}) => {
+    if (!user?.id) {
+      setPlannedMealsLoading(false);
+      return;
+    }
     if (showLoader) setPlannedMealsLoading(true);
     try {
       const response = await getMealPlansCached(() => plannerApi.getPlan());
@@ -166,7 +204,7 @@ export default function HomeScreen({ navigation }) {
     } finally {
       if (showLoader) setPlannedMealsLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchData = useCallback(async () => {
     setHomeSectionsLoading(true);
@@ -259,13 +297,11 @@ export default function HomeScreen({ navigation }) {
   }, [goNext]);
 
   useEffect(() => {
-    fetchData();
-    loadMealPlans();
-    Animated.timing(introAnim, {
-      toValue: 1,
-      duration: 420,
-      useNativeDriver: true,
-    }).start();
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchData();
+      loadMealPlans();
+    });
+    return () => task.cancel();
   }, [user?.id, fetchData, loadMealPlans]);
 
   const fetchUnreadCount = useCallback(async () => {
@@ -300,7 +336,7 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      loadMealPlans({ showLoader: false });
+      if (user?.id) loadMealPlans({ showLoader: false });
       fetchUnreadCount();
 
       if (!user?.id) {
@@ -346,12 +382,27 @@ export default function HomeScreen({ navigation }) {
     }, [loadMealPlans, fetchUnreadCount, user?.id])
   );
 
-  const introTranslateY = useRef(
-    introAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] })
-  ).current;
-  const introStyle = {
-    transform: [{ translateY: introTranslateY }],
-  };
+
+  const renderRecentItem = useCallback(({ item: recipe }) => (
+    <TouchableOpacity
+      onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id || 1 })}
+      style={s.recentItem}
+    >
+      <OptimizedImage
+        source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
+        style={[s.recentImage, { borderColor: colors.borderSoft }]}
+        resizeMode="cover"
+      />
+      <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
+      <Text style={[s.recentTime, { color: colors.textMuted }]}>{recipe.date || 'Recent recipes'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+        <StarRating rating={recipe.avg_rating || 0} size={10} />
+        <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 10, color: colors.textMuted }}>
+          {(recipe.avg_rating || 0).toFixed(1)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  ), [navigation, colors]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -436,7 +487,7 @@ export default function HomeScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         }
       >
-        <Animated.View style={[s.content, introStyle]}>
+        <View style={s.content}>
           {/* Featured Hero Carousel */}
           <View style={s.heroWrap}>
             {/* Pre-mounted images — one per recipe, always in tree, opacity toggled.
@@ -460,25 +511,42 @@ export default function HomeScreen({ navigation }) {
 
             {/* Text content — single fade on the whole block */}
             <Animated.View style={[s.heroContent, { opacity: heroTextAnim }]}>
+              {/* Badge with star icon + border */}
               <View style={s.heroBadge}>
+                <Ionicons name="star" size={10} color="#fb923c" />
                 <Text style={s.heroBadgeText}>FEATURED TONIGHT</Text>
               </View>
 
-              <Text style={s.heroTitle}>
-                {featuredRecipes[carouselIndex]?.title || 'Discover New Recipes'}
-              </Text>
+              {/* Two-line split title: first half white, second half orange italic */}
+              {(() => {
+                const title = featuredRecipes[carouselIndex]?.title || 'Discover New Recipes';
+                const words = title.split(' ');
+                const half = Math.ceil(words.length / 2);
+                const firstLine = words.slice(0, half).join(' ');
+                const secondLine = words.slice(half).join(' ');
+                return (
+                  <View style={{ width: '100%' }}>
+                    <Text style={s.heroTitleWhite}>{firstLine}</Text>
+                    {secondLine ? <Text style={s.heroTitleOrange}>{secondLine}</Text> : null}
+                  </View>
+                );
+              })()}
 
               <Text style={s.heroDesc} numberOfLines={3}>
                 {featuredRecipes[carouselIndex]?.description?.slice(0, 100) || 'A masterclass in texture and aroma.'}
-                {featuredRecipes[carouselIndex]?.total_time_minutes ? `  ·  ${featuredRecipes[carouselIndex].total_time_minutes} min` : ''}
               </Text>
 
+              {/* Premium button with icon pill + arrow */}
               <TouchableOpacity
                 style={s.heroBtn}
-                activeOpacity={0.85}
+                activeOpacity={0.82}
                 onPress={() => navigation.navigate('RecipeDetail', { id: featuredRecipes[carouselIndex]?.id || 1 })}
               >
+                <View style={s.heroBtnIconWrap}>
+                  <Ionicons name="restaurant" size={11} color="#fff" />
+                </View>
                 <Text style={s.heroBtnText}>Let's Cook</Text>
+                <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
             </Animated.View>
 
@@ -508,7 +576,7 @@ export default function HomeScreen({ navigation }) {
                 {featuredRecipes.slice(0, 5).map((_, i) => (
                   <TouchableOpacity
                     key={i}
-                    onPress={() => { if (carouselTimerRef.current) clearInterval(carouselTimerRef.current); goToSlide(i); }}
+                    onPress={() => { clearInterval(carouselTimerRef.current); carouselTimerRef.current = null; goToSlide(i); }}
                     style={[
                       s.heroDot,
                       i === carouselIndex ? s.heroDotActive : s.heroDotInactive,
@@ -667,12 +735,12 @@ export default function HomeScreen({ navigation }) {
 
           {/* Info Cards Row — matches web's Seasonal Ingredients / Cooking Skills blocks */}
           <View style={s.infoRow}>
-            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.surface }]}>
+            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.surface }]} onPress={() => navigation.navigate('SeasonalGuide')}>
               <Text style={[s.infoCardTitle, { color: colors.text }]}>Seasonal{'\n'}Ingredients</Text>
-              <Text style={[s.infoCardDesc, { color: colors.textMuted }]}>Explore what's fresh this month: Artichokes, Asparagus, and ramps.</Text>
+              <Text style={[s.infoCardDesc, { color: colors.textMuted }]}>Explore what's fresh in the Philippines this season: from highland Baguio veggies to tropical summer fruits.</Text>
               <Text style={[s.infoCardLink, { color: colors.primary }]}>READ GUIDE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.surface }]}>
+            <TouchableOpacity style={[s.infoCard, { backgroundColor: isDark ? colors.surfaceAlt : colors.surface }]} onPress={() => navigation.navigate('CookingSkills')}>
               <Text style={[s.infoCardTitle, { color: colors.text }]}>Cooking{'\n'}Skills</Text>
               <Text style={[s.infoCardDesc, { color: colors.textMuted }]}>Master the 'Julienne' cut with our new 2-minute video tutorial.</Text>
               <Text style={[s.infoCardLink, { color: colors.primary }]}>WATCH VIDEO</Text>
@@ -745,20 +813,7 @@ export default function HomeScreen({ navigation }) {
               initialNumToRender={4}
               maxToRenderPerBatch={4}
               removeClippedSubviews={false}
-              renderItem={({ item: recipe }) => (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('RecipeDetail', { id: recipe.id || 1 })}
-                  style={s.recentItem}
-                >
-                  <OptimizedImage
-                    source={{ uri: recipe.image_url || recipe.image || 'https://picsum.photos/seed/recent/400/200' }}
-                    style={[s.recentImage, { borderColor: colors.borderSoft }]}
-                    resizeMode="cover"
-                  />
-                  <Text style={[s.recentTitle, { color: colors.text }]}>{recipe.title}</Text>
-                  <Text style={[s.recentTime, { color: colors.textMuted }]}>{recipe.date || 'Recent recipes'}</Text>
-                </TouchableOpacity>
-              )}
+              renderItem={renderRecentItem}
             />
           </View>
 
@@ -778,7 +833,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={[s.aiBtnText, { color: colors.primary }]}>START CONVERSATION</Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </ScrollView>
 
       <AIAssistantWidget ref={aiChatRef} onPress={() => console.log('AI Assistant Pressed')} />
@@ -809,15 +864,17 @@ const s = StyleSheet.create({
   // Hero
   heroWrap: { width: '100%', aspectRatio: 1, borderRadius: 28, overflow: 'hidden' },
   heroImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(12,10,9,0)' },
-  heroOverlayTop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(12,10,9,0)' },
-  heroContent: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 44, paddingHorizontal: 28 },
-  heroBadge: { backgroundColor: 'rgba(255,255,255,0.96)', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999, marginBottom: 14 },
-  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#ea580c', textTransform: 'uppercase' },
-  heroTitle: { fontFamily: 'Geist_800ExtraBold', fontSize: 36, color: '#fff', textAlign: 'center', letterSpacing: -1, lineHeight: 40, marginBottom: 10 },
-  heroDesc: { fontFamily: 'Geist_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginBottom: 20, maxWidth: 280 },
-  heroBtn: { backgroundColor: '#ea580c', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, shadowColor: '#7c2d12', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  heroBtnText: { fontFamily: 'Geist_700Bold', fontSize: 14, color: '#fff' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(12,10,9,0.45)' },
+  heroOverlayTop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(60,20,0,0.18)' },
+  heroContent: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'flex-start', paddingBottom: 44, paddingHorizontal: 28 },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: 'rgba(251,146,60,0.6)', backgroundColor: 'rgba(0,0,0,0.3)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, marginBottom: 14 },
+  heroBadgeText: { fontFamily: 'Geist_700Bold', fontSize: 10, letterSpacing: 1.5, color: '#fed7aa', textTransform: 'uppercase' },
+  heroTitleWhite: { fontFamily: 'PlayfairDisplay_800ExtraBold', fontSize: 38, color: '#fff', letterSpacing: -0.5, lineHeight: 44 },
+  heroTitleOrange: { fontFamily: 'PlayfairDisplay_800ExtraBold_Italic', fontSize: 38, color: '#fb923c', letterSpacing: -0.5, lineHeight: 44, marginBottom: 10 },
+  heroDesc: { fontFamily: 'Geist_600SemiBold', fontSize: 13, color: 'rgba(255,255,255,0.82)', textAlign: 'left', marginBottom: 20, maxWidth: 260 },
+  heroBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ea580c', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, shadowColor: '#7c2d12', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 12, elevation: 6 },
+  heroBtnIconWrap: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  heroBtnText: { fontFamily: 'Geist_700Bold', fontSize: 12, color: '#fff', letterSpacing: 1, textTransform: 'uppercase' },
   heroArrow: { position: 'absolute', top: SCREEN_W / 2 - 16, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
   heroArrowLeft: { left: 14 },
   heroArrowRight: { right: 14 },

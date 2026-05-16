@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookOpen, Flame, UtensilsCrossed, Wheat, ChefHat } from 'lucide-react';
+import { BookOpen, Flame, UtensilsCrossed, Wheat, ChefHat, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
@@ -24,9 +24,34 @@ interface MlResult {
     image: string | null;
     image_url: string | null;
     tags: string[] | null;
+    avg_rating?: number;
+    review_count?: number;
   };
   score: number;
   matchPercentage: number;
+}
+
+function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(fullStars)].map((_, i) => (
+        <Star key={`full-${i}`} size={size} fill="#f59e0b" stroke="#f59e0b" />
+      ))}
+      {hasHalfStar && (
+        <div className="relative" style={{ width: size, height: size }}>
+          <Star size={size} className="absolute text-amber-500" fill="#f59e0b" stroke="#f59e0b" style={{ clipPath: 'inset(0 50% 0 0)' }} />
+          <Star size={size} className="absolute text-stone-400" />
+        </div>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <Star key={`empty-${i}`} size={size} className="text-stone-400" />
+      ))}
+    </div>
+  );
 }
 
 const PAGE_SIZE = 200;
@@ -412,6 +437,12 @@ export default function SearchPage() {
                       {resultsMode === 'recommendations' && <>{result.matchPercentage}% Match &middot; </>}
                       {result.recipe.category || 'Philippine'} &middot; {result.recipe.difficulty || 'Any level'}
                     </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <StarRating rating={result.recipe.avg_rating || 0} size={14} />
+                      <span className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+                        {(result.recipe.avg_rating || 0).toFixed(1)}
+                      </span>
+                    </div>
                   </Link>
                 </motion.div>
               ))}

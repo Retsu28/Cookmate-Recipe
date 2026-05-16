@@ -8,9 +8,14 @@ export interface Review {
   user_id: number;
   full_name: string;
   avatar_url: string | null;
+  not_helpful_count: number;
   helpful_count: number;
+  very_helpful_count: number;
+  total_helpful_count: number;
   unhelpful_count: number;
 }
+
+export type HelpfulnessLevel = 0 | 1 | 2; // 0=not helpful, 1=helpful, 2=very helpful
 
 export interface ReviewStats {
   total_reviews: number;
@@ -69,14 +74,20 @@ export const reviewService = {
   deleteReview: (recipeId: number) =>
     api.delete<{ success: boolean }>(`/api/recipes/${recipeId}/reviews`),
 
-  voteHelpful: (recipeId: number, reviewId: number, isHelpful: boolean) =>
-    api.post<{ vote: { id: number; is_helpful: boolean } }>(
+  voteHelpful: (recipeId: number, reviewId: number, helpfulnessLevel: HelpfulnessLevel) =>
+    api.post<{ vote: { id: number; is_helpful: boolean; helpfulness_level: number } }>(
       `/api/recipes/${recipeId}/reviews/${reviewId}/helpful`,
-      { isHelpful }
+      { helpfulnessLevel }
     ),
 
   removeVote: (recipeId: number, reviewId: number) =>
     api.delete<{ message: string }>(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`),
+
+  checkCooked: (recipeId: number) =>
+    api.get<{ hasCooked: boolean }>(`/api/recipes/${recipeId}/cooking-complete`),
+
+  markCooked: (recipeId: number) =>
+    api.post<{ success: boolean }>(`/api/recipes/${recipeId}/cooking-complete`, {}),
 };
 
 export default reviewService;

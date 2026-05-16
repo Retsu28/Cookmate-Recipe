@@ -43,6 +43,7 @@ const profileTabs = [
   { id: 'privacy', label: 'Privacy & Security', icon: 'shield-outline', description: 'Visibility and account safety' },
   { id: 'inventory', label: 'Kitchen Inventory', icon: 'cube-outline', description: 'Ingredient tracking tools', disabled: true, badge: 'Coming Soon' },
   { id: 'saved', label: 'Saved', icon: 'bookmark-outline', description: 'Bookmarked recipes' },
+  { id: 'downloads', label: 'Downloads', icon: 'cloud-download-outline', description: 'Recipes saved for offline' },
 ];
 
 const emptyForm = {
@@ -538,6 +539,19 @@ export default function ProfileScreen({ navigation }) {
       // Save to API
       await settingsApi.saveSettings(user.id, 'notifications', apiPayload);
       
+      // Act on the push notifications toggle change
+      const pushWasOn = appliedNotifications.pushNotifications;
+      const pushNowOn = draftNotifications.pushNotifications;
+      if (pushWasOn && !pushNowOn) {
+        // User turned OFF — cancel all scheduled local notifications immediately
+        const { default: Notifications } = await import('expo-notifications');
+        await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+      } else if (!pushWasOn && pushNowOn) {
+        // User turned ON — re-register and reschedule reminders
+        const { refreshAndSchedulePlannerReminders } = await import('../notifications/plannerNotifications');
+        refreshAndSchedulePlannerReminders().catch(() => {});
+      }
+
       // Update applied state
       setAppliedNotifications(draftNotifications);
       
@@ -716,16 +730,6 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </Text>
 
-            <View style={[st.statsRow, { borderTopColor: isDark ? colors.border : '#d6d3d1' }]}>
-              {[
-                { num: '12', label: 'RECIPES' },
-              ].map((stat, i) => (
-                <View key={i} style={[st.statCol, { borderRightWidth: 0 }]}>
-                  <Text style={[st.statNum, { color: colors.primary }]}>{stat.num}</Text>
-                  <Text style={[st.statLabel, { color: colors.textMuted }]}>{stat.label}</Text>
-                </View>
-              ))}
-            </View>
           </View>
 
           {/* Tabs - Full width */}
@@ -992,6 +996,25 @@ export default function ProfileScreen({ navigation }) {
 
             {activeTab === 'saved' && (
               <SavedRecipesInline user={user} colors={colors} isDark={isDark} navigation={navigation} fontSizes={fontSizes} />
+            )}
+
+            {activeTab === 'downloads' && (
+              <View style={{ padding: 16 }}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Downloads')}
+                  activeOpacity={0.8}
+                  style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16 }]}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? '#431407' : '#fff7ed', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="cloud-download-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: 'Geist_700Bold', fontSize: fontSizes.base, color: colors.text }}>Manage Downloads</Text>
+                    <Text style={{ fontFamily: 'Geist_400Regular', fontSize: fontSizes.sm, color: colors.textMuted, marginTop: 2 }}>View and remove offline-saved recipes</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Notifications Tab */}

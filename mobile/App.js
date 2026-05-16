@@ -13,6 +13,7 @@ import {
   Geist_700Bold,
   Geist_800ExtraBold,
 } from '@expo-google-fonts/geist';
+import { PlayfairDisplay_800ExtraBold_Italic, PlayfairDisplay_800ExtraBold } from '@expo-google-fonts/playfair-display';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
@@ -107,8 +108,16 @@ function AppContent({ fontsLoaded }) {
 
   useEffect(() => {
     // Drain any pending offline actions as soon as connectivity is available.
-    startAutoFlush();
-    initializePlannerNotifications(navigationRef);
+    try {
+      startAutoFlush();
+    } catch (e) {
+      console.warn('[App] startAutoFlush failed:', e);
+    }
+    try {
+      initializePlannerNotifications(navigationRef);
+    } catch (e) {
+      console.warn('[App] initializePlannerNotifications failed:', e);
+    }
     return () => {
       if (transitionTimer.current) {
         clearTimeout(transitionTimer.current);
@@ -246,6 +255,8 @@ export default function App() {
     Geist_600SemiBold,
     Geist_700Bold,
     Geist_800ExtraBold,
+    PlayfairDisplay_800ExtraBold_Italic,
+    PlayfairDisplay_800ExtraBold,
     ...Ionicons.font,
   });
 

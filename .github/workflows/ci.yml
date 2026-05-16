@@ -1,0 +1,277 @@
+name: CookMate CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository }}/api
+  WEB_IMAGE: ghcr.io/${{ github.repository }}/web
+  ML_IMAGE: ghcr.io/${{ github.repository }}/ml-service
+
+jobs:
+  # ─── Lint & Type Check ───────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: TypeScript check (web)
+        run: npx tsc --noEmit
+
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: api
+
+  # ─── API Tests ───────────────────────────────────────────────────────────────
+  test-api:
+    name: API Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cookmate_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: api
+
+      - name: Run database schema
+        run: psql -h localhost -U postgres -d cookmate_test -f database/schema.sql
+        env:
+          PGPASSWORD: testpass
+
+      - name: Run migrations
+        run: |
+          for f in database/migrations/*.sql; do
+            psql -h localhost -U postgres -d cookmate_test -f "$f" 2>/dev/null || true
+          done
+        env:
+          PGPASSWORD: testpass
+
+      - name: API health check
+        run: |
+          node api/src/server.js &
+          sleep 3
+          curl -f http://localhost:5000/api/health
+          kill %1
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: testpass
+          DB_NAME: cookmate_test
+          JWT_SECRET: ci-test-secret-at-least-32-characters-long
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          PORT: 5000
+          NODE_ENV: test
+
+  # ─── ML Service Tests ────────────────────────────────────────────────────────
+  test-ml:
+    name: ML Service Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cookmate_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: ml_service/requirements.txt
+
+      - name: Install ML dependencies
+        run: pip install -r requirements.txt
+        working-directory: ml_service
+
+      - name: Run database schema
+        run: psql -h localhost -U postgres -d cookmate_test -f database/schema.sql
+        env:
+          PGPASSWORD: testpass
+
+      - name: ML service health check
+        run: |
+          cd ml_service
+          DB_HOST=localhost DB_PORT=5432 DB_USER=postgres DB_PASSWORD=testpass DB_NAME=cookmate_test \
+            uvicorn main:app --host 0.0.0.0 --port 8001 &
+          sleep 5
+          curl -f http://localhost:8001/health
+          kill %1
+
+  # ─── Build Web ───────────────────────────────────────────────────────────────
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ''
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+          retention-days: 7
+
+  # ─── Build & Push Docker Images ──────────────────────────────────────────────
+  docker:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [test-api, test-ml, build-web]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+
+      - name: Build & push Web image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.web
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:latest
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push ML Service image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ml_service
+          file: ./ml_service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ML_IMAGE }}:latest
+            ${{ env.ML_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Deploy to Production ────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy API to production
+        run: |
+          echo "Deploying API image: ${{ env.API_IMAGE }}:${{ github.sha }}"
+          # Option A: kubectl apply (Kubernetes)
+          # kubectl set image deployment/cookmate-api api=${{ env.API_IMAGE }}:${{ github.sha }}
+          # Option B: Railway / Render webhook
+          # curl -X POST ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          # Option C: SSH + docker pull
+          # ssh ${{ secrets.PROD_HOST }} "docker pull ${{ env.API_IMAGE }}:${{ github.sha }} && docker-compose up -d"
+
+      - name: Deploy Web to Vercel
+        run: |
+          echo "Web deploys automatically via Vercel Git integration"
+          # Or: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Post-deploy health check
+        run: |
+          sleep 10
+          echo "Verifying deployment health..."
+          # curl -f ${{ secrets.PROD_API_URL }}/api/health

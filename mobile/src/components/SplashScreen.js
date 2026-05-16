@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { View, Text, Animated, StyleSheet, Dimensions, Easing, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SPLASH_DURATION = 2400;
+const FLOATER_COUNT = 4;
 
 const FOOD_ICONS = [
   'restaurant',
@@ -13,18 +13,16 @@ const FOOD_ICONS = [
   'leaf',
   'cafe',
   'pizza',
-  'ice-cream',
-  'fish',
 ];
 
 function buildFloaters() {
-  return Array.from({ length: 10 }, (_, i) => ({
+  return Array.from({ length: FLOATER_COUNT }, (_, i) => ({
     id: i,
     icon: FOOD_ICONS[i % FOOD_ICONS.length],
-    x: ((8 + ((i * 37) % 80)) / 100) * SCREEN_W,
-    y: ((10 + ((i * 47) % 70)) / 100) * SCREEN_H,
-    size: 22 + (i % 4) * 6,
-    delay: i * 220,
+    x: ((10 + ((i * 43) % 76)) / 100) * SCREEN_W,
+    y: ((12 + ((i * 53) % 66)) / 100) * SCREEN_H,
+    size: 24 + (i % 3) * 8,
+    delay: i * 280,
   }));
 }
 
@@ -37,15 +35,18 @@ export default function SplashScreen({
   isReady = true,
   blocksTouches = false,
 }) {
+  // ── One-shot entrance values ──
   const fadeIn = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const titleFade = useRef(new Animated.Value(0)).current;
   const titleSlide = useRef(new Animated.Value(14)).current;
   const msgFade = useRef(new Animated.Value(0)).current;
   const exitFade = useRef(new Animated.Value(1)).current;
+
+  // ── Looping values ──
   const wiggle = useRef(new Animated.Value(0)).current;
-  const hasExited = useRef(false);
-  const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const logoBreathe = useRef(new Animated.Value(1)).current;
+  const msgShimmer = useRef(new Animated.Value(1)).current;
 
   const dotAnims = useRef([
     new Animated.Value(0.35),
@@ -53,18 +54,17 @@ export default function SplashScreen({
     new Animated.Value(0.35),
   ]).current;
 
-  // Load saved font size for consistent appearance
-  const [savedFontSize, setSavedFontSize] = useState('medium');
-  useEffect(() => {
-    AsyncStorage.getItem('cookmate:fontSize').then((size) => {
-      if (['small', 'medium', 'large'].includes(size)) {
-        setSavedFontSize(size);
-      }
-    });
-  }, []);
+  // ── Pre-computed composite nodes (stable refs, never recreated) ──
+  const dotScales = useRef(
+    dotAnims.map((d) =>
+      d.interpolate({ inputRange: [0.35, 1], outputRange: [1, 1.5] })
+    )
+  ).current;
+  const logoScaleCombined = useRef(Animated.multiply(logoScale, logoBreathe)).current;
+  const msgOpacity = useRef(Animated.multiply(msgFade, msgShimmer)).current;
 
   const floaterAnims = useRef(
-    Array.from({ length: 10 }, () => ({
+    Array.from({ length: FLOATER_COUNT }, () => ({
       y: new Animated.Value(0),
       opacity: new Animated.Value(0),
     }))
@@ -72,127 +72,114 @@ export default function SplashScreen({
 
   const floaters = useMemo(() => buildFloaters(), []);
 
+  // ── Shared ref so the exit effect can stop every loop ──
+  const hasExited = useRef(false);
+  const loopsRef = useRef([]);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
+
+  const stopAllLoops = () => {
+    loopsRef.current.forEach((l) => { try { l.stop(); } catch {} });
+    loopsRef.current = [];
+    floaterAnims.forEach((a) => { a.y.stopAnimation(); a.opacity.stopAnimation(); });
+    dotAnims.forEach((d) => d.stopAnimation());
+    logoBreathe.setValue(1);
+    wiggle.setValue(0);
+    msgShimmer.setValue(1);
+  };
+
   useEffect(() => {
-    // — Logo entrance: spring fade + scale —
-    Animated.parallel([
-      Animated.spring(fadeIn, {
-        toValue: 1,
-        tension: 80,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.spring(logoScale, {
-        toValue: 1,
-        tension: 120,
-        friction: 10,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // — Title entrance —
-    Animated.sequence([
-      Animated.delay(300),
+    const raf = requestAnimationFrame(() => {
+      // — Logo entrance: spring fade + scale —
       Animated.parallel([
-        Animated.timing(titleFade, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(titleSlide, {
-          toValue: 0,
-          duration: 400,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start();
-
-    // — Message entrance —
-    Animated.sequence([
-      Animated.delay(500),
-      Animated.timing(msgFade, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // — Chef hat wiggle loop —
-    const runWiggle = () => {
-      Animated.sequence([
-        Animated.delay(800),
-        Animated.timing(wiggle, { toValue: 1, duration: 120, useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: -1, duration: 120, useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: 0.6, duration: 90, useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: -0.4, duration: 90, useNativeDriver: true }),
-        Animated.timing(wiggle, { toValue: 0, duration: 70, useNativeDriver: true }),
-        Animated.delay(3000),
-      ]).start(({ finished }) => {
-        if (finished) runWiggle();
-      });
-    };
-    runWiggle();
-
-    // — Floating food icons —
-    floaterAnims.forEach((anim, i) => {
-      Animated.sequence([
-        Animated.delay(floaters[i].delay),
-        Animated.timing(anim.opacity, {
-          toValue: isDark ? 0.18 : 0.12,
-          duration: 600,
-          useNativeDriver: true,
-        }),
+        Animated.spring(fadeIn, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }),
+        Animated.spring(logoScale, { toValue: 1, tension: 120, friction: 10, useNativeDriver: true }),
       ]).start();
 
-      const floatLoop = () => {
-        Animated.sequence([
-          Animated.timing(anim.y, {
-            toValue: -12,
-            duration: 1800 + i * 200,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim.y, {
-            toValue: 8,
-            duration: 1600 + i * 200,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim.y, {
-            toValue: 0,
-            duration: 1400 + i * 200,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ]).start(({ finished }) => {
-          if (finished) floatLoop();
-        });
-      };
-      const t = setTimeout(() => floatLoop(), floaters[i].delay);
-      return () => clearTimeout(t);
-    });
+      // — Title entrance —
+      Animated.sequence([
+        Animated.delay(300),
+        Animated.parallel([
+          Animated.timing(titleFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(titleSlide, { toValue: 0, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        ]),
+      ]).start();
 
-    // — Loading dots —
-    dotAnims.forEach((dotAnim, i) => {
-      Animated.loop(
+      // — Message entrance —
+      Animated.sequence([
+        Animated.delay(500),
+        Animated.timing(msgFade, { toValue: 1, duration: 350, useNativeDriver: true }),
+      ]).start();
+
+      // — Logo breathe: gentle scale pulse —
+      const breatheLoop = Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 150),
-          Animated.timing(dotAnim, {
-            toValue: 1,
-            duration: 450,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(dotAnim, {
-            toValue: 0.35,
-            duration: 450,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.timing(logoBreathe, { toValue: 1.06, duration: 1000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(logoBreathe, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         ])
-      ).start();
+      );
+      breatheLoop.start();
+
+      // — Message shimmer: opacity pulse (starts after message appears) —
+      const shimmerLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(msgShimmer, { toValue: 0.5, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(msgShimmer, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ])
+      );
+      shimmerLoop.start();
+
+      // — Chef hat wiggle —
+      const wiggleLoop = Animated.loop(
+        Animated.sequence([
+          Animated.delay(800),
+          Animated.timing(wiggle, { toValue: 1, duration: 120, useNativeDriver: true }),
+          Animated.timing(wiggle, { toValue: -1, duration: 120, useNativeDriver: true }),
+          Animated.timing(wiggle, { toValue: 0.6, duration: 90, useNativeDriver: true }),
+          Animated.timing(wiggle, { toValue: -0.4, duration: 90, useNativeDriver: true }),
+          Animated.timing(wiggle, { toValue: 0, duration: 70, useNativeDriver: true }),
+          Animated.delay(3000),
+        ])
+      );
+      wiggleLoop.start();
+
+      // Store all loops so exit + cleanup can stop them
+      loopsRef.current = [breatheLoop, shimmerLoop, wiggleLoop];
+
+      // — Floating food icons: fade in once, then loop float —
+      floaterAnims.forEach((anim, i) => {
+        const period = 2200 + i * 400;
+        Animated.sequence([
+          Animated.delay(floaters[i].delay),
+          Animated.timing(anim.opacity, {
+            toValue: isDark ? 0.18 : 0.12,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.loop(
+            Animated.sequence([
+              Animated.timing(anim.y, { toValue: -12, duration: period, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+              Animated.timing(anim.y, { toValue: 6, duration: period, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            ])
+          ),
+        ]).start();
+      });
+
+      // — Loading dots —
+      dotAnims.forEach((dotAnim, i) => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(i * 150),
+            Animated.timing(dotAnim, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(dotAnim, { toValue: 0.35, duration: 450, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          ])
+        ).start();
+      });
     });
 
+    return () => {
+      cancelAnimationFrame(raf);
+      stopAllLoops();
+    };
   }, []);
 
   useEffect(() => {
@@ -200,19 +187,22 @@ export default function SplashScreen({
     return () => clearTimeout(timer);
   }, [duration]);
 
+  // — Exit: stop every loop FIRST so values reset, then fade out —
   useEffect(() => {
     if (!minimumElapsed || !isReady || hasExited.current) return;
-
     hasExited.current = true;
+
+    stopAllLoops();
+
     Animated.timing(exitFade, {
       toValue: 0,
-      duration: 500,
+      duration: 420,
       easing: Easing.inOut(Easing.ease),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished && onFinished) onFinished();
     });
-  }, [exitFade, isReady, minimumElapsed, onFinished]);
+  }, [isReady, minimumElapsed, onFinished]);
 
   const wiggleRotate = wiggle.interpolate({
     inputRange: [-1, 0, 1],
@@ -222,9 +212,6 @@ export default function SplashScreen({
   const bgColor = colors.background;
   const brandTextColor = colors.text;
   const messageTextColor = colors.textMuted;
-
-  // Font size scaling based on saved preference
-  const fontScale = savedFontSize === 'small' ? 0.85 : savedFontSize === 'large' ? 1.15 : 1;
 
   return (
     <Animated.View
@@ -251,42 +238,39 @@ export default function SplashScreen({
 
       {/* Center content */}
       <View style={styles.center}>
-        {/* Full-screen logo */}
+        {/* Logo with breathe + wiggle */}
         <Animated.View
           style={[
             styles.logoWrap,
             {
               opacity: fadeIn,
-              transform: [{ scale: logoScale }, { rotate: wiggleRotate }],
+              transform: [{ scale: logoScaleCombined }, { rotate: wiggleRotate }],
             },
           ]}
         >
           <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
         </Animated.View>
 
-        {/* Brand name - scales with saved font size */}
+        {/* Brand name */}
         <Animated.Text
           style={[
             styles.brandText,
             {
-              color: brandTextColor,
               opacity: titleFade,
               transform: [{ translateY: titleSlide }],
-              fontSize: Math.round(36 * fontScale),
             },
           ]}
         >
-          CookMate
+          <Text style={{ color: brandTextColor }}>Cook</Text><Text style={{ color: colors.primary }}>Mate</Text>
         </Animated.Text>
 
-        {/* Loading message - scales with saved font size */}
+        {/* Loading message with shimmer */}
         <Animated.Text
           style={[
             styles.message,
             {
               color: messageTextColor,
-              opacity: msgFade,
-              fontSize: Math.round(14 * fontScale),
+              opacity: msgOpacity,
             },
           ]}
         >
@@ -303,14 +287,7 @@ export default function SplashScreen({
                 {
                   backgroundColor: colors.primary,
                   opacity: dotAnim,
-                  transform: [
-                    {
-                      scale: dotAnim.interpolate({
-                        inputRange: [0.35, 1],
-                        outputRange: [1, 1.5],
-                      }),
-                    },
-                  ],
+                  transform: [{ scale: dotScales[i] }],
                 },
               ]}
             />
@@ -346,7 +323,7 @@ const styles = StyleSheet.create({
     height: 160,
   },
   brandText: {
-    fontFamily: 'Geist_800ExtraBold',
+    fontFamily: 'PlayfairDisplay_800ExtraBold_Italic',
     fontSize: 36,
     letterSpacing: -0.5,
     marginBottom: 6,

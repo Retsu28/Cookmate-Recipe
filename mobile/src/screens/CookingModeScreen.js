@@ -10,11 +10,17 @@ import {
   ActivityIndicator,
   PanResponder,
   Linking,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setIsAudioActiveAsync } from 'expo-audio';
+import { reviewApi } from '../api/api';
+
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -62,6 +68,10 @@ export default function CookingModeScreen({ route, navigation }) {
   const { recipe } = route.params;
   const [currentStep, setCurrentStep] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [celebRating, setCelebRating] = useState(0);
+  const [celebComment, setCelebComment] = useState('');
+  const [celebSubmitting, setCelebSubmitting] = useState(false);
+  const [celebSubmitted, setCelebSubmitted] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [videoLoading, setVideoLoading] = useState(true);
@@ -185,7 +195,6 @@ export default function CookingModeScreen({ route, navigation }) {
   const bellFinishedRef = useRef(true);
 
   const stopBellSound = useCallback(async () => {
-    // Stop the keep-alive interval first
     if (bellIntervalRef.current) {
       clearInterval(bellIntervalRef.current);
       bellIntervalRef.current = null;
@@ -193,8 +202,7 @@ export default function CookingModeScreen({ route, navigation }) {
     bellFinishedRef.current = true;
     if (bellSoundRef.current) {
       try {
-        await bellSoundRef.current.stopAsync();
-        await bellSoundRef.current.unloadAsync();
+        bellSoundRef.current.remove();
       } catch (e) {
         // ignore
       }
@@ -296,39 +304,23 @@ export default function CookingModeScreen({ route, navigation }) {
     playBellSound();
   }, [showIntervalComplete]);
 
-  // Start a single bell sound instance, return the Sound object
-  const startBellInstance = useCallback(async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false,
-        playThroughEarpieceAndroid: false,
-      });
-      const { sound } = await Audio.Sound.createAsync(
-        require('../../sound/custom_sound.wav'),
-        { shouldPlay: true, isLooping: false, volume: 1.0 }
-      );
-      return sound;
-    } catch (err) {
-      console.log('[CookingMode] Bell sound error:', err);
-      return null;
-    }
-  }, []);
-
-  // Play bell once
+  // Play bell sound using expo-audio (SDK 55 compatible replacement for expo-av)
   const playBellSound = useCallback(async () => {
     await stopBellSound();
-    const sound = await startBellInstance();
-    if (!sound) return;
-    bellSoundRef.current = sound;
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.didJustFinish) {
-        sound.unloadAsync();
-        bellSoundRef.current = null;
-      }
-    });
-  }, [stopBellSound, startBellInstance]);
+    try {
+      await setIsAudioActiveAsync(true);
+      const player = createAudioPlayer(require('../../sound/custom_sound.wav'));
+      bellSoundRef.current = player;
+      bellFinishedRef.current = false;
+      player.play();
+      // Auto-stop after 5 seconds
+      setTimeout(() => {
+        stopBellSound();
+      }, 5000);
+    } catch (err) {
+      console.log('[CookingMode] Bell sound error:', err);
+    }
+  }, [stopBellSound]);
 
   // Text-to-speech: read step instruction aloud on step change (like web)
   const speak = useCallback((text) => {
@@ -349,6 +341,14 @@ export default function CookingModeScreen({ route, navigation }) {
     };
   }, [currentStep, steps, speak]);
 
+  const safeGoBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('RecipeDetail', { id: recipe.id });
+    }
+  }, [navigation, recipe.id]);
+
   // Show alert if no instructions available
   useEffect(() => {
     if (!hasInstructions) {
@@ -356,12 +356,12 @@ export default function CookingModeScreen({ route, navigation }) {
         'No Cooking Instructions',
         'This recipe doesn\'t have detailed step-by-step instructions yet.',
         [
-          { text: 'Go Back', onPress: () => navigation.goBack(), style: 'cancel' },
+          { text: 'Go Back', onPress: () => safeGoBack(), style: 'cancel' },
           { text: 'Stay Anyway', onPress: () => {} },
         ]
       );
     }
-  }, [hasInstructions, navigation]);
+  }, [hasInstructions, safeGoBack]);
 
   const handlePrevious = () => {
     if (currentStep > 0) {
@@ -380,6 +380,9 @@ export default function CookingModeScreen({ route, navigation }) {
 
   const handleFinish = useCallback(() => {
     stopBellSound();
+    setCelebRating(0);
+    setCelebComment('');
+    setCelebSubmitted(false);
     setIsCompleted(true);
     Speech.stop();
     // Trigger celebration animations
@@ -409,11 +412,25 @@ export default function CookingModeScreen({ route, navigation }) {
     ],
   }));
 
-  const handleCompleteAndExit = useCallback(() => {
+  const handleCelebSubmit = useCallback(async () => {
+    if (celebRating < 1) return;
+    setCelebSubmitting(true);
+    try {
+      await reviewApi.submitReview(recipe.id, { rating: celebRating, comment: celebComment.trim() || undefined });
+      setCelebSubmitted(true);
+    } catch {
+      // ignore — user can still review from recipe page
+    } finally {
+      setCelebSubmitting(false);
+    }
+  }, [celebRating, celebComment, recipe.id]);
+
+  const handleCompleteAndExit = useCallback(async () => {
     stopBellSound();
     Speech.stop();
-    navigation.goBack();
-  }, [navigation, stopBellSound]);
+    try { await reviewApi.markCooked(recipe.id); } catch { /* ignore */ }
+    safeGoBack();
+  }, [navigation, stopBellSound, recipe.id, safeGoBack]);
 
   // Swipe navigation (like web touch swipe)
   const panResponder = useRef(
@@ -468,7 +485,7 @@ export default function CookingModeScreen({ route, navigation }) {
                   <Text style={st.exitBtnSecondaryText}>Keep Cooking</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => { stopBellSound(); Speech.stop(); navigation.goBack(); }}
+                  onPress={() => { stopBellSound(); Speech.stop(); safeGoBack(); }}
                   style={[st.exitBtn, st.exitBtnDanger]}
                 >
                   <Text style={st.exitBtnDangerText}>Exit</Text>
@@ -652,7 +669,11 @@ export default function CookingModeScreen({ route, navigation }) {
           </View>
 
           {currentStep === steps.length - 1 ? (
-            <TouchableOpacity onPress={handleFinish} style={[st.nextBtn, { backgroundColor: '#22c55e' }]}>
+            <TouchableOpacity
+              onPress={handleFinish}
+              disabled={!canGoNext}
+              style={[st.nextBtn, { backgroundColor: '#22c55e' }, !canGoNext && { opacity: 0.4 }]}
+            >
               <Ionicons name="checkmark" size={18} color="#fff" style={{ marginRight: 4 }} />
               <Text style={st.nextBtnText}>Finish</Text>
             </TouchableOpacity>
@@ -670,29 +691,88 @@ export default function CookingModeScreen({ route, navigation }) {
       {/* Completion Celebration Overlay */}
       {isCompleted && (
         <Animated.View style={[st.completionOverlay, completionContainerStyle]}>
-          <Animated.View style={[st.completionContent, completionContentStyle]}>
-            <Animated.View style={[st.completionIconCircle, iconContainerStyle]}>
-              <Ionicons name="checkmark" size={64} color="#22c55e" />
-            </Animated.View>
-            <Text style={st.completionTitle}>Delicious!</Text>
-            <Text style={st.completionSubtitle}>
-              You've completed cooking{'\n'}
-              <Text style={st.completionRecipeName}>{recipe.title}</Text>
-            </Text>
-            <View style={st.completionStats}>
-              <View style={st.statItem}>
-                <Ionicons name="list" size={20} color="#a8a29e" />
-                <Text style={st.statText}>{steps.length} steps</Text>
-              </View>
-              <View style={st.statItem}>
-                <Ionicons name="time" size={20} color="#a8a29e" />
-                <Text style={st.statText}>{recipe.total_time_minutes || recipe.time || '--'} min</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={handleCompleteAndExit} style={st.completionButton}>
-              <Text style={st.completionButtonText}>Back to Recipe</Text>
-            </TouchableOpacity>
-          </Animated.View>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
+            <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 32 }} keyboardShouldPersistTaps="handled">
+              <Animated.View style={[st.completionContent, completionContentStyle]}>
+                <Animated.View style={[st.completionIconCircle, iconContainerStyle]}>
+                  <Ionicons name="checkmark" size={64} color="#22c55e" />
+                </Animated.View>
+                <Text style={st.completionTitle}>Delicious!</Text>
+                <Text style={st.completionSubtitle}>
+                  You've completed cooking{'\n'}
+                  <Text style={st.completionRecipeName}>{recipe.title}</Text>
+                </Text>
+                <View style={st.completionStats}>
+                  <View style={st.statItem}>
+                    <Ionicons name="list" size={20} color="#a8a29e" />
+                    <Text style={st.statText}>{steps.length} steps</Text>
+                  </View>
+                  <View style={st.statItem}>
+                    <Ionicons name="time" size={20} color="#a8a29e" />
+                    <Text style={st.statText}>{recipe.total_time_minutes || recipe.time || '--'} min</Text>
+                  </View>
+                </View>
+
+                {/* Inline quick review */}
+                <View style={st.celebReviewCard}>
+                  {celebSubmitted ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 12, gap: 6 }}>
+                      <Ionicons name="checkmark-circle" size={28} color="#22c55e" />
+                      <Text style={{ fontFamily: 'Geist_600SemiBold', color: '#22c55e', fontSize: 14 }}>Review submitted!</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={st.celebReviewLabel}>How was this recipe? <Text style={{ color: '#78716c' }}>(optional)</Text></Text>
+                      {/* Star row */}
+                      <View style={st.celebStarRow}>
+                        {[1,2,3,4,5].map(i => (
+                          <TouchableOpacity key={i} onPress={() => setCelebRating(i)} activeOpacity={0.7}>
+                            <Ionicons
+                              name={i <= celebRating ? 'star' : 'star-outline'}
+                              size={32}
+                              color={i <= celebRating ? '#f97316' : '#57534e'}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      {/* Comment input */}
+                      <TextInput
+                        value={celebComment}
+                        onChangeText={t => setCelebComment(t.slice(0, 500))}
+                        placeholder="Add a comment... (optional)"
+                        placeholderTextColor="#57534e"
+                        multiline
+                        numberOfLines={3}
+                        style={st.celebCommentInput}
+                      />
+                      {/* Buttons */}
+                      <View style={st.celebBtnRow}>
+                        <TouchableOpacity
+                          onPress={handleCelebSubmit}
+                          disabled={celebRating < 1 || celebSubmitting}
+                          style={[st.celebSubmitBtn, (celebRating < 1 || celebSubmitting) && { opacity: 0.4 }]}
+                        >
+                          {celebSubmitting
+                            ? <ActivityIndicator size="small" color="#fff" />
+                            : <Text style={st.celebSubmitBtnText}>Submit Review</Text>
+                          }
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleCompleteAndExit} style={st.celebSkipBtn}>
+                          <Text style={st.celebSkipBtnText}>Skip</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                {celebSubmitted && (
+                  <TouchableOpacity onPress={handleCompleteAndExit} style={st.completionButton}>
+                    <Text style={st.completionButtonText}>Back to Recipe</Text>
+                  </TouchableOpacity>
+                )}
+              </Animated.View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </Animated.View>
       )}
     </View>
@@ -914,7 +994,8 @@ const st = StyleSheet.create({
   },
   completionContent: {
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
+    width: '100%',
   },
   completionIconCircle: {
     width: 120,
@@ -946,7 +1027,7 @@ const st = StyleSheet.create({
   completionStats: {
     flexDirection: 'row',
     gap: 32,
-    marginBottom: 40,
+    marginBottom: 20,
   },
   statItem: {
     flexDirection: 'row',
@@ -968,5 +1049,72 @@ const st = StyleSheet.create({
     fontFamily: 'Geist_700Bold',
     fontSize: 16,
     color: '#fff',
+  },
+  celebReviewCard: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+  },
+  celebReviewLabel: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 13,
+    color: '#d6d3d1',
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  celebStarRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  celebCommentInput: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#e7e5e4',
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    textAlignVertical: 'top',
+    minHeight: 72,
+    marginBottom: 14,
+  },
+  celebBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  celebSubmitBtn: {
+    flex: 1,
+    backgroundColor: '#f97316',
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  celebSubmitBtnText: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 14,
+    color: '#fff',
+  },
+  celebSkipBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  celebSkipBtnText: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 14,
+    color: '#a8a29e',
   },
 });

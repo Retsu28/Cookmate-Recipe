@@ -52,8 +52,8 @@ export default function CameraScreen({ navigation }) {
 
   /* ── Hooks ── */
   const {
-    hasPermission, type, pictureSize, cameraRef,
-    configurePictureSize, toggleCameraType, takePicture: capturePhoto,
+    hasPermission, type, cameraRef,
+    toggleCameraType, takePicture: capturePhoto,
   } = useCamera();
 
   const {
@@ -593,8 +593,6 @@ export default function CameraScreen({ navigation }) {
           <CameraView
             style={StyleSheet.absoluteFillObject}
             facing={type}
-            pictureSize={pictureSize || undefined}
-            onCameraReady={configurePictureSize}
             ref={cameraRef}
           />
           <SafeAreaView style={st.cameraSafe} pointerEvents="box-none">

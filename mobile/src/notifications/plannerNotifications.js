@@ -8,6 +8,19 @@ import { plannerApi } from '../api/api';
 import { offlineCache } from '../offline/cacheService';
 import { subscribePlannerSocketEvents } from '../socket/plannerSocket';
 
+const NOTIFICATIONS_PREF_KEY = 'cookmate:notifications';
+
+async function isPushEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(NOTIFICATIONS_PREF_KEY);
+    if (!raw) return true;
+    const prefs = JSON.parse(raw);
+    return prefs.pushNotifications !== false;
+  } catch {
+    return true;
+  }
+}
+
 const DEVICE_ID_KEY = 'cookmate.notifications.deviceId';
 const LOCAL_SCHEDULE_PREFIX = 'local_schedule:';
 const MEAL_REMINDERS_CHANNEL_ID = 'meal-reminders-custom-v2';
@@ -277,6 +290,7 @@ export async function scheduleLocalMealReminder(plan, now = new Date()) {
 }
 
 export async function syncPlannerLocalNotifications(plans) {
+  if (!(await isPushEnabled())) return;
   const list = Array.isArray(plans) ? plans : [];
   await registerForPlannerPushNotifications().catch(() => {});
   for (const plan of list) {
@@ -295,6 +309,7 @@ export async function refreshPlannerReminderCache() {
 }
 
 export async function refreshAndSchedulePlannerReminders() {
+  if (!(await isPushEnabled())) return [];
   const plans = await refreshPlannerReminderCache();
   await syncPlannerLocalNotifications(plans);
   return plans;
@@ -336,19 +351,26 @@ export function initializePlannerNotifications(navigationRef) {
 
   AppState.addEventListener('change', (state) => {
     if (state === 'active') {
-      refreshAndSchedulePlannerReminders().catch(() => {});
+      isPushEnabled().then((enabled) => {
+        if (enabled) refreshAndSchedulePlannerReminders().catch(() => {});
+      });
     }
   });
 
   subscribePlannerSocketEvents({
     onReminderDue: (event) => {
-      if (event?.plan && getPlanWindowStatus(event.plan, event.server_now) === 'active') {
-        scheduleLocalMealReminder(event.plan, event.server_now).catch(() => {});
-      }
-      refreshPlannerReminderCache().catch(() => {});
+      isPushEnabled().then((enabled) => {
+        if (!enabled) return;
+        if (event?.plan && getPlanWindowStatus(event.plan, event.server_now) === 'active') {
+          scheduleLocalMealReminder(event.plan, event.server_now).catch(() => {});
+        }
+        refreshPlannerReminderCache().catch(() => {});
+      });
     },
     onPlansChanged: () => {
-      refreshAndSchedulePlannerReminders().catch(() => {});
+      isPushEnabled().then((enabled) => {
+        if (enabled) refreshAndSchedulePlannerReminders().catch(() => {});
+      });
     },
   })
     .then((unsubscribe) => {

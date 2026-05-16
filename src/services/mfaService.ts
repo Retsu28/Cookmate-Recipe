@@ -15,15 +15,6 @@ export interface MfaResult {
   message: string;
 }
 
-export class MfaRequiredError extends Error {
-  mfaUserId: number;
-  constructor(userId: number) {
-    super('MFA_REQUIRED');
-    this.name = 'MfaRequiredError';
-    this.mfaUserId = userId;
-  }
-}
-
 export const mfaService = {
   async getStatus(): Promise<MfaStatus> {
     return api.get<MfaStatus>('/api/mfa/status');

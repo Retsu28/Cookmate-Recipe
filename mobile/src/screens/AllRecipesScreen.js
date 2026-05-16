@@ -11,6 +11,31 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
+function StarRating({ rating, size = 14 }) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+      {[...Array(fullStars)].map((_, i) => (
+        <Ionicons key={`full-${i}`} name="star" size={size} color="#f59e0b" />
+      ))}
+      {hasHalfStar && (
+        <View style={{ position: 'relative', width: size, height: size }}>
+          <Ionicons name="star" size={size} color="#f59e0b" style={{ position: 'absolute', left: 0, top: 0 }} />
+          <View style={{ position: 'absolute', left: size / 2, top: 0, width: size / 2, height: size, backgroundColor: 'transparent' }}>
+            <Ionicons name="star" size={size} color="#d6d3d1" style={{ position: 'absolute', left: -size / 2, top: 0 }} />
+          </View>
+        </View>
+      )}
+      {[...Array(emptyStars)].map((_, i) => (
+        <Ionicons key={`empty-${i}`} name="star" size={size} color="#d6d3d1" />
+      ))}
+    </View>
+  );
+}
 import { recipeApi } from '../api/api';
 import { offlineCache } from '../offline/cacheService';
 import { useAppTheme } from '../context/ThemeContext';
@@ -77,6 +102,12 @@ const AllRecipeGridCard = memo(function AllRecipeGridCard({ item, colors, isDark
       </View>
       <Text style={[st.recipeTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
       <Text style={[st.recipeMeta, { color: colors.textMuted }]} numberOfLines={1}>{meta} - {item.difficulty || 'Any level'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+        <StarRating rating={item.avg_rating || 0} size={12} />
+        <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 11, color: colors.textMuted }}>
+          {(item.avg_rating || 0).toFixed(1)}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 });
@@ -141,8 +172,14 @@ export default function AllRecipesScreen({ navigation }) {
       try {
         const cachedRows = await offlineCache.recipes.getAll({ limit: 500 });
         const cached = cachedRows.map((r) => r.data).filter(Boolean);
-        if (cached.length > 0) {
-          const sorted = [...cached].sort((a, b) =>
+        // Ensure cached recipes have rating fields
+        const withRatings = cached.map((r) => ({
+          ...r,
+          avg_rating: r.avg_rating ?? 0,
+          review_count: r.review_count ?? 0,
+        }));
+        if (withRatings.length > 0) {
+          const sorted = [...withRatings].sort((a, b) =>
             String(a.title || '').localeCompare(String(b.title || ''))
           );
           setRecipes(sorted);

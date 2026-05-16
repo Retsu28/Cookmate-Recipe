@@ -2,23 +2,27 @@
 // Stores images in file system with SQLite metadata tracking
 // Provides LRU eviction and offline image display
 
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { getDb } from './db';
 
-const IMAGE_CACHE_DIR = `${FileSystem.cacheDirectory}cookmate-images/`;
 const MAX_CACHE_SIZE_MB = 50; // Maximum cache size in MB
 const MAX_CACHE_BYTES = MAX_CACHE_SIZE_MB * 1024 * 1024;
 
 let cacheDirReady = false;
+
+// Lazy getter — cacheDirectory can be null at module-init in standalone APK builds
+function getImageCacheDir() {
+  return `${FileSystem.cacheDirectory}cookmate-images/`;
+}
 
 /**
  * Ensure cache directory exists
  */
 async function ensureCacheDir() {
   if (cacheDirReady) return;
-  const dirInfo = await FileSystem.getInfoAsync(IMAGE_CACHE_DIR);
+  const dirInfo = await FileSystem.getInfoAsync(getImageCacheDir());
   if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(IMAGE_CACHE_DIR, { intermediates: true });
+    await FileSystem.makeDirectoryAsync(getImageCacheDir(), { intermediates: true });
   }
   cacheDirReady = true;
 }
@@ -32,7 +36,7 @@ function getLocalPath(url) {
     return ((acc << 5) - acc) + char.charCodeAt(0) | 0;
   }, 0).toString(16);
   const extension = url.split('.').pop()?.split('?')[0] || 'jpg';
-  return `${IMAGE_CACHE_DIR}${hash}.${extension}`;
+  return `${getImageCacheDir()}${hash}.${extension}`;
 }
 
 /**

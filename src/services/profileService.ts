@@ -1,5 +1,4 @@
 import api from '@/services/api';
-import authService from '@/services/authService';
 
 export interface UserProfile {
   id: number;
@@ -21,18 +20,13 @@ export interface AccountSettingsUpdate {
   new_password?: string;
 }
 
-function authHeaders(): Record<string, string> | undefined {
-  const token = authService.getToken();
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
-}
-
 export const profileService = {
   getProfile(userId: number) {
-    return api.get<{ profile: UserProfile }>(`/api/profile/${userId}`, authHeaders());
+    return api.get<{ profile: UserProfile }>(`/api/profile/${userId}`);
   },
 
   updateProfile(userId: number, data: AccountSettingsUpdate) {
-    return api.put<{ profile: UserProfile }>(`/api/profile/${userId}`, data, authHeaders());
+    return api.put<{ profile: UserProfile }>(`/api/profile/${userId}`, data);
   },
 
   uploadAvatar(userId: number, file: File) {
@@ -44,8 +38,7 @@ export const profileService = {
   deleteAccount(userId: number, currentPassword: string) {
     return api.delete<{ message: string }>(
       `/api/profile/${userId}`,
-      { current_password: currentPassword },
-      authHeaders()
+      { current_password: currentPassword }
     );
   },
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Button } from '@/components/ui/button';
-import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Barcode, CheckCircle2, Circle, Play, BookOpen, Edit2, ChefHat, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { DashboardSkeleton } from '@/components/SkeletonScreen';
@@ -251,7 +251,7 @@ export default function Dashboard() {
 
               {/* Text content — separate animation from image */}
               <div
-                className="absolute inset-0 flex flex-col justify-end items-center text-center pb-10 px-8 sm:px-12"
+                className="absolute inset-0 flex flex-col justify-end items-start pb-10 px-8 sm:px-12"
                 style={{ zIndex: 3 }}
               >
                 <div
@@ -261,22 +261,43 @@ export default function Dashboard() {
                     transform: carouselVisible ? 'translateY(0)' : 'translateY(12px)',
                   }}
                 >
-                  <span className="mb-5 inline-block rounded-full bg-white/95 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-orange-700 shadow-lg backdrop-blur">
+                  <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-orange-400/60 bg-black/30 px-3 py-1 text-xs font-bold uppercase tracking-widest text-orange-300 backdrop-blur">
+                    <Star size={11} className="fill-orange-400 text-orange-400" />
                     Featured Tonight
                   </span>
-                  <h2 className="mt-4 text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-none tracking-tight mb-4 drop-shadow-lg">
-                    {featuredRecipe?.title || 'Philippine Recipes'}
-                  </h2>
-                  <p className="text-white/70 text-base sm:text-lg font-medium mb-7 max-w-sm drop-shadow mx-auto">
-                    {featuredRecipe?.description?.slice(0, 90) || 'Discover authentic Filipino dishes from our curated recipe collection.'}
-                    {featuredRecipe?.total_time_minutes ? ` · ${featuredRecipe.total_time_minutes} min` : ''}
-                  </p>
-                  <Button
-                    onClick={() => navigate(`/recipe/${featuredRecipe?.id || 1}`)}
-                    className="rounded-full bg-orange-600 px-8 py-5 text-base font-bold text-white hover:bg-orange-500 shadow-xl shadow-orange-900/40 ring-2 ring-white/20"
+                  <h2
+                    className="mt-3 leading-none mb-4 drop-shadow-lg"
+                    style={{ fontFamily: '"Playfair Display", serif', fontWeight: 800 }}
                   >
+                    {(() => {
+                      const title = featuredRecipe?.title || 'Philippine Recipes';
+                      const words = title.split(' ');
+                      const half = Math.ceil(words.length / 2);
+                      const firstLine = words.slice(0, half).join(' ');
+                      const secondLine = words.slice(half).join(' ');
+                      return (
+                        <>
+                          <span className="block text-4xl sm:text-5xl lg:text-5xl text-white">{firstLine}</span>
+                          {secondLine && (
+                            <span className="block text-4xl sm:text-5xl lg:text-5xl text-orange-400" style={{ fontStyle: 'italic' }}>{secondLine}</span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </h2>
+                  <p className="text-white/70 text-sm sm:text-base font-medium mb-7 max-w-xs drop-shadow">
+                    {featuredRecipe?.description?.slice(0, 120) || 'Discover authentic Filipino dishes from our curated recipe collection.'}
+                  </p>
+                  <button
+                    onClick={() => navigate(`/recipe/${featuredRecipe?.id || 1}`)}
+                    className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-orange-600/50 ring-1 ring-white/20 transition-all duration-300 hover:from-orange-400 hover:to-orange-500 hover:shadow-orange-500/60 hover:scale-[1.04] active:scale-[0.97]"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 transition-colors group-hover:bg-white/30">
+                      <ChefHat size={11} className="text-white" />
+                    </span>
                     Let's Cook
-                  </Button>
+                    <ChevronRight size={12} className="opacity-60 transition-transform duration-300 group-hover:translate-x-1 group-hover:opacity-100" />
+                  </button>
                 </div>
               </div>
 
@@ -322,16 +343,16 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-1">
-              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col">
+              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col" onClick={() => navigate('/seasonal-guide')}>
                 <h3 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Seasonal<br />Ingredients</h3>
                 <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400 flex-1">
-                  Explore what's fresh this month: Artichokes, Asparagus, and ramps are back.
+                  Explore what's fresh in the Philippines this season: from highland Baguio veggies to tropical summer fruits.
                 </p>
                 <span className="font-bold text-[10px] uppercase tracking-widest text-stone-900 flex items-center gap-2 group-hover:text-orange-600 transition-colors underline decoration-2 underline-offset-4 dark:text-stone-200 dark:group-hover:text-orange-400">
                   Read Guide
                 </span>
               </div>
-              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col">
+              <div className="group cursor-pointer rounded-3xl border border-orange-100 bg-white p-8 shadow-sm shadow-orange-100/50 hover-lift hover:bg-orange-50/70 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-800/70 flex flex-col" onClick={() => navigate('/cooking-skills')}>
                 <h3 className="text-lg font-bold text-stone-900 mb-3 leading-tight dark:text-stone-100">Cooking Skills</h3>
                 <p className="text-stone-500 text-xs mb-6 leading-relaxed dark:text-stone-400 flex-1">
                   Master the 'Julienne' cut with our new 2-minute video tutorial.

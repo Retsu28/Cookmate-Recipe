@@ -243,8 +243,10 @@ export const reviewApi = {
   getMyReview: (recipeId) => api.get(`/api/recipes/${recipeId}/my-review`),
   submitReview: (recipeId, data) => api.post(`/api/recipes/${recipeId}/reviews`, data),
   deleteReview: (recipeId) => api.delete(`/api/recipes/${recipeId}/reviews`),
-  voteHelpful: (recipeId, reviewId, isHelpful) => api.post(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`, { isHelpful }),
+  voteHelpful: (recipeId, reviewId, helpfulnessLevel) => api.post(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`, { helpfulnessLevel }),
   removeVote: (recipeId, reviewId) => api.delete(`/api/recipes/${recipeId}/reviews/${reviewId}/helpful`),
+  checkCooked: (recipeId) => api.get(`/api/recipes/${recipeId}/cooking-complete`),
+  markCooked: (recipeId) => api.post(`/api/recipes/${recipeId}/cooking-complete`, {}),
 };
 
 export default api;

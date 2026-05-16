@@ -88,11 +88,6 @@ export default function SplashScreen({
   }, []);
   const floaters = useMemo(() => buildFloaters(), []);
 
-  // Re-apply on theme/fontSize change (handles settings updates)
-  useEffect(() => {
-    applyAppearanceSync(appearance);
-  }, [appearance]);
-
   useEffect(() => {
     const timer = setTimeout(() => setMinimumElapsed(true), minimumDuration);
     return () => clearTimeout(timer);
@@ -149,6 +144,7 @@ export default function SplashScreen({
                 src="/logo.png"
                 alt="CookMate"
                 className="w-20 h-20 object-contain drop-shadow-lg"
+                fetchPriority="high"
                 animate={{ rotate: [0, -8, 8, -4, 4, 0] }}
                 transition={{ duration: 1.8, delay: 0.6, repeat: Infinity, repeatDelay: 3 }}
               />
@@ -159,12 +155,13 @@ export default function SplashScreen({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
-              className={`font-extrabold text-stone-900 dark:text-stone-50 tracking-tight mb-2 ${
+              className={`italic tracking-tight mb-2 ${
                 appearance.fontSize === 'small' ? 'text-3xl' : 
                 appearance.fontSize === 'large' ? 'text-5xl' : 'text-4xl'
               }`}
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 800 }}
             >
-              CookMate
+              <span className="text-stone-900 dark:text-stone-50">Cook</span><span className="text-orange-500">Mate</span>
             </motion.h1>
 
             {/* Tagline - scales with font size preference */}

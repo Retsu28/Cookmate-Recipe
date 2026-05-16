@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   Animated,
@@ -357,9 +358,17 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [reviewKey, setReviewKey] = useState(0);
   const heartScale = useRef(new Animated.Value(1)).current;
   const downloadScale = useRef(new Animated.Value(1)).current;
   const aiChatRef = useRef(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      setReviewKey(prev => prev + 1);
+    }, [])
+  );
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
@@ -511,6 +520,24 @@ export default function RecipeDetailScreen({ route, navigation }) {
     try {
       if (next) {
         await recipeApi.saveRecipe(recipe.id);
+        // Auto-download for offline when saving — silent background download
+        if (recipe && isOnline && !isDownloaded) {
+          downloadRecipeForOffline(recipe, () => {})
+            .then(() => {
+              setIsDownloaded(true);
+              Alert.alert(
+                'Saved & Downloaded',
+                recipe.video_filename
+                  ? 'Recipe + video saved for offline use.'
+                  : 'Recipe saved for offline use.',
+              );
+            })
+            .catch(() => {
+              // Download failed silently — save still succeeded
+            });
+        } else {
+          Alert.alert('Saved', `"${recipe.title}" added to your saved recipes.`);
+        }
       } else {
         await recipeApi.unsaveRecipe(recipe.id);
       }
@@ -759,7 +786,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
           {/* Review Section */}
           <View style={{ marginTop: 16 }}>
-            <ReviewSection recipeId={id} onStatsChange={setReviewStats} />
+            <ReviewSection key={reviewKey} recipeId={id} onStatsChange={setReviewStats} />
           </View>
         </View>
       </ScrollView>

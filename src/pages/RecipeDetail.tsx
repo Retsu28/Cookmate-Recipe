@@ -28,6 +28,7 @@ import {
 } from '@/services/recipeOfflineCache';
 import StartCookingSplash from '@/components/StartCookingSplash';
 import { ReviewSection } from '@/components/recipe/ReviewSection';
+import { reviewService } from '@/services/reviewService';
 
 interface Ingredient {
   id: number;
@@ -87,6 +88,16 @@ export default function RecipeDetail() {
   const [offlineVideoUrl, setOfflineVideoUrl] = useState<string | null>(null);
   const [heartBounce, setHeartBounce] = useState(false);
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
+  const prevIsCooking = React.useRef(false);
+
+  // Bump reviewRefreshKey when user exits cooking mode so ReviewSection re-checks hasCooked
+  useEffect(() => {
+    if (prevIsCooking.current && !isCooking) {
+      setReviewRefreshKey(k => k + 1);
+    }
+    prevIsCooking.current = isCooking;
+  }, [isCooking]);
 
   // Derived ingredient list from recipe
   const ingredientList = recipe?.ingredients?.length
@@ -182,6 +193,21 @@ export default function RecipeDetail() {
     try {
       if (next) {
         await api.post(`/api/recipes/${recipe!.id}/save`);
+        // Auto-download for offline when saving — silent background download
+        if (recipe && isOnline && !isDownloaded) {
+          downloadRecipeForOffline(recipe as unknown as Record<string, unknown>)
+            .then(() => {
+              setIsDownloaded(true);
+              toast.success('Recipe saved & downloaded for offline', {
+                description: recipe.video_filename ? 'Recipe + video saved offline' : 'Recipe saved offline',
+              });
+            })
+            .catch(() => {
+              toast.success('Recipe saved', { description: 'Offline download skipped — try manually.' });
+            });
+        } else {
+          toast.success('Recipe saved');
+        }
       } else {
         await api.delete(`/api/recipes/${recipe!.id}/unsave`);
       }
@@ -241,6 +267,7 @@ export default function RecipeDetail() {
     const videoUrl = (offlineVideoUrl) ? offlineVideoUrl : rawVideoFilename;
     return (
       <GuidedCooking
+        recipeId={recipe.id}
         mode={{ title: recipe.title, steps }}
         step={currentStep}
         setStep={setCurrentStep}
@@ -248,6 +275,7 @@ export default function RecipeDetail() {
         videoUrl={videoUrl}
         timestamps={recipe.instruction_timestamps || []}
         videoCredits={recipe.video_credits || null}
+        onCookingComplete={user ? async () => { try { await reviewService.markCooked(recipe.id); } catch { /* ignore */ } } : undefined}
       />
     );
   }
@@ -434,7 +462,7 @@ export default function RecipeDetail() {
             </section>
 
             {/* Reviews */}
-            <ReviewSection recipeId={recipe.id} />
+            <ReviewSection key={reviewRefreshKey} recipeId={recipe.id} />
 
           </div>
 
@@ -606,6 +634,7 @@ function formatTime(seconds: number): string {
 }
 
 interface GuidedCookingProps {
+  recipeId: number;
   mode: { title: string; steps: { number: number; text: string; time: number | null }[] };
   step: number;
   setStep: (step: number) => void;
@@ -613,9 +642,10 @@ interface GuidedCookingProps {
   videoUrl: string | null;
   timestamps: { start: number; end: number; interval?: number }[] | null;
   videoCredits: string | null;
+  onCookingComplete?: () => void | Promise<void>;
 }
 
-function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, videoCredits }: GuidedCookingProps) {
+function GuidedCooking({ recipeId, mode, step, setStep, onExit, videoUrl, timestamps, videoCredits, onCookingComplete }: GuidedCookingProps) {
   const current = mode.steps[step];
   const progress = ((step + 1) / mode.steps.length) * 100;
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -631,6 +661,11 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, vide
   const [addedTime, setAddedTime] = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [celebRating, setCelebRating] = useState(0);
+  const [celebHover, setCelebHover] = useState(0);
+  const [celebComment, setCelebComment] = useState('');
+  const [celebSubmitting, setCelebSubmitting] = useState(false);
+  const [celebSubmitted, setCelebSubmitted] = useState(false);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
@@ -756,10 +791,28 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, vide
   };
 
   const handleFinish = () => {
+    setCelebRating(0);
+    setCelebHover(0);
+    setCelebComment('');
+    setCelebSubmitted(false);
     setShowCompletion(true);
   };
 
-  const handleCompleteAndExit = () => {
+  const handleCelebSubmit = async () => {
+    if (celebRating < 1) return;
+    setCelebSubmitting(true);
+    try {
+      await reviewService.submitReview(recipeId, { rating: celebRating, comment: celebComment.trim() || undefined });
+      setCelebSubmitted(true);
+    } catch {
+      // ignore, user can review from recipe page
+    } finally {
+      setCelebSubmitting(false);
+    }
+  };
+
+  const handleCompleteAndExit = async () => {
+    if (onCookingComplete) await onCookingComplete();
     setShowCompletion(false);
     onExit();
   };
@@ -1089,7 +1142,9 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, vide
           {step === mode.steps.length - 1 ? (
             <Button
               onClick={handleFinish}
-              className="w-24 sm:w-28 h-9 sm:h-10 rounded-full bg-green-500 text-sm sm:text-base font-bold text-white shadow-lg shadow-green-500/20 hover:bg-green-600 shrink-0"
+              disabled={intervalTimeLeft > 0 && !showIntervalComplete}
+              title={intervalTimeLeft > 0 && !showIntervalComplete ? 'Wait for interval to complete' : undefined}
+              className="w-24 sm:w-28 h-9 sm:h-10 rounded-full bg-green-500 text-sm sm:text-base font-bold text-white shadow-lg shadow-green-500/20 hover:bg-green-600 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               FINISH
             </Button>
@@ -1173,7 +1228,7 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, vide
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="flex items-center gap-10 mb-12"
+                className="flex items-center gap-10 mb-8"
               >
                 <div className="flex items-center gap-3 text-stone-400">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1188,18 +1243,80 @@ function GuidedCooking({ mode, step, setStep, onExit, videoUrl, timestamps, vide
                 </div>
               </motion.div>
 
-              {/* Button */}
-              <motion.button
+              {/* Inline quick review */}
+              <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleCompleteAndExit}
-                className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg rounded-full shadow-lg shadow-orange-500/30 transition-colors"
+                transition={{ delay: 0.55 }}
+                className="w-full max-w-sm mb-8"
               >
-                Back to Recipe
-              </motion.button>
+                {celebSubmitted ? (
+                  <div className="flex flex-col items-center gap-2 py-4">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20,6 9,17 4,12" /></svg>
+                    <p className="text-green-400 font-semibold text-sm">Review submitted!</p>
+                  </div>
+                ) : (
+                  <div className="bg-white/5 rounded-2xl p-5 border border-white/10">
+                    <p className="text-stone-300 text-sm font-medium mb-3 text-center">How was this recipe? <span className="text-stone-500">(optional)</span></p>
+                    {/* Stars */}
+                    <div className="flex justify-center gap-2 mb-4">
+                      {[1,2,3,4,5].map(i => (
+                        <button
+                          key={i}
+                          onMouseEnter={() => setCelebHover(i)}
+                          onMouseLeave={() => setCelebHover(0)}
+                          onClick={() => setCelebRating(i)}
+                          className="focus:outline-none transition-transform hover:scale-110"
+                        >
+                          <Star
+                            size={30}
+                            className={i <= (celebHover || celebRating) ? 'fill-orange-400 text-orange-400' : 'text-stone-600 hover:text-orange-300'}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    {/* Comment */}
+                    <textarea
+                      value={celebComment}
+                      onChange={e => setCelebComment(e.target.value.slice(0, 500))}
+                      placeholder="Add a comment... (optional)"
+                      rows={2}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-stone-200 placeholder-stone-600 focus:outline-none focus:border-orange-500 resize-none mb-3"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCelebSubmit}
+                        disabled={celebRating < 1 || celebSubmitting}
+                        className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm rounded-full transition-colors flex items-center justify-center gap-2"
+                      >
+                        {celebSubmitting && <Loader2 size={14} className="animate-spin" />}
+                        Submit Review
+                      </button>
+                      <button
+                        onClick={handleCompleteAndExit}
+                        className="flex-1 py-2.5 border border-white/20 hover:border-white/40 text-stone-300 hover:text-white font-semibold text-sm rounded-full transition-colors"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Button - shown after submission or always visible below */}
+              {celebSubmitted && (
+                <motion.button
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleCompleteAndExit}
+                  className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg rounded-full shadow-lg shadow-orange-500/30 transition-colors"
+                >
+                  Back to Recipe
+                </motion.button>
+              )}
             </motion.div>
           </motion.div>
         )}
