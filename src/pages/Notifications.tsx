@@ -44,42 +44,7 @@ type DbNotificationDisplay = {
 
 type CombinedNotification = PlannerNotification | DbNotificationDisplay;
 
-const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
-const DELETED_PLANNER_NOTIFICATIONS_KEY = 'cookmate.deletedPlannerNotifications';
-
-function getDeletedPlannerIds(): number[] {
-  try {
-    const stored = localStorage.getItem(DELETED_PLANNER_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDeletedPlannerIds(ids: number[]) {
-  try {
-    localStorage.setItem(DELETED_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function getReadPlannerIds(): number[] {
-  try {
-    const stored = localStorage.getItem(READ_PLANNER_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveReadPlannerIds(ids: number[]) {
-  try {
-    localStorage.setItem(READ_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
-  } catch {
-    // Ignore storage errors
-  }
-}
+type PlannerState = { ref_type: string; ref_id: number; is_read: boolean; is_deleted: boolean };
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
@@ -88,7 +53,7 @@ export default function NotificationsPage() {
   const [dbNotifications, setDbNotifications] = useState<DbNotificationDisplay[]>([]);
   const [filter, setFilter] = useState('all');
   const isInitialLoading = useInitialContentLoading();
-  const [readPlannerIds, setReadPlannerIds] = useState<number[]>(getReadPlannerIds());
+  const [plannerStates, setPlannerStates] = useState<PlannerState[]>([]);
 
   const notifications: CombinedNotification[] = [...dbNotifications, ...plannerNotifications];
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -103,22 +68,24 @@ export default function NotificationsPage() {
     async function load() {
       try {
         // Load both planner notifications and DB notifications
-        const [upcomingRes, groceryRes, dbNotifsRes] = await Promise.all([
+        const [upcomingRes, groceryRes, dbNotifsRes, fetchedStates] = await Promise.all([
           mealPlannerService.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
           mealPlannerService.getGroceryList().catch(() => null),
           user?.id ? notificationService.getNotifications(user.id).catch(() => []) : Promise.resolve([]),
+          user?.id ? notificationService.getPlannerStates().catch(() => []) : Promise.resolve([]),
         ]);
         if (cancelled) return;
         const plans = (upcomingRes as { plans?: MealPlan[] } | null)?.plans || [];
         const groceryList = (groceryRes as { groceryList?: GroceryList } | null)?.groceryList;
         const dbNotifs: Notification[] = dbNotifsRes || [];
+        const states: PlannerState[] = fetchedStates || [];
+        setPlannerStates(states);
 
         const nextPlannerNotifications: PlannerNotification[] = [];
         const nextDbNotifications: DbNotificationDisplay[] = [];
 
-        // Get stored read/deleted IDs for planner notifications
-        const storedReadIds = getReadPlannerIds();
-        const storedDeletedIds = getDeletedPlannerIds();
+        const storedReadIds = states.filter(s => s.is_read).map(s => s.ref_id);
+        const storedDeletedIds = states.filter(s => s.is_deleted).map(s => s.ref_id);
 
         // Convert DB notifications
         dbNotifs.forEach((notif: Notification) => {
@@ -187,18 +154,20 @@ export default function NotificationsPage() {
 
   const markAllRead = async () => {
     // Update local state for planner notifications
-    const allPlannerIds = plannerNotifications.map(n => n.id);
     setPlannerNotifications(current => current.map(n => ({ ...n, read: true })));
     setDbNotifications(current => current.map(n => ({ ...n, read: true })));
 
-    // Persist all planner notification IDs to localStorage
-    const newReadIds = [...new Set([...readPlannerIds, ...allPlannerIds])];
-    setReadPlannerIds(newReadIds);
-    saveReadPlannerIds(newReadIds);
-
-    // Call API to mark all DB notifications as read
+    // Persist planner read states to DB
     try {
-      await notificationService.markAllAsRead();
+      await Promise.all([
+        ...plannerNotifications.map(n =>
+          notificationService.upsertPlannerState(
+            n.type === 'Shopping' ? 'grocery_list' : 'meal_plan',
+            n.id, true, undefined
+          )
+        ),
+        notificationService.markAllAsRead(),
+      ]);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }
@@ -218,12 +187,13 @@ export default function NotificationsPage() {
         console.error('Failed to mark as read:', err);
       }
     } else {
-      // Update local state for planner notifications
       setPlannerNotifications(current => current.map(n => n.id === id ? { ...n, read: true } : n));
-      // Persist to localStorage
-      const newReadIds = [...readPlannerIds, id];
-      setReadPlannerIds(newReadIds);
-      saveReadPlannerIds(newReadIds);
+      const refType = notif.type === 'Shopping' ? 'grocery_list' : 'meal_plan';
+      try {
+        await notificationService.upsertPlannerState(refType, id, true, undefined);
+      } catch (err) {
+        console.error('Failed to mark planner notification as read:', err);
+      }
     }
   };
 
@@ -241,16 +211,34 @@ export default function NotificationsPage() {
         console.error('Failed to delete notification:', err);
       }
     } else {
-      // Update local state and persist to localStorage so it doesn't reappear on refresh
       setPlannerNotifications(current => current.filter(n => n.id !== id));
-      const newDeletedIds = [...new Set([...getDeletedPlannerIds(), id])];
-      saveDeletedPlannerIds(newDeletedIds);
+      const refType = notif.type === 'Shopping' ? 'grocery_list' : 'meal_plan';
+      try {
+        await notificationService.upsertPlannerState(refType, id, undefined, true);
+      } catch (err) {
+        console.error('Failed to delete planner notification:', err);
+      }
     }
   };
 
-  const clearAll = () => {
+  const clearAll = async () => {
+    const currentPlanner = plannerNotifications;
+    const currentDb = dbNotifications;
     setPlannerNotifications([]);
     setDbNotifications([]);
+    try {
+      await Promise.all([
+        ...currentDb.map(n => notificationService.deleteNotification(n.dbId)),
+        ...currentPlanner.map(n =>
+          notificationService.upsertPlannerState(
+            n.type === 'Shopping' ? 'grocery_list' : 'meal_plan',
+            n.id, undefined, true
+          )
+        ),
+      ]);
+    } catch (err) {
+      console.error('Failed to persist clear all:', err);
+    }
   };
 
   const openNotification = (id: number) => {

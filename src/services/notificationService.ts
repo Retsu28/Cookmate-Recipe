@@ -28,4 +28,13 @@ export const notificationService = {
   async deleteNotification(notificationId: number): Promise<void> {
     await api.delete(`/api/notifications/${notificationId}`);
   },
+
+  async getPlannerStates(): Promise<{ ref_type: string; ref_id: number; is_read: boolean; is_deleted: boolean }[]> {
+    const response = await api.get<{ states: { ref_type: string; ref_id: number; is_read: boolean; is_deleted: boolean }[] }>('/api/notifications/planner-states');
+    return response.states || [];
+  },
+
+  async upsertPlannerState(ref_type: string, ref_id: number, is_read?: boolean, is_deleted?: boolean): Promise<void> {
+    await api.patch('/api/notifications/planner-states', { ref_type, ref_id, is_read, is_deleted });
+  },
 };

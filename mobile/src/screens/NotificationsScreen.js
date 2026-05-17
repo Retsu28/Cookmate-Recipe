@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import NotificationCard from '../components/NotificationCard';
 import { useAppTheme } from '../context/ThemeContext';
 import { NotificationsContentSkeleton } from '../components/SkeletonPlaceholder';
@@ -18,42 +17,6 @@ import { plannerApi, notificationApi } from '../api/api';
 import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '../notifications/plannerNotifications';
 import { useAuth } from '../context/AuthContext';
 
-const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
-const DELETED_PLANNER_NOTIFICATIONS_KEY = 'cookmate.deletedPlannerNotifications';
-
-async function getReadPlannerIds() {
-  try {
-    const stored = await AsyncStorage.getItem(READ_PLANNER_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveReadPlannerIds(ids) {
-  try {
-    await AsyncStorage.setItem(READ_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-async function getDeletedPlannerIds() {
-  try {
-    const stored = await AsyncStorage.getItem(DELETED_PLANNER_NOTIFICATIONS_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveDeletedPlannerIds(ids) {
-  try {
-    await AsyncStorage.setItem(DELETED_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export default function NotificationsScreen({ navigation }) {
   const { colors, isDark } = useAppTheme();
@@ -61,13 +24,7 @@ export default function NotificationsScreen({ navigation }) {
   const [plannerNotifications, setPlannerNotifications] = useState([]);
   const [dbNotifications, setDbNotifications] = useState([]);
   const [filter, setFilter] = useState('All');
-  const [readPlannerIds, setReadPlannerIds] = useState([]);
   const isInitialLoading = useInitialContentLoading();
-
-  // Load stored read IDs on mount
-  useEffect(() => {
-    getReadPlannerIds().then(setReadPlannerIds);
-  }, []);
 
   const notifications = [...dbNotifications, ...plannerNotifications];
   const filters = ['All', 'Reminders', 'Shopping', 'Recipes'];
@@ -83,17 +40,19 @@ export default function NotificationsScreen({ navigation }) {
     async function load() {
       try {
         // Load both planner notifications and DB notifications
-        const [upcomingRes, groceryRes, dbNotifsRes, storedReadIds, storedDeletedIds] = await Promise.all([
+        const [upcomingRes, groceryRes, dbNotifsRes, statesRes] = await Promise.all([
           plannerApi.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
           plannerApi.getGroceryList().catch(() => null),
           user?.id ? notificationApi.getNotifications(user.id).catch(() => null) : Promise.resolve(null),
-          getReadPlannerIds(),
-          getDeletedPlannerIds(),
+          user?.id ? notificationApi.getPlannerStates().catch(() => null) : Promise.resolve(null),
         ]);
         if (cancelled) return;
         const plans = upcomingRes?.data?.plans || [];
         const groceryList = groceryRes?.data?.groceryList;
         const dbNotifs = dbNotifsRes?.data?.notifications || [];
+        const states = statesRes?.data?.states || [];
+        const storedReadIds = states.filter(s => s.is_read).map(s => s.ref_id);
+        const storedDeletedIds = states.filter(s => s.is_deleted).map(s => s.ref_id);
 
         const nextPlannerNotifications = [];
         const nextDbNotifications = [];
@@ -104,7 +63,7 @@ export default function NotificationsScreen({ navigation }) {
           nextDbNotifications.push({
             id: notif.id + 100000, // Offset to avoid ID collision
             dbId: notif.id,
-            type: isRecipe ? 'Recipes' : 'System',
+            type: isRecipe ? 'Recipe' : 'System',
             title: notif.title,
             message: notif.message,
             time: new Date(notif.created_at).toLocaleDateString(),
@@ -168,14 +127,17 @@ export default function NotificationsScreen({ navigation }) {
     setPlannerNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
     setDbNotifications((curr) => curr.map((n) => ({ ...n, read: true })));
 
-    // Persist all planner notification IDs to AsyncStorage
-    const newReadIds = [...new Set([...readPlannerIds, ...allPlannerIds])];
-    setReadPlannerIds(newReadIds);
-    await saveReadPlannerIds(newReadIds);
-
-    // Call API to persist for DB notifications
+    // Persist planner read states to DB
     try {
-      await notificationApi.markAllAsRead();
+      await Promise.all([
+        ...plannerNotifications.map(n =>
+          notificationApi.upsertPlannerState(
+            n.type === 'Shopping' ? 'grocery_list' : 'meal_plan',
+            n.id, true, undefined
+          )
+        ),
+        notificationApi.markAllAsRead(),
+      ]);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
     }
@@ -194,15 +156,33 @@ export default function NotificationsScreen({ navigation }) {
       }
     } else {
       setPlannerNotifications((curr) => curr.filter((n) => n.id !== id));
-      const currentDeleted = await getDeletedPlannerIds();
-      const newDeletedIds = [...new Set([...currentDeleted, id])];
-      await saveDeletedPlannerIds(newDeletedIds);
+      const refType = notif.type === 'Shopping' ? 'grocery_list' : 'meal_plan';
+      try {
+        await notificationApi.upsertPlannerState(refType, id, undefined, true);
+      } catch (err) {
+        console.error('Failed to delete planner notification:', err);
+      }
     }
   };
 
-  const clearAll = () => {
+  const clearAll = async () => {
+    const currentPlanner = plannerNotifications;
+    const currentDb = dbNotifications;
     setPlannerNotifications([]);
     setDbNotifications([]);
+    try {
+      await Promise.all([
+        ...currentDb.map(n => notificationApi.deleteNotification(n.dbId)),
+        ...currentPlanner.map(n =>
+          notificationApi.upsertPlannerState(
+            n.type === 'Shopping' ? 'grocery_list' : 'meal_plan',
+            n.id, undefined, true
+          )
+        ),
+      ]);
+    } catch (err) {
+      console.error('Failed to persist clear all:', err);
+    }
   };
 
   const markRead = async (id) => {
@@ -219,12 +199,13 @@ export default function NotificationsScreen({ navigation }) {
         console.error('Failed to mark as read:', err);
       }
     } else {
-      // Update local state for planner notifications
       setPlannerNotifications((curr) => curr.map((n) => n.id === id ? { ...n, read: true } : n));
-      // Persist to AsyncStorage
-      const newReadIds = [...readPlannerIds, id];
-      setReadPlannerIds(newReadIds);
-      await saveReadPlannerIds(newReadIds);
+      const refType = notif.type === 'Shopping' ? 'grocery_list' : 'meal_plan';
+      try {
+        await notificationApi.upsertPlannerState(refType, id, true, undefined);
+      } catch (err) {
+        console.error('Failed to mark planner notification as read:', err);
+      }
     }
   };
 

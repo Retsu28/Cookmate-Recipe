@@ -96,3 +96,49 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
+exports.getPlannerStates = async (req, res) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+
+    const result = await pool.query(
+      `SELECT ref_type, ref_id, is_read, is_deleted
+       FROM planner_notification_states
+       WHERE user_id = $1`,
+      [userId]
+    );
+    res.json({ states: result.rows });
+  } catch (err) {
+    logger.error('[notifications/getPlannerStates]', err);
+    res.status(500).json({ error: 'Failed to fetch planner notification states.' });
+  }
+};
+
+exports.upsertPlannerState = async (req, res) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required.' });
+
+    const { ref_type, ref_id, is_read, is_deleted } = req.body;
+    if (!ref_type || ref_id === undefined) {
+      return res.status(400).json({ error: 'ref_type and ref_id are required.' });
+    }
+
+    await pool.query(
+      `INSERT INTO planner_notification_states (user_id, ref_type, ref_id, is_read, is_deleted, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, ref_type, ref_id)
+       DO UPDATE SET
+         is_read    = COALESCE(EXCLUDED.is_read, planner_notification_states.is_read),
+         is_deleted = COALESCE(EXCLUDED.is_deleted, planner_notification_states.is_deleted),
+         updated_at = NOW()`,
+      [userId, ref_type, ref_id, is_read ?? false, is_deleted ?? false]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('[notifications/upsertPlannerState]', err);
+    res.status(500).json({ error: 'Failed to update planner notification state.' });
+  }
+};
+

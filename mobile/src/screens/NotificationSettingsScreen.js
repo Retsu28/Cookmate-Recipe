@@ -17,10 +17,10 @@ import useInitialContentLoading from '../hooks/useInitialContentLoading';
 import { settingsApi } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 
-const STORAGE_KEY = 'cookmate.notificationSettings';
+const STORAGE_KEY = 'cookmate:notifications';
 
 const defaultNotificationPreferences = {
-  pushAlerts: true,
+  pushNotifications: true,
   emailAlerts: true,
   mealReminders: true,
   ingredientExpiry: true,
@@ -29,7 +29,7 @@ const defaultNotificationPreferences = {
 
 const channelRows = [
   {
-    id: 'pushAlerts',
+    id: 'pushNotifications',
     title: 'Push alerts',
     description: 'Show reminders and important updates in the app.',
     icon: 'phone-portrait-outline',
@@ -131,10 +131,10 @@ export default function NotificationSettingsScreen({ navigation }) {
               
               // Map API format to local format
               const mappedPreferences = {
-                pushAlerts: typeof apiPreferences.pushNotifications === 'boolean' ? apiPreferences.pushNotifications : localPreferences.pushAlerts,
+                pushNotifications: typeof apiPreferences.pushNotifications === 'boolean' ? apiPreferences.pushNotifications : localPreferences.pushNotifications,
                 emailAlerts: typeof apiPreferences.emailNotifications === 'boolean' ? apiPreferences.emailNotifications : localPreferences.emailAlerts,
-                mealReminders: localPreferences.mealReminders, // Keep local default
-                ingredientExpiry: localPreferences.ingredientExpiry, // Keep local default
+                mealReminders: localPreferences.mealReminders,
+                ingredientExpiry: localPreferences.ingredientExpiry,
                 recommendations: typeof apiPreferences.newRecipeAlerts === 'boolean' ? apiPreferences.newRecipeAlerts : localPreferences.recommendations,
               };
               
@@ -169,10 +169,10 @@ export default function NotificationSettingsScreen({ navigation }) {
         try {
           // Map local format to API format
           const apiPayload = {
-            pushNotifications: preferences.pushAlerts,
+            pushNotifications: preferences.pushNotifications,
             emailNotifications: preferences.emailAlerts,
-            newRecipeAlerts: preferences.recommendations, // Map local to API format
-            weeklyDigest: false, // Default value since this screen doesn't have weekly digest
+            newRecipeAlerts: preferences.recommendations,
+            weeklyDigest: false,
           };
           
           await settingsApi.saveSettings(user.id, 'notifications', apiPayload);

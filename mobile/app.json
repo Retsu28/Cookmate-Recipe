@@ -56,7 +56,7 @@
       "expo-image-picker"
     ],
     "extra": {
-      "apiBaseUrl": "http://192.168.1.6:5000",
+      "apiBaseUrl": "https://cookmatehub.duckdns.org",
       "firebaseAuthDomain": "https://cookmate-9272d.firebaseapp.com",
       "googleAuthRedirectUri": "https://cookmate-9272d.firebaseapp.com/__/auth/handler",
       "googleWebClientId": "878930590445-q6keo0r1i8kul6l38tlssrv8cq5vvims.apps.googleusercontent.com",

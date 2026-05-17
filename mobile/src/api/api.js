@@ -198,6 +198,9 @@ export const notificationApi = {
   markAsRead: (notificationId) => api.patch(`/api/notifications/${notificationId}/read`),
   markAllAsRead: () => api.patch('/api/notifications/read-all'),
   deleteNotification: (notificationId) => api.delete(`/api/notifications/${notificationId}`),
+  getPlannerStates: () => api.get('/api/notifications/planner-states'),
+  upsertPlannerState: (ref_type, ref_id, is_read, is_deleted) =>
+    api.patch('/api/notifications/planner-states', { ref_type, ref_id, is_read, is_deleted }),
 };
 
 export const profileApi = {
