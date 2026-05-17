@@ -45,6 +45,24 @@ type DbNotificationDisplay = {
 type CombinedNotification = PlannerNotification | DbNotificationDisplay;
 
 const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
+const DELETED_PLANNER_NOTIFICATIONS_KEY = 'cookmate.deletedPlannerNotifications';
+
+function getDeletedPlannerIds(): number[] {
+  try {
+    const stored = localStorage.getItem(DELETED_PLANNER_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedPlannerIds(ids: number[]) {
+  try {
+    localStorage.setItem(DELETED_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 function getReadPlannerIds(): number[] {
   try {
@@ -98,8 +116,9 @@ export default function NotificationsPage() {
         const nextPlannerNotifications: PlannerNotification[] = [];
         const nextDbNotifications: DbNotificationDisplay[] = [];
 
-        // Get stored read IDs for planner notifications
+        // Get stored read/deleted IDs for planner notifications
         const storedReadIds = getReadPlannerIds();
+        const storedDeletedIds = getDeletedPlannerIds();
 
         // Convert DB notifications
         dbNotifs.forEach((notif: Notification) => {
@@ -121,7 +140,7 @@ export default function NotificationsPage() {
           });
         });
 
-        plans.forEach((plan: MealPlan) => {
+        plans.filter((plan: MealPlan) => !storedDeletedIds.includes(plan.id)).forEach((plan: MealPlan) => {
           const status = getPlanWindowStatus(plan);
           const isRead = storedReadIds.includes(plan.id);
           nextPlannerNotifications.push({
@@ -138,7 +157,7 @@ export default function NotificationsPage() {
           });
         });
 
-        if (groceryList && groceryList.totalItems > 0) {
+        if (groceryList && groceryList.totalItems > 0 && !storedDeletedIds.includes(-1)) {
           const groceryId = -1;
           const isGroceryRead = storedReadIds.includes(groceryId);
           nextPlannerNotifications.push({
@@ -222,8 +241,10 @@ export default function NotificationsPage() {
         console.error('Failed to delete notification:', err);
       }
     } else {
-      // Just update local state for planner notifications
+      // Update local state and persist to localStorage so it doesn't reappear on refresh
       setPlannerNotifications(current => current.filter(n => n.id !== id));
+      const newDeletedIds = [...new Set([...getDeletedPlannerIds(), id])];
+      saveDeletedPlannerIds(newDeletedIds);
     }
   };
 
