@@ -19,6 +19,7 @@ import { formatPlanWindow, getCountdownText, getPlanWindowStatus } from '../noti
 import { useAuth } from '../context/AuthContext';
 
 const READ_PLANNER_NOTIFICATIONS_KEY = 'cookmate.readPlannerNotifications';
+const DELETED_PLANNER_NOTIFICATIONS_KEY = 'cookmate.deletedPlannerNotifications';
 
 async function getReadPlannerIds() {
   try {
@@ -32,6 +33,23 @@ async function getReadPlannerIds() {
 async function saveReadPlannerIds(ids) {
   try {
     await AsyncStorage.setItem(READ_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function getDeletedPlannerIds() {
+  try {
+    const stored = await AsyncStorage.getItem(DELETED_PLANNER_NOTIFICATIONS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveDeletedPlannerIds(ids) {
+  try {
+    await AsyncStorage.setItem(DELETED_PLANNER_NOTIFICATIONS_KEY, JSON.stringify(ids));
   } catch {
     // Ignore storage errors
   }
@@ -65,11 +83,12 @@ export default function NotificationsScreen({ navigation }) {
     async function load() {
       try {
         // Load both planner notifications and DB notifications
-        const [upcomingRes, groceryRes, dbNotifsRes, storedReadIds] = await Promise.all([
+        const [upcomingRes, groceryRes, dbNotifsRes, storedReadIds, storedDeletedIds] = await Promise.all([
           plannerApi.getUpcoming({ lookaheadHours: 168, lookbackHours: 24 }),
           plannerApi.getGroceryList().catch(() => null),
           user?.id ? notificationApi.getNotifications(user.id).catch(() => null) : Promise.resolve(null),
           getReadPlannerIds(),
+          getDeletedPlannerIds(),
         ]);
         if (cancelled) return;
         const plans = upcomingRes?.data?.plans || [];
@@ -97,7 +116,7 @@ export default function NotificationsScreen({ navigation }) {
           });
         });
 
-        plans.forEach((plan) => {
+        plans.filter((plan) => !storedDeletedIds.includes(plan.id)).forEach((plan) => {
           const status = getPlanWindowStatus(plan);
           const isRead = storedReadIds.includes(plan.id);
           nextPlannerNotifications.push({
@@ -115,7 +134,7 @@ export default function NotificationsScreen({ navigation }) {
           });
         });
 
-        if (groceryList && groceryList.totalItems > 0) {
+        if (groceryList && groceryList.totalItems > 0 && !storedDeletedIds.includes(-1)) {
           const groceryId = -1;
           const isGroceryRead = storedReadIds.includes(groceryId);
           nextPlannerNotifications.push({
@@ -159,6 +178,25 @@ export default function NotificationsScreen({ navigation }) {
       await notificationApi.markAllAsRead();
     } catch (err) {
       console.error('Failed to mark all as read:', err);
+    }
+  };
+
+  const deleteNotification = async (id) => {
+    const notif = notifications.find((n) => n.id === id);
+    if (!notif) return;
+
+    if (notif.source === 'db') {
+      setDbNotifications((curr) => curr.filter((n) => n.id !== id));
+      try {
+        await notificationApi.deleteNotification(notif.dbId);
+      } catch (err) {
+        console.error('Failed to delete notification:', err);
+      }
+    } else {
+      setPlannerNotifications((curr) => curr.filter((n) => n.id !== id));
+      const currentDeleted = await getDeletedPlannerIds();
+      const newDeletedIds = [...new Set([...currentDeleted, id])];
+      await saveDeletedPlannerIds(newDeletedIds);
     }
   };
 
@@ -266,6 +304,7 @@ export default function NotificationsScreen({ navigation }) {
           <NotificationCard
             notification={item}
             onPress={() => openNotification(item)}
+            onDelete={() => deleteNotification(item.id)}
           />
         )}
         ListEmptyComponent={

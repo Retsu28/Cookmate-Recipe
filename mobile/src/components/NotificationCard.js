@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
-export default function NotificationCard({ notification, onPress }) {
+export default function NotificationCard({ notification, onPress, onDelete }) {
   const { colors, isDark } = useAppTheme();
 
   return (
@@ -28,15 +28,27 @@ export default function NotificationCard({ notification, onPress }) {
         </Text>
       </View>
 
-      {!notification.read && (
-        <View style={[st.dot, { backgroundColor: colors.primary }]} />
-      )}
+      <View style={st.rightCol}>
+        {!notification.read && (
+          <View style={[st.dot, { backgroundColor: colors.primary }]} />
+        )}
+        {onDelete && (
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Delete notification"
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.textSubtle || '#a8a29e'} />
+          </TouchableOpacity>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
 
 const st = StyleSheet.create({
-  card: { flexDirection: 'row', gap: 14, paddingVertical: 16, borderBottomWidth: 1 },
+  card: { flexDirection: 'row', gap: 14, paddingVertical: 16, borderBottomWidth: 1, alignItems: 'center' },
+  rightCol: { alignItems: 'center', gap: 6 },
   iconBox: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, gap: 4 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
