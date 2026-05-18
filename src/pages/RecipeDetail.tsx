@@ -25,6 +25,7 @@ import {
   downloadRecipeForOffline,
   removeRecipeFromOffline,
   getOfflineVideoBlobUrl,
+  estimateDownloadSizeMB,
 } from '@/services/recipeOfflineCache';
 import StartCookingSplash from '@/components/StartCookingSplash';
 import { ReviewSection } from '@/components/recipe/ReviewSection';
@@ -86,6 +87,7 @@ export default function RecipeDetail() {
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [offlineVideoUrl, setOfflineVideoUrl] = useState<string | null>(null);
+  const [downloadSizeMB, setDownloadSizeMB] = useState<number>(0);
   const [heartBounce, setHeartBounce] = useState(false);
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
@@ -144,6 +146,14 @@ export default function RecipeDetail() {
     isRecipeDownloaded(recipe.id).then(setIsDownloaded);
   }, [recipe?.id]);
 
+  // Calculate download size when recipe loads
+  useEffect(() => {
+    if (recipe) {
+      const size = estimateDownloadSizeMB(recipe as unknown as Record<string, unknown>);
+      setDownloadSizeMB(size);
+    }
+  }, [recipe]);
+
   // Resolve offline Blob URL when downloaded
   useEffect(() => {
     if (!isDownloaded || !recipe?.id) { setOfflineVideoUrl(null); return; }
@@ -166,8 +176,16 @@ export default function RecipeDetail() {
       toast.success('Recipe downloaded for offline use', {
         description: recipe.video_filename ? 'Recipe + video saved to device' : 'Recipe saved to device',
       });
-    } catch {
-      toast.error('Download failed', { description: 'Please try again with a stable connection.' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Show informative errors (like storage space) directly; fallback to connection message for network errors
+      if (msg.includes('storage') || msg.includes('quota') || msg.includes('space')) {
+        toast.error('Not enough storage space', { description: msg });
+      } else if (msg.includes('network') || msg.includes('fetch') || msg.includes('Failed to fetch')) {
+        toast.error('Download failed', { description: 'Please try again with a stable connection.' });
+      } else {
+        toast.error('Download failed', { description: msg || 'Please try again with a stable connection.' });
+      }
     } finally {
       setDownloading(false);
       setDownloadProgress(0);
@@ -378,7 +396,11 @@ export default function RecipeDetail() {
                 aria-label={isDownloaded ? 'Remove offline copy' : 'Download for offline'}
                 onClick={handleDownloadToggle}
                 disabled={downloading || (!isOnline && !isDownloaded)}
-                title={!isOnline && !isDownloaded ? 'Go online to download' : isDownloaded ? 'Remove offline copy' : 'Download for offline use'}
+                title={!isOnline && !isDownloaded 
+                  ? 'Go online to download' 
+                  : isDownloaded 
+                    ? 'Remove offline copy' 
+                    : `Download for offline use (~${downloadSizeMB.toFixed(1)}MB)`}
                 className={`relative w-14 h-14 rounded-full shrink-0 overflow-hidden transition-all
                   ${isDownloaded
                     ? 'border-emerald-400 text-emerald-600 bg-emerald-50 hover:bg-red-50 hover:border-red-400 hover:text-red-500 dark:bg-emerald-950/30 dark:border-emerald-700 dark:text-emerald-400'

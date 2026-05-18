@@ -109,12 +109,17 @@ export default function DownloadsPage() {
           {pct !== null && (
             <div className="h-2 w-full rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
               <motion.div
-                className="h-full rounded-full bg-orange-400"
+                className={`h-full rounded-full ${pct > 90 ? 'bg-red-400' : 'bg-orange-400'}`}
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
                 transition={{ duration: 0.6 }}
               />
             </div>
+          )}
+          {pct !== null && pct > 90 && (
+            <p className="text-xs text-red-500 font-semibold">
+              ⚠️ Low storage space - free up space or remove downloads
+            </p>
           )}
           <p className="text-xs text-stone-400 dark:text-stone-500">
             {downloads.length} recipe{downloads.length !== 1 ? 's' : ''} downloaded

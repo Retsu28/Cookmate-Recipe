@@ -28,9 +28,13 @@
       },
       "package": "com.cookmate.app",
       "permissions": [
-        "CAMERA",
-        "NOTIFICATIONS",
-        "INTERNET"
+        "android.permission.CAMERA",
+        "android.permission.NOTIFICATIONS",
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "plugins": [
@@ -62,10 +66,10 @@
       "googleWebClientId": "878930590445-q6keo0r1i8kul6l38tlssrv8cq5vvims.apps.googleusercontent.com",
       "googleAndroidClientId": "878930590445-vtobh05t50hbl7k9b67220alh104gt4q.apps.googleusercontent.com",
       "eas": {
-        "projectId": "7d854313-ed87-4eb7-96f2-6064d436abb6"
+        "projectId": "bb647615-a585-47a1-a434-b6f2543b04bd"
       }
     },
     "scheme": "cookmate",
-    "owner": "cookmate067"
+    "owner": "lanczu12"
   }
 }

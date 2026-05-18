@@ -14,7 +14,7 @@
 // Purely additive: no existing service depends on this file.
 
 const DB_NAME = 'cookmate-offline';
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 const STORE_RECIPES = 'recipes';
 const STORE_SAVED = 'saved_recipes';
 const STORE_MEAL_PLANS = 'meal_plans';
@@ -68,7 +68,7 @@ function ensureFreshDb(): Promise<void> {
       const missing = REQUIRED_STORES.some((s) => !db.objectStoreNames.contains(s));
       db.close();
       if (!missing) { resolve(); return; }
-      // Stale DB — wipe it so the v5 upgrade runs cleanly on next open
+      // Stale DB — wipe it so the v7 upgrade runs cleanly on next open
       const del = indexedDB.deleteDatabase(DB_NAME);
       del.onsuccess = () => resolve();
       del.onerror = () => resolve();

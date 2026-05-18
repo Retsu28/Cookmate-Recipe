@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { lazy, Suspense, useState } from 'react'; // lazy/Suspense kept for admin routes
+import { lazy, Suspense, useState, useEffect } from 'react'; // lazy/Suspense kept for admin routes
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from 'next-themes';
@@ -41,6 +41,7 @@ import Onboarding from './pages/Onboarding';
 import RecipeDetail from './pages/RecipeDetail';
 import DownloadsPage from './pages/DownloadsPage';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import { cleanupOfflineVideoUrls } from '@/services/recipeOfflineCache';
 import About from './pages/About';
 import SeasonalGuide from './pages/SeasonalGuide';
 import CookingSkills from './pages/CookingSkills';
@@ -83,6 +84,18 @@ function SignOutSplash() {
 
 export default function App() {
   const [splashDone, setSplashDone] = useState(false);
+
+  // Cleanup blob URLs on window unload to prevent memory leaks
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      cleanupOfflineVideoUrls();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem={true} storageKey="cookmate:theme">

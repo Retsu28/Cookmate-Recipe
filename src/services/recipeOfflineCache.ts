@@ -17,11 +17,72 @@ export async function isRecipeDownloaded(id: number): Promise<boolean> {
   return downloadStore.isDownloaded(id);
 }
 
+/**
+ * Check browser storage quota
+ */
+async function checkBrowserStorage(): Promise<{ usedMB: number; availableMB: number; isLowSpace: boolean }> {
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const estimate = await navigator.storage.estimate();
+      const usedBytes = estimate.usage || 0;
+      const quotaBytes = estimate.quota || (1024 * 1024 * 1024); // Default 1GB
+      
+      const usedMB = Math.round(usedBytes / (1024 * 1024));
+      const availableMB = Math.round((quotaBytes - usedBytes) / (1024 * 1024));
+      
+      return {
+        usedMB,
+        availableMB,
+        isLowSpace: availableMB < 100, // Warning if less than 100MB
+      };
+    }
+  } catch { /* ignore */ }
+  
+  // Fallback if storage API not available
+  return { usedMB: 0, availableMB: 500, isLowSpace: false };
+}
+
+/**
+ * Estimate download size
+ */
+function estimateDownloadSize(recipe: Record<string, unknown>): number {
+  let sizeMB = 0.5; // Base recipe JSON
+  
+  const imageUrl = (recipe.image_url ?? recipe.image) as string | null;
+  if (imageUrl) {
+    sizeMB += 0.5; // Image ~500KB
+  }
+  
+  const videoFilename = recipe.video_filename as string | null;
+  if (videoFilename) {
+    sizeMB += 15; // Average video 15MB
+  }
+  
+  return sizeMB;
+}
+
 export async function downloadRecipeForOffline(
   recipe: Record<string, unknown>,
   onProgress?: (pct: number) => void,
 ): Promise<void> {
   const id = recipe.id as number;
+  
+  // Check storage space before downloading
+  const storage = await checkBrowserStorage();
+  const estimatedSize = estimateDownloadSize(recipe);
+  
+  if (storage.availableMB < estimatedSize) {
+    throw new Error(
+      `Not enough storage space. Need ~${estimatedSize.toFixed(1)}MB, ` +
+      `only ${storage.availableMB.toFixed(1)}MB available. ` +
+      `Please free up space by removing some downloaded recipes.`
+    );
+  }
+  
+  if (storage.isLowSpace) {
+    console.warn(`[recipeOfflineCache] Low storage warning: ${storage.usedMB}MB used`);
+  }
+  
   onProgress?.(5);
 
   // 1. Store recipe JSON in IndexedDB
@@ -47,14 +108,41 @@ export async function downloadRecipeForOffline(
       if (existing) {
         hasVideo = true;
         videoSizeBytes = existing.sizeBytes;
+        console.log(`[recipeOfflineCache] Video already cached for recipe ${id}`);
       } else {
-        const videoUrl = videoFilename.startsWith('http')
-          ? videoFilename
-          : `/video/${videoFilename}`;
+        // Try multiple strategies for video download
+        let blob: Blob | null = null;
+        const videoUrls: string[] = [];
 
-        const res = await fetch(videoUrl, { mode: 'cors', credentials: 'omit' });
-        if (res.ok) {
-          const blob = await res.blob();
+        // Primary: Direct URL if full URL
+        if (videoFilename.startsWith('http')) {
+          videoUrls.push(videoFilename);
+        }
+        // Fallback: API proxy endpoint
+        videoUrls.push(`/api/video/proxy?url=${encodeURIComponent(videoFilename)}`);
+
+        for (const videoUrl of videoUrls) {
+          try {
+            console.log(`[recipeOfflineCache] Trying video download: ${videoUrl}`);
+            const res = await fetch(videoUrl, {
+              mode: videoUrl.startsWith('/api/') ? 'same-origin' : 'cors',
+              credentials: videoUrl.startsWith('/api/') ? 'include' : 'omit',
+            });
+
+            if (res.ok) {
+              blob = await res.blob();
+              console.log(`[recipeOfflineCache] Video download success: ${blob.size} bytes`);
+              break;
+            } else {
+              console.warn(`[recipeOfflineCache] Video download failed: ${res.status} ${res.statusText}`);
+            }
+          } catch (fetchErr) {
+            console.warn(`[recipeOfflineCache] Video fetch error for ${videoUrl}:`, fetchErr);
+            continue;
+          }
+        }
+
+        if (blob && blob.size > 0) {
           videoSizeBytes = blob.size;
           await videoStore.put({
             recipeId: id,
@@ -64,6 +152,7 @@ export async function downloadRecipeForOffline(
             cachedAt: Date.now(),
           });
           hasVideo = true;
+          console.log(`[recipeOfflineCache] Video saved to IndexedDB for recipe ${id}`);
         }
       }
     } catch (e) {
@@ -107,16 +196,52 @@ export async function removeRecipeFromOffline(id: number): Promise<void> {
  * The Blob itself lives in IndexedDB and survives browser restarts.
  */
 export async function getOfflineVideoBlobUrl(id: number): Promise<string | null> {
-  if (blobUrlCache.has(id)) return blobUrlCache.get(id)!;
-  const row = await videoStore.get(id);
-  if (!row) return null;
-  const url = URL.createObjectURL(row.blob);
-  blobUrlCache.set(id, url);
-  return url;
+  try {
+    // Check in-memory cache first
+    if (blobUrlCache.has(id)) {
+      console.log(`[recipeOfflineCache] Using cached Blob URL for recipe ${id}`);
+      return blobUrlCache.get(id)!;
+    }
+
+    // Get from IndexedDB
+    const row = await videoStore.get(id);
+    if (!row) {
+      console.warn(`[recipeOfflineCache] No cached video found for recipe ${id}`);
+      return null;
+    }
+
+    // Validate blob
+    if (!row.blob || row.blob.size === 0) {
+      console.warn(`[recipeOfflineCache] Empty or invalid blob for recipe ${id}`);
+      return null;
+    }
+
+    // Create and cache object URL
+    const url = URL.createObjectURL(row.blob);
+    blobUrlCache.set(id, url);
+    console.log(`[recipeOfflineCache] Created Blob URL for recipe ${id}: ${url.substring(0, 50)}...`);
+    return url;
+  } catch (err) {
+    console.error(`[recipeOfflineCache] Error creating Blob URL for recipe ${id}:`, err);
+    return null;
+  }
 }
 
 export async function getOfflineRecipeList(): Promise<DownloadRow[]> {
   return downloadStore.getAll();
+}
+
+/**
+ * Clean up all cached Blob URLs to prevent memory leaks.
+ * Call this when the app is unloading or when memory cleanup is needed.
+ */
+export function cleanupOfflineVideoUrls(): void {
+  console.log(`[recipeOfflineCache] Cleaning up ${blobUrlCache.size} Blob URLs`);
+  blobUrlCache.forEach((url, id) => {
+    URL.revokeObjectURL(url);
+    console.log(`[recipeOfflineCache] Revoked Blob URL for recipe ${id}`);
+  });
+  blobUrlCache.clear();
 }
 
 export async function getOfflineStorageEstimate(): Promise<{ usedMB: number; quota: number | null }> {
@@ -133,3 +258,31 @@ export async function getOfflineStorageEstimate(): Promise<{ usedMB: number; quo
     return { usedMB: 0, quota: null };
   }
 }
+
+/**
+ * Estimate download size for a recipe (for UI display)
+ */
+export function estimateDownloadSizeMB(recipe: Record<string, unknown>): number {
+  return estimateDownloadSize(recipe);
+}
+
+/**
+ * Check available storage space (for UI display)
+ */
+export async function getAvailableStorageMB(): Promise<number> {
+  const storage = await checkBrowserStorage();
+  return storage.availableMB;
+}
+
+// Default export for convenience
+export default {
+  isRecipeDownloaded,
+  downloadRecipeForOffline,
+  removeRecipeFromOffline,
+  getOfflineVideoBlobUrl,
+  getOfflineRecipeList,
+  getOfflineStorageEstimate,
+  cleanupOfflineVideoUrls,
+  estimateDownloadSizeMB,
+  getAvailableStorageMB,
+};

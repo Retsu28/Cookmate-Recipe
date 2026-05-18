@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",
+    "axios": "^1.8.0",
     "@date-fns/tz": "^1.4.1",
     "@google/generative-ai": "^0.24.1",
     "@imgly/background-removal-node": "^1.4.3",

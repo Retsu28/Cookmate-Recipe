@@ -20,6 +20,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { createAudioPlayer, setIsAudioActiveAsync } from 'expo-audio';
 import { reviewApi } from '../api/api';
+import { getLocalSoundPath } from '../offline/recipeDownload';
+import { isOnlineNow } from '../offline/network';
 
 import Animated, {
   useSharedValue,
@@ -82,6 +84,9 @@ export default function CookingModeScreen({ route, navigation }) {
   const [intervalTimeLeft, setIntervalTimeLeft] = useState(0);
   const [showIntervalComplete, setShowIntervalComplete] = useState(false);
   const [addedTime, setAddedTime] = useState(0);
+
+  // Offline sound path for cooking timer
+  const [offlineSoundPath, setOfflineSoundPath] = useState(null);
 
   // Completion celebration animation values
   const completionScale = useSharedValue(0);
@@ -298,6 +303,22 @@ export default function CookingModeScreen({ route, navigation }) {
     return () => clearInterval(timer);
   }, [currentStep, timestamps, addedTime]);
 
+  // Load offline sound path on mount (for offline cooking mode)
+  useEffect(() => {
+    const loadOfflineSound = async () => {
+      try {
+        const soundPath = await getLocalSoundPath(recipe.id);
+        if (soundPath) {
+          setOfflineSoundPath(soundPath);
+          console.log('[CookingMode] Loaded offline sound path:', soundPath);
+        }
+      } catch (err) {
+        console.log('[CookingMode] No offline sound available:', err);
+      }
+    };
+    loadOfflineSound();
+  }, [recipe.id]);
+
   // Play bell sound once when interval completes — same as web useEffect on showIntervalComplete
   useEffect(() => {
     if (!showIntervalComplete) return;
@@ -309,7 +330,17 @@ export default function CookingModeScreen({ route, navigation }) {
     await stopBellSound();
     try {
       await setIsAudioActiveAsync(true);
-      const player = createAudioPlayer(require('../../sound/custom_sound.wav'));
+      
+      // Use offline sound path when available and device is offline
+      const isOffline = !isOnlineNow();
+      const soundSource = (isOffline && offlineSoundPath) 
+        ? { uri: offlineSoundPath }  // Use local file when offline
+        : require('../../sound/custom_sound.wav');  // Use bundled asset when online
+      
+      console.log(`[CookingMode] Playing bell sound (${isOffline ? 'offline' : 'online'}):`, 
+        isOffline && offlineSoundPath ? offlineSoundPath : 'bundled');
+      
+      const player = createAudioPlayer(soundSource);
       bellSoundRef.current = player;
       bellFinishedRef.current = false;
       player.play();
@@ -320,7 +351,7 @@ export default function CookingModeScreen({ route, navigation }) {
     } catch (err) {
       console.log('[CookingMode] Bell sound error:', err);
     }
-  }, [stopBellSound]);
+  }, [stopBellSound, offlineSoundPath]);
 
   // Text-to-speech: read step instruction aloud on step change (like web)
   const speak = useCallback((text) => {

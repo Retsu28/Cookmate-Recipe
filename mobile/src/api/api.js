@@ -206,6 +206,8 @@ export const notificationApi = {
 export const profileApi = {
   getProfile: (userId) => api.get(`/api/profile/${userId}`),
   updateProfile: (userId, data) => api.put(`/api/profile/${userId}`, data),
+  deleteAccount: (userId, currentPassword) =>
+    api.delete(`/api/profile/${userId}`, { data: { current_password: currentPassword } }),
   uploadAvatar: (userId, uri) => {
     const fileName = uri.split('/').pop() || 'avatar.jpg';
     const fileType = fileName.toLowerCase().endsWith('.png') ? 'image/png'

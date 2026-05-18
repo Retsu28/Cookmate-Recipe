@@ -2,7 +2,13 @@
 // Stores images in file system with SQLite metadata tracking
 // Provides LRU eviction and offline image display
 
-import * as FileSystem from 'expo-file-system';
+import {
+  getInfoAsync,
+  makeDirectoryAsync,
+  downloadAsync,
+  deleteAsync,
+  cacheDirectory,
+} from 'expo-file-system/legacy';
 import { getDb } from './db';
 
 const MAX_CACHE_SIZE_MB = 50; // Maximum cache size in MB
@@ -12,7 +18,7 @@ let cacheDirReady = false;
 
 // Lazy getter — cacheDirectory can be null at module-init in standalone APK builds
 function getImageCacheDir() {
-  return `${FileSystem.cacheDirectory}cookmate-images/`;
+  return `${cacheDirectory}cookmate-images/`;
 }
 
 /**
@@ -20,9 +26,9 @@ function getImageCacheDir() {
  */
 async function ensureCacheDir() {
   if (cacheDirReady) return;
-  const dirInfo = await FileSystem.getInfoAsync(getImageCacheDir());
+  const dirInfo = await getInfoAsync(getImageCacheDir());
   if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(getImageCacheDir(), { intermediates: true });
+    await makeDirectoryAsync(getImageCacheDir(), { intermediates: true });
   }
   cacheDirReady = true;
 }
@@ -102,7 +108,7 @@ export async function cacheImage(url) {
     );
 
     if (existing) {
-      const fileInfo = await FileSystem.getInfoAsync(existing.local_path);
+      const fileInfo = await getInfoAsync(existing.local_path);
       if (fileInfo.exists) {
         // Update last accessed
         await db.runAsync(
@@ -122,14 +128,14 @@ export async function cacheImage(url) {
     }
 
     // Download the image
-    const downloadResult = await FileSystem.downloadAsync(url, localPath);
+    const downloadResult = await downloadAsync(url, localPath);
 
     if (downloadResult.status !== 200) {
       return null;
     }
 
     // Get file size
-    const fileInfo = await FileSystem.getInfoAsync(localPath);
+    const fileInfo = await getInfoAsync(localPath);
     const sizeBytes = fileInfo.exists ? fileInfo.size : 0;
 
     // Evict if needed before saving metadata
@@ -168,7 +174,7 @@ export async function getCachedImage(url) {
 
     if (!row) return null;
 
-    const fileInfo = await FileSystem.getInfoAsync(row.local_path);
+    const fileInfo = await getInfoAsync(row.local_path);
     if (!fileInfo.exists) {
       // Clean up stale metadata
       await db.runAsync('DELETE FROM image_cache_metadata WHERE url = ?', [url]);
@@ -271,7 +277,7 @@ export async function clearImageCache() {
     // Delete files
     await Promise.all(
       rows.map(row =>
-        FileSystem.deleteAsync(row.local_path, { idempotent: true }).catch(() => {})
+        deleteAsync(row.local_path, { idempotent: true }).catch(() => {})
       )
     );
 

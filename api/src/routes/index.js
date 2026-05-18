@@ -14,6 +14,7 @@ const mlAnalyticsRoutes = require('./mlAnalytics');
 const adminRoutes = require('./admin');
 const mfaRoutes = require('./mfa');
 const seasonalRoutes = require('./seasonal');
+const videoRoutes = require('./video');
 
 // ─── Versioned API Router (v1) ──────────────────────────────────────────────
 const v1 = Router();
@@ -36,6 +37,7 @@ v1.use('/ml-analytics', mlAnalyticsRoutes);
 v1.use('/admin', adminRoutes);
 v1.use('/mfa', mfaRoutes);
 v1.use('/seasonal', seasonalRoutes);
+v1.use('/video', videoRoutes);
 
 // ─── Root Router ─────────────────────────────────────────────────────────────
 // Mounts v1 at /v1 and also at / for backward compatibility.

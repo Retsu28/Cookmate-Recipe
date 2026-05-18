@@ -15,6 +15,8 @@ import { useAppTheme } from '../context/ThemeContext';
 import {
   getOfflineRecipeList,
   removeRecipeFromOffline,
+  getDownloadStorageStats,
+  getRecipeFolderPath,
 } from '../offline/recipeDownload';
 import { getCachedImage } from '../offline/imageCache';
 import OptimizedImage from '../components/OptimizedImage';
@@ -38,13 +40,29 @@ export default function DownloadsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState(null);
   const [imageUris, setImageUris] = useState({});
+  const [storageStats, setStorageStats] = useState({
+    totalSizeMB: 0,
+    availableMB: 500,
+    isLowSpace: false,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
+    console.log('[DownloadsScreen] Loading downloads...');
     try {
       const rows = await getOfflineRecipeList();
+      console.log('[DownloadsScreen] Loaded rows:', rows?.length || 0, rows);
+      
+      const stats = await getDownloadStorageStats();
+      console.log('[DownloadsScreen] Stats:', stats);
+      
+      if (!rows || rows.length === 0) {
+        console.warn('[DownloadsScreen] No downloads found');
+      }
+      
       rows.sort((a, b) => b.cachedAt - a.cachedAt);
       setDownloads(rows);
+      setStorageStats(stats);
 
       // Resolve cached image URIs
       const uris = {};
@@ -58,10 +76,14 @@ export default function DownloadsScreen({ navigation }) {
         }),
       );
       setImageUris(uris);
-    } catch {
+    } catch (err) {
+      console.error('[DownloadsScreen] ERROR loading downloads:', err);
+      console.error('[DownloadsScreen] Error message:', err?.message);
+      console.error('[DownloadsScreen] Error stack:', err?.stack);
       setDownloads([]);
     } finally {
       setLoading(false);
+      console.log('[DownloadsScreen] Load complete');
     }
   }, []);
 
@@ -217,12 +239,24 @@ export default function DownloadsScreen({ navigation }) {
             <View style={[st.storageCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={st.storageRow}>
                 <View style={st.storageLeft}>
-                  <Ionicons name="server-outline" size={16} color={colors.primary} />
-                  <Text style={[st.storageLabel, { color: colors.text }]}>Offline Storage</Text>
+                  <Ionicons name="server-outline" size={16} color={storageStats.isLowSpace ? '#ef4444' : colors.primary} />
+                  <Text style={[st.storageLabel, { color: storageStats.isLowSpace ? '#ef4444' : colors.text }]}>
+                    Offline Storage
+                  </Text>
                 </View>
                 <Text style={[st.storageCount, { color: colors.textMuted }]}>
                   {downloads.length} recipe{downloads.length !== 1 ? 's' : ''}
                 </Text>
+              </View>
+              <View style={st.storageDetails}>
+                <Text style={[st.storageDetailText, { color: colors.textMuted }]}>
+                  Used: {storageStats.totalSizeMB.toFixed(1)} MB • Available: {storageStats.availableMB.toFixed(1)} MB
+                </Text>
+                {storageStats.isLowSpace && (
+                  <Text style={st.lowSpaceWarning}>
+                    ⚠️ Low storage space
+                  </Text>
+                )}
               </View>
             </View>
           }
@@ -273,6 +307,9 @@ const st = StyleSheet.create({
   storageLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   storageLabel: { fontFamily: 'Geist_600SemiBold', fontSize: 13 },
   storageCount: { fontFamily: 'Geist_400Regular', fontSize: 12 },
+  storageDetails: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  storageDetailText: { fontFamily: 'Geist_400Regular', fontSize: 11, marginTop: 4 },
+  lowSpaceWarning: { fontFamily: 'Geist_600SemiBold', fontSize: 11, color: '#ef4444', marginTop: 4 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

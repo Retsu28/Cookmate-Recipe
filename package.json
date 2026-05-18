@@ -21,6 +21,7 @@
     "@google/genai": "^2.2.0",
     "@imgly/background-removal": "^1.7.0",
     "@tanstack/react-virtual": "^3.13.24",
+    "axios": "^1.16.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

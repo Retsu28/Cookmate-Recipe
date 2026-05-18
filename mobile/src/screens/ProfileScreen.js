@@ -15,6 +15,7 @@ import {
   Platform,
   Image,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -213,11 +214,12 @@ function SavedRecipesInline({ user, colors, isDark, navigation, fontSizes }) {
 }
 
 export default function ProfileScreen({ navigation }) {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const { colors, isDark, toggleTheme, mode, setTheme, fontSize, setFontSize } = useAppTheme();
   const { fontSizes } = useFontSizes();
   
   const [activeTab, setActiveTab] = useState('account');
+  const tabAnim = useRef(new Animated.Value(1)).current;
   
   const userBaseline = useMemo(
     () => ({
@@ -259,6 +261,43 @@ export default function ProfileScreen({ navigation }) {
     weeklyDigest: form.weeklyDigest,
   });
   
+  // Delete Account modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const openDeleteModal = () => {
+    setDeleteStep(1);
+    setDeletePassword('');
+    setDeleteError('');
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setShowDeleteModal(false);
+    setDeleteStep(1);
+    setDeletePassword('');
+    setDeleteError('');
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!user?.id || deleting) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await profileApi.deleteAccount(user.id, deletePassword);
+      setShowDeleteModal(false);
+      await logout();
+    } catch (err) {
+      setDeleteError(err?.response?.data?.error || err?.message || 'Failed to delete account.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // MFA state
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaStatusLoading, setMfaStatusLoading] = useState(false);
@@ -320,6 +359,14 @@ export default function ProfileScreen({ navigation }) {
     draftNotifications.weeklyDigest !== appliedNotifications.weeklyDigest;
   
   const saveScale = useRef(new Animated.Value(1)).current;
+
+  const switchTab = (id) => {
+    if (id === activeTab) return;
+    Animated.timing(tabAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => {
+      setActiveTab(id);
+      Animated.timing(tabAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    });
+  };
   const isInitialLoading = useInitialContentLoading();
 
   // Load appearance and notification settings: AsyncStorage first (immediate), then API sync
@@ -740,7 +787,7 @@ export default function ProfileScreen({ navigation }) {
               return (
                 <TouchableOpacity
                   key={tab.id}
-                  onPress={() => !isDisabled && setActiveTab(tab.id)}
+                  onPress={() => !isDisabled && switchTab(tab.id)}
                   disabled={isDisabled}
                   style={[
                     st.tabItem,
@@ -776,7 +823,7 @@ export default function ProfileScreen({ navigation }) {
             })}
           </View>
 
-          <View style={st.body}>
+          <Animated.View style={[st.body, { opacity: tabAnim, transform: [{ translateY: tabAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
             {activeTab === 'account' && (
               <View style={st.accountWrap}>
                 <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1020,64 +1067,72 @@ export default function ProfileScreen({ navigation }) {
             {/* Notifications Tab */}
             {activeTab === 'notifications' && (
               <View style={st.accountWrap}>
-                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <SectionHeader
-                    icon="notifications-outline"
-                    title="Notification preferences"
-                    caption="Choose how you want to be notified."
-                    colors={colors}
-                  />
-
-                  {[
-                    { icon: 'phone-portrait-outline', label: 'Push notifications', key: 'pushNotifications' },
-                    { icon: 'mail-outline', label: 'Email notifications', key: 'emailNotifications' },
-                    { icon: 'flame-outline', label: 'Recipe alerts', key: 'recipeAlerts' },
-                  ].map((item) => (
-                    <View key={item.key} style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0 }]}>
-                      <View style={st.settingLeft}>
-                        <Ionicons name={item.icon} size={18} color={colors.primary} />
-                        <Text style={[st.settingLabel, { color: colors.text, fontSize: fontSizes.sm }]}>{item.label}</Text>
+                {[
+                  { icon: 'phone-portrait-outline', label: 'Push notifications', description: 'Show timely reminders and app updates on this device.', key: 'pushNotifications' },
+                  { icon: 'mail-outline', label: 'Email notifications', description: 'Receive account, planning, and cooking updates in your inbox.', key: 'emailNotifications' },
+                  { icon: 'flame-outline', label: 'Recipe alerts', description: 'Hear about fresh recipe ideas that match your cooking profile.', key: 'recipeAlerts' },
+                ].map((item) => {
+                  const checked = form[item.key] || false;
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      activeOpacity={0.7}
+                      onPress={() => setField(item.key, !checked)}
+                      style={[
+                        st.notifToggleRow,
+                        {
+                          borderColor: checked ? colors.primary + '55' : colors.border,
+                          backgroundColor: checked ? colors.primarySoft + '40' : colors.surface,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          st.notifIconBox,
+                          { backgroundColor: checked ? colors.primarySoft : colors.surfaceAlt },
+                        ]}
+                      >
+                        <Ionicons
+                          name={item.icon}
+                          size={20}
+                          color={checked ? colors.primary : colors.textSubtle}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[st.notifToggleTitle, { color: colors.text }]}>{item.label}</Text>
+                        <Text style={[st.notifToggleDesc, { color: colors.textMuted }]}>{item.description}</Text>
                       </View>
                       <Switch
-                        value={form[item.key] || false}
+                        value={checked}
                         onValueChange={(value) => setField(item.key, value)}
                         trackColor={{ false: colors.border, true: colors.primary }}
-                        thumbColor={colors.surface}
+                        thumbColor='#ffffff'
                       />
-                    </View>
-                  ))}
+                    </TouchableOpacity>
+                  );
+                })}
 
-                  {/* Unsaved Changes Warning */}
+                <View style={[st.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   {hasUnsavedNotifications && (
-                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <Ionicons name="alert-circle" size={16} color={colors.primary} />
-                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                      <Text style={{ color: colors.primary, fontSize: 12, fontFamily: 'Geist_600SemiBold' }}>
                         You have unsaved notification changes
                       </Text>
                     </View>
                   )}
-
-                  {/* Save Notifications Button */}
                   <TouchableOpacity
                     onPress={saveNotificationSettings}
                     activeOpacity={0.9}
-                    style={{
-                      marginTop: hasUnsavedNotifications ? 8 : 16,
-                      backgroundColor: colors.primary,
-                      paddingVertical: 12,
-                      paddingHorizontal: 20,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                      opacity: hasUnsavedNotifications ? 1 : 0.9,
-                    }}
+                    style={[st.saveBtn, { backgroundColor: colors.primary }]}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+                    <Ionicons name="save-outline" size={18} color="#fff" />
+                    <Text style={st.saveText}>
                       {hasUnsavedNotifications ? 'SAVE NOTIFICATIONS • UNSAVED' : 'SAVE NOTIFICATIONS'}
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                              </View>
+              </View>
             )}
 
             {/* Appearance Tab */}
@@ -1092,11 +1147,11 @@ export default function ProfileScreen({ navigation }) {
                   />
 
                   <FieldLabel label="Theme" colors={colors} fontSizes={fontSizes} />
-                  <View style={st.skillGrid}>
+                  <View style={st.appearanceGrid}>
                     {[
-                      { id: 'system', label: 'System' },
-                      { id: 'light', label: 'Light' },
-                      { id: 'dark', label: 'Dark' },
+                      { id: 'light', label: 'Light', icon: 'sunny-outline' },
+                      { id: 'dark', label: 'Dark', icon: 'moon-outline' },
+                      { id: 'system', label: 'System', icon: 'phone-portrait-outline' },
                     ].map((theme) => {
                       const active = draftTheme === theme.id;
                       return (
@@ -1104,27 +1159,31 @@ export default function ProfileScreen({ navigation }) {
                           key={theme.id}
                           onPress={() => setDraftTheme(theme.id)}
                           style={[
-                            st.skillBtn,
+                            st.appearanceBtn,
                             {
-                              backgroundColor: active ? colors.text : colors.surface,
-                              borderColor: active ? colors.text : colors.border,
+                              backgroundColor: active ? colors.primary : colors.surface,
+                              borderColor: active ? colors.primary : colors.border,
                             },
                           ]}
                         >
-                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted, fontSize: fontSizes.sm }]}>
+                          <View style={[st.appearanceIconBox, { backgroundColor: active ? 'rgba(255,255,255,0.15)' : colors.surfaceAlt }]}>
+                            <Ionicons name={theme.icon} size={18} color={active ? '#fff' : colors.textSubtle} />
+                          </View>
+                          <Text style={[st.appearanceBtnText, { color: active ? '#fff' : colors.textMuted }]}>
                             {theme.label}
                           </Text>
+                          {active && <Ionicons name="checkmark" size={14} color="#fff" />}
                         </TouchableOpacity>
                       );
                     })}
                   </View>
 
                   <FieldLabel label="Font Size" colors={colors} fontSizes={fontSizes} />
-                  <View style={st.skillGrid}>
+                  <View style={st.appearanceGrid}>
                     {[
-                      { id: 'small', label: 'Small' },
-                      { id: 'medium', label: 'Medium' },
-                      { id: 'large', label: 'Large' },
+                      { id: 'small', label: 'Small', icon: 'text-outline' },
+                      { id: 'medium', label: 'Medium', icon: 'reorder-four-outline' },
+                      { id: 'large', label: 'Large', icon: 'expand-outline' },
                     ].map((size) => {
                       const active = draftFontSize === size.id;
                       return (
@@ -1132,16 +1191,20 @@ export default function ProfileScreen({ navigation }) {
                           key={size.id}
                           onPress={() => setDraftFontSize(size.id)}
                           style={[
-                            st.skillBtn,
+                            st.appearanceBtn,
                             {
-                              backgroundColor: active ? colors.text : colors.surface,
-                              borderColor: active ? colors.text : colors.border,
+                              backgroundColor: active ? colors.primary : colors.surface,
+                              borderColor: active ? colors.primary : colors.border,
                             },
                           ]}
                         >
-                          <Text style={[st.skillText, { color: active ? colors.background : colors.textMuted, fontSize: fontSizes.sm }]}>
+                          <View style={[st.appearanceIconBox, { backgroundColor: active ? 'rgba(255,255,255,0.15)' : colors.surfaceAlt }]}>
+                            <Ionicons name={size.icon} size={18} color={active ? '#fff' : colors.textSubtle} />
+                          </View>
+                          <Text style={[st.appearanceBtnText, { color: active ? '#fff' : colors.textMuted }]}>
                             {size.label}
                           </Text>
+                          {active && <Ionicons name="checkmark" size={14} color="#fff" />}
                         </TouchableOpacity>
                       );
                     })}
@@ -1218,28 +1281,32 @@ export default function ProfileScreen({ navigation }) {
 
                   
                   {/* Kitchen Inventory - Coming Soon */}
-                  <View style={[st.settingRow, { borderBottomWidth: 0, paddingHorizontal: 0, opacity: 0.5 }]}>
-                    <View style={st.settingLeft}>
-                      <Ionicons name="cube-outline" size={18} color={colors.textMuted} />
-                      <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={[st.settingLabel, { color: colors.textMuted }]}>Show kitchen inventory</Text>
-                          <View style={[st.badge, { backgroundColor: colors.primarySoft }]}>
-                            <Text style={[st.badgeText, { color: colors.primary }]}>Coming Soon</Text>
-                          </View>
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    style={[
+                      st.notifToggleRow,
+                      { borderColor: colors.border, backgroundColor: colors.surface, opacity: 0.5 },
+                    ]}
+                  >
+                    <View style={[st.notifIconBox, { backgroundColor: colors.surfaceAlt }]}>
+                      <Ionicons name="cube-outline" size={20} color={colors.textSubtle} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[st.notifToggleTitle, { color: colors.textMuted }]}>Show kitchen inventory</Text>
+                        <View style={[st.badge, { backgroundColor: colors.primarySoft }]}>
+                          <Text style={[st.badgeText, { color: colors.primary }]}>Coming Soon</Text>
                         </View>
-                        <Text style={[st.settingValue, { color: colors.textSubtle, fontSize: 11 }]}>
-                          Allow others to see your kitchen inventory
-                        </Text>
                       </View>
+                      <Text style={[st.notifToggleDesc, { color: colors.textSubtle }]}>Allow others to see your kitchen inventory if your profile is public.</Text>
                     </View>
                     <Switch
                       value={false}
                       disabled={true}
                       trackColor={{ false: colors.border, true: colors.primary }}
-                      thumbColor={colors.surface}
+                      thumbColor='#ffffff'
                     />
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 {/* Two-Factor Authentication */}
@@ -1346,7 +1413,7 @@ export default function ProfileScreen({ navigation }) {
                   />
 
                   <TouchableOpacity
-                    onPress={() => {}}
+                    onPress={openDeleteModal}
                     style={[st.resetBtn, { backgroundColor: colors.danger + '20', borderColor: colors.danger }]}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.danger} />
@@ -1373,7 +1440,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
             )}
 
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1382,6 +1449,92 @@ export default function ProfileScreen({ navigation }) {
         onClose={() => setShowMfaDisable(false)}
         onDisabled={handleMfaDisabled}
       />
+
+      {/* Delete Account Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={st.modalOverlay}
+        >
+          <View style={[st.deleteModal, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
+            {deleteStep === 1 ? (
+              <>
+                <View style={[st.deleteModalIcon, { backgroundColor: colors.danger + '20' }]}>
+                  <Ionicons name="trash-outline" size={28} color={colors.danger} />
+                </View>
+                <Text style={[st.deleteModalTitle, { color: colors.text }]}>Delete your account?</Text>
+                <Text style={[st.deleteModalBody, { color: colors.textMuted }]}>
+                  Your account will be permanently deleted after 7 days. You will be logged out immediately. This cannot be undone.
+                </Text>
+                <View style={st.deleteModalActions}>
+                  <TouchableOpacity
+                    onPress={closeDeleteModal}
+                    style={[st.deleteModalBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+                  >
+                    <Text style={[st.deleteModalBtnText, { color: colors.textMuted }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setDeleteStep(2)}
+                    style={[st.deleteModalBtn, { backgroundColor: colors.danger + '20', borderColor: colors.danger }]}
+                  >
+                    <Text style={[st.deleteModalBtnText, { color: colors.danger }]}>Continue →</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[st.deleteModalIcon, { backgroundColor: colors.danger + '20' }]}>
+                  <Ionicons name="warning-outline" size={28} color={colors.danger} />
+                </View>
+                <Text style={[st.deleteModalTitle, { color: colors.text }]}>Confirm deletion</Text>
+                <Text style={[st.deleteModalBody, { color: colors.textMuted }]}>
+                  Enter your current password to schedule account deletion.
+                </Text>
+                <TextInput
+                  value={deletePassword}
+                  onChangeText={(v) => { setDeletePassword(v); setDeleteError(''); }}
+                  secureTextEntry
+                  placeholder="Current password"
+                  placeholderTextColor={colors.textSubtle}
+                  style={[st.deleteModalInput, { backgroundColor: colors.background, borderColor: deleteError ? colors.danger : colors.border, color: colors.text }]}
+                  autoFocus
+                />
+                {!!deleteError && (
+                  <View style={[st.deleteModalError, { backgroundColor: colors.danger + '15', borderColor: colors.danger + '40' }]}>
+                    <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+                    <Text style={[st.deleteModalErrorText, { color: colors.danger }]}>{deleteError}</Text>
+                  </View>
+                )}
+                <View style={st.deleteModalActions}>
+                  <TouchableOpacity
+                    onPress={() => { setDeleteStep(1); setDeleteError(''); }}
+                    disabled={deleting}
+                    style={[st.deleteModalBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+                  >
+                    <Text style={[st.deleteModalBtnText, { color: colors.textMuted }]}>← Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={confirmDeleteAccount}
+                    disabled={deleting || !deletePassword}
+                    style={[st.deleteModalBtn, { backgroundColor: colors.danger, borderColor: colors.danger, opacity: (deleting || !deletePassword) ? 0.6 : 1 }]}
+                  >
+                    {deleting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={[st.deleteModalBtnText, { color: '#fff' }]}>Delete Account</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1496,4 +1649,133 @@ const st = StyleSheet.create({
   mfaStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   mfaStatusDot: { width: 6, height: 6, borderRadius: 3 },
   mfaStatusText: { fontFamily: 'Geist_600SemiBold', fontSize: 11 },
+  notifToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
+  notifIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  notifToggleTitle: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  notifToggleDesc: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  appearanceGrid: { flexDirection: 'row', gap: 8 },
+  appearanceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+  },
+  appearanceIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appearanceBtnText: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 11,
+    flexShrink: 1,
+  },
+  // Delete Account Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  deleteModal: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteModalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  deleteModalTitle: {
+    fontFamily: 'Geist_800ExtraBold',
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  deleteModalBody: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  deleteModalInput: {
+    width: '100%',
+    height: 48,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+  },
+  deleteModalError: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  deleteModalErrorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 12,
+    flex: 1,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginTop: 4,
+  },
+  deleteModalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalBtnText: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 13,
+  },
 });
