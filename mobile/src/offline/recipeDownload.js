@@ -321,6 +321,9 @@ export async function downloadRecipeForOffline(recipe, onProgress) {
     localVideoPath,
     localSoundPath,
     imageUrl: recipe.image || recipe.image_url || null,
+    instruction_timestamps: recipe.instruction_timestamps || [],
+    instructions: recipe.instructions || [],
+    steps: recipe.steps || [],
   };
   if (idx >= 0) meta[idx] = entry; else meta.push(entry);
   await writeMeta(meta);
@@ -360,6 +363,18 @@ export async function getLocalSoundPath(id) {
   const meta = await readMeta();
   const entry = meta.find((m) => m.id === id);
   return entry?.localSoundPath || null;
+}
+
+export async function getLocalTimestamps(id) {
+  const meta = await readMeta();
+  const entry = meta.find((m) => m.id === id);
+  return entry?.instruction_timestamps || null;
+}
+
+export async function getLocalInstructions(id) {
+  const meta = await readMeta();
+  const entry = meta.find((m) => m.id === id);
+  return entry?.instructions || entry?.steps || null;
 }
 
 /**

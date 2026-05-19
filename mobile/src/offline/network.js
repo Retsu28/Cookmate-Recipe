@@ -6,14 +6,14 @@ import NetInfo from '@react-native-community/netinfo';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 const NetworkContext = createContext({
-  isOnline: true,
+  isOnline: false,
   isInternetReachable: null,
   type: null,
 });
 
 export function NetworkProvider({ children }) {
   const [state, setState] = useState({
-    isOnline: true,
+    isOnline: false,
     isInternetReachable: null,
     type: null,
   });
@@ -57,7 +57,9 @@ export function useNetwork() {
 
 // Module-level snapshot so non-React code (API wrappers, sync queue) can check
 // connectivity without needing a hook. Kept in sync via NetInfo listener below.
-let _latest = { isOnline: true, isInternetReachable: null, type: null };
+// Default to false (offline) so cold-start airplane mode is detected correctly
+// before NetInfo.fetch() resolves. The fetch below updates it immediately.
+let _latest = { isOnline: false, isInternetReachable: null, type: null };
 
 NetInfo.addEventListener((info) => {
   if (!info) return;

@@ -799,13 +799,22 @@ export default function RecipeDetailScreen({ route, navigation }) {
               Alert.alert('You are offline', OFFLINE_MESSAGE);
               return;
             }
-            // If downloaded, look up local video path and pass it to cooking mode
+            // Build recipe object for cooking mode — resolve local paths for offline use
             let recipeForCooking = recipe;
-            if (isDownloaded && recipe.video_filename) {
-              const localPath = await getLocalVideoPath(recipe.id);
-              if (localPath) {
-                recipeForCooking = { ...recipe, video_filename: localPath };
-              }
+            if (isDownloaded) {
+              // Always try to get local video path when downloaded
+              let localVideoPath = null;
+              try {
+                localVideoPath = await getLocalVideoPath(recipe.id);
+              } catch (e) { /* ignore */ }
+
+              // If offline: use local path only (never stream Cloudinary offline)
+              // If online: prefer local path to save bandwidth, fall back to Cloudinary URL
+              const effectiveVideo = localVideoPath || (!isOnline ? null : recipe.video_filename || null);
+              recipeForCooking = { ...recipe, video_filename: effectiveVideo };
+            } else if (!isOnline) {
+              // Not downloaded but somehow allowed through — strip video to avoid crash
+              recipeForCooking = { ...recipe, video_filename: null };
             }
             navigation.navigate('StartCookingSplash', { recipe: recipeForCooking });
           }}

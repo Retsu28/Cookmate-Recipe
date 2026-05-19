@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { createAudioPlayer, setIsAudioActiveAsync } from 'expo-audio';
 import { reviewApi } from '../api/api';
-import { getLocalSoundPath } from '../offline/recipeDownload';
+import { getLocalVideoPath, getLocalTimestamps, getLocalInstructions } from '../offline/recipeDownload';
 import { isOnlineNow } from '../offline/network';
 
 import Animated, {
@@ -46,6 +46,141 @@ try {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+function CookingVideoSection({ videoUrl, videoLoading, videoError, isPlaying, setVideoLoading, setVideoError, setIsPlaying, currentTimestamp, intervalTimeLeft, showIntervalComplete }) {
+  // Always call hook unconditionally — Rules of Hooks.
+  const player = useVideoPlayer(videoUrl, (p) => {
+    try {
+      p.loop = false;
+      p.muted = false;
+      p.play();
+    } catch (err) {
+      console.error('[CookingVideo] setup error:', err);
+      setVideoError(true);
+      setVideoLoading(false);
+    }
+  });
+
+  // Seek to the start of this step's timestamp when the step changes
+  useEffect(() => {
+    if (!player || !currentTimestamp) return;
+    try {
+      const seekTo = currentTimestamp.start ?? 0;
+      player.currentTime = seekTo;
+      player.play();
+    } catch (e) {
+      console.log('[CookingVideo] Seek error (ignored):', e);
+    }
+  }, [currentTimestamp]);
+
+  // Monitor player status
+  useEffect(() => {
+    if (!player) return;
+    let statusListener;
+    try {
+      statusListener = player.addListener('statusChange', ({ status, error }) => {
+        try {
+          if (status === 'readyToPlay' || status === 'playing' || status === 'paused') {
+            setVideoLoading(false);
+            setVideoError(false);
+            setIsPlaying(status === 'playing');
+          } else if (status === 'error') {
+            console.error('[CookingVideo] Player error:', error);
+            setVideoError(true);
+            setVideoLoading(false);
+          } else if (status === 'idle') {
+            if ((player.duration || 0) <= 0) setVideoLoading(true);
+          }
+        } catch (e) {
+          console.error('[CookingVideo] Status handler error:', e);
+        }
+      });
+    } catch (e) {
+      console.error('[CookingVideo] Listener error:', e);
+    }
+
+    if ((player.duration || 0) > 0) setVideoLoading(false);
+
+    const timeoutId = setTimeout(() => {
+      setVideoLoading((c) => {
+        if (c) {
+          if ((player.duration || 0) <= 0) setVideoError(true);
+          return false;
+        }
+        return c;
+      });
+    }, 10000);
+
+    return () => {
+      try { statusListener?.remove(); } catch (e) { /* ignore */ }
+      clearTimeout(timeoutId);
+    };
+  }, [player]);
+
+  if (videoError) {
+    return (
+      <View style={[st.videoContainer, st.noVideo]}>
+        <Ionicons name="alert-circle" size={48} color="#57534e" />
+        <Text style={st.noVideoText}>Video failed to load</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={st.videoContainer}>
+      {videoLoading && (
+        <View style={st.videoLoading}>
+          <ActivityIndicator size="large" color="#f97316" />
+        </View>
+      )}
+      <VideoView
+        player={player}
+        style={st.video}
+        nativeControls={false}
+        contentFit="cover"
+        allowsPictureInPicture={false}
+        allowsFullscreen={true}
+        renderMode="texture"
+      />
+      <TouchableOpacity
+        style={st.videoOverlay}
+        activeOpacity={1}
+        onPress={() => {
+          try {
+            if (isPlaying) { player.pause(); } else { player.play(); }
+            setIsPlaying(!isPlaying);
+          } catch (e) { /* ignore */ }
+        }}
+      >
+        {!isPlaying && !videoLoading && (
+          <View style={st.playPauseBtn}>
+            <Ionicons name="play" size={48} color="#fff" />
+          </View>
+        )}
+        {isPlaying && !videoLoading && (
+          <View style={[st.playPauseBtn, st.playPauseBtnHidden]}>
+            <Ionicons name="pause" size={48} color="#fff" />
+          </View>
+        )}
+      </TouchableOpacity>
+      {currentTimestamp && (
+        <View style={st.timerCircleWrap}>
+          <View style={[
+            st.timerCircle,
+            showIntervalComplete && st.timerCircleComplete
+          ]}>
+            <Text style={[st.timerCircleTime, showIntervalComplete && st.timerCircleTimeComplete]}>
+              {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
+            </Text>
+            <Text style={[st.timerCircleLabel, showIntervalComplete && st.timerCircleLabelComplete]}>
+              {showIntervalComplete ? 'Done!' : 'Interval'}
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Parse recipe instructions into steps format
 function parseInstructions(instructions) {
   if (!instructions || !Array.isArray(instructions) || instructions.length === 0) {
@@ -67,7 +202,24 @@ function formatTime(seconds) {
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
 export default function CookingModeScreen({ route, navigation }) {
-  const { recipe } = route.params;
+  const { recipe } = route.params || {};
+  
+  // Guard against invalid recipe data
+  if (!recipe || !recipe.id) {
+    console.error('[CookingMode] Invalid recipe data:', recipe);
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <Text style={{ fontSize: 18, color: '#dc2626' }}>Error: Recipe not found</Text>
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()}
+          style={{ marginTop: 20, padding: 12, backgroundColor: '#f97316', borderRadius: 8 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+  
   const [currentStep, setCurrentStep] = useState(0);
   const [isCompleted, setIsCompleted] = useState(false);
   const [celebRating, setCelebRating] = useState(0);
@@ -78,15 +230,14 @@ export default function CookingModeScreen({ route, navigation }) {
   const [videoError, setVideoError] = useState(false);
   const [videoLoading, setVideoLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [showPlayButton, setShowPlayButton] = useState(false);
 
   // Interval timer state (like web)
   const [intervalTimeLeft, setIntervalTimeLeft] = useState(0);
   const [showIntervalComplete, setShowIntervalComplete] = useState(false);
   const [addedTime, setAddedTime] = useState(0);
 
-  // Offline sound path for cooking timer
-  const [offlineSoundPath, setOfflineSoundPath] = useState(null);
+  // Offline video path for offline cooking mode
+  const [offlineVideoPath, setOfflineVideoPath] = useState(null);
 
   // Completion celebration animation values
   const completionScale = useSharedValue(0);
@@ -94,105 +245,67 @@ export default function CookingModeScreen({ route, navigation }) {
   const iconScale = useSharedValue(0);
   const iconRotate = useSharedValue(0);
 
+  // Fallback timestamps/instructions loaded from offline_meta.json if recipe object is incomplete
+  const [metaTimestamps, setMetaTimestamps] = useState(null);
+  const [metaInstructions, setMetaInstructions] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!recipe.instruction_timestamps?.length || !recipe.instructions?.length) {
+      Promise.all([
+        getLocalTimestamps(recipe.id).catch(() => null),
+        getLocalInstructions(recipe.id).catch(() => null),
+      ]).then(([ts, ins]) => {
+        if (cancelled) return;
+        if (ts?.length) setMetaTimestamps(ts);
+        if (ins?.length) setMetaInstructions(ins);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [recipe.id]);
+
   // Use normalized steps from RecipeDetail, or parse raw instructions, or empty
+  const effectiveInstructions = recipe.instructions?.length ? recipe.instructions : (metaInstructions || []);
   const parsedSteps = recipe.steps?.length > 0
     ? recipe.steps
-    : parseInstructions(recipe.instructions);
+    : parseInstructions(effectiveInstructions);
   const hasInstructions = parsedSteps !== null && parsedSteps.length > 0;
   const steps = parsedSteps || [];
-  const timestamps = recipe.instruction_timestamps || [];
+  const timestamps = recipe.instruction_timestamps?.length
+    ? recipe.instruction_timestamps
+    : (metaTimestamps || []);
   const progress = hasInstructions ? ((currentStep + 1) / steps.length) * 100 : 0;
 
-  // Get video URL from recipe - use direct URL (Cloudinary) like web
-  const videoUrl = recipe.video_filename || null;
+  // Capture network state once on mount — avoids stale snapshot from isOnlineNow()
+  // which may read true on cold start in airplane mode before NetInfo.fetch() resolves.
+  const [isOffline, setIsOffline] = useState(() => !isOnlineNow());
+  useEffect(() => {
+    let cancelled = false;
+    import('@react-native-community/netinfo').then(({ default: NetInfo }) => {
+      NetInfo.fetch().then((state) => {
+        if (cancelled) return;
+        const online = state.isConnected === true && state.isInternetReachable !== false;
+        setIsOffline(!online);
+      }).catch(() => {});
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Get video URL - recipe.video_filename is already a local file:// path when downloaded
+  // (RecipeDetailScreen replaces it before navigating).
+  // Only fall back to async-loaded offlineVideoPath as secondary.
+  const passedLocalVideo = recipe.video_filename?.startsWith('file://') ? recipe.video_filename : null;
+  const resolvedOfflinePath = offlineVideoPath
+    ? (offlineVideoPath.startsWith('file://') ? offlineVideoPath : `file://${offlineVideoPath}`)
+    : null;
+  const videoUrl = isOffline
+    ? (passedLocalVideo || resolvedOfflinePath || null)
+    : (recipe.video_filename || null);
 
   // Parse video credits: stored as "AuthorName|URL"
   const videoCreditsParts = (recipe.video_credits || '').split('|');
   const creditAuthor = videoCreditsParts[0]?.trim() || '';
   const creditUrl = videoCreditsParts[1]?.trim() || '';
-
-  // Setup video player with expo-video
-  const player = useVideoPlayer?.(videoUrl, (p) => {
-    try {
-      // Don't use player.loop - we handle manual looping for timestamps
-      p.loop = false;
-      p.muted = false;
-      p.play();
-    } catch (err) {
-      console.error('[CookingMode] Video player setup error:', err);
-      setVideoError(true);
-      setVideoLoading(false);
-    }
-  });
-
-  // Monitor player status for loading state
-  useEffect(() => {
-    if (!player) return;
-
-    const statusListener = player.addListener('statusChange', ({ status, error }) => {
-      if (status === 'readyToPlay' || status === 'playing' || status === 'paused') {
-        setVideoLoading(false);
-        setVideoError(false);
-        setIsPlaying(status === 'playing');
-        // Handle pending seek when player becomes ready
-        if (status === 'readyToPlay' && pendingSeekRef.current !== null) {
-          try {
-            player.currentTime = pendingSeekRef.current;
-            player.play();
-            setIsPlaying(true);
-            setShowPlayButton(false);
-            pendingSeekRef.current = null;
-          } catch (err) {
-            // Ignore seek errors
-          }
-        }
-      } else if (status === 'error') {
-        console.error('[CookingMode] Player error:', error);
-        setVideoError(true);
-        setVideoLoading(false);
-      } else if (status === 'idle') {
-        // Only show loading on initial idle (before first play), not on seek
-        if (player.duration <= 0) setVideoLoading(true);
-      }
-    });
-
-    // Also check if player already has duration (meaning it's loaded)
-    if (player.duration > 0) {
-      setVideoLoading(false);
-    }
-
-    // Timeout fallback - stop loading after 10 seconds if still loading
-    const timeoutId = setTimeout(() => {
-      setVideoLoading((current) => {
-        if (current) {
-          if (player.duration <= 0) {
-            setVideoError(true);
-          }
-          return false;
-        }
-        return current;
-      });
-    }, 10000);
-
-    return () => {
-      statusListener?.remove();
-      clearTimeout(timeoutId);
-    };
-  }, [player]);
-
-  // Reset loading state when video URL changes
-  useEffect(() => {
-    if (videoUrl) {
-      setVideoLoading(true);
-      setVideoError(false);
-    } else {
-      setVideoLoading(false);
-      setVideoError(false);
-    }
-  }, [videoUrl]);
-
-  // Track pending seek for smoother autoplay
-  const pendingSeekRef = useRef(null);
 
   // Bell sound refs
   const bellSoundRef = useRef(null);
@@ -214,60 +327,6 @@ export default function CookingModeScreen({ route, navigation }) {
       bellSoundRef.current = null;
     }
   }, []);
-
-  // Seek to timestamp and auto-loop within range when step changes (like web)
-  useEffect(() => {
-    if (!player || !timestamps[currentStep] || videoError) return;
-
-    const startTime = timestamps[currentStep].start || 0;
-    pendingSeekRef.current = startTime;
-
-    // Try to seek immediately, but also set up a listener for when player is ready
-    const seekAndPlay = () => {
-      try {
-        if (player.currentTime !== undefined) {
-          player.currentTime = startTime;
-          player.play();
-          setIsPlaying(true);
-          setShowPlayButton(false);
-          pendingSeekRef.current = null;
-          return true;
-        }
-      } catch (err) {
-        console.error('[CookingMode] Seek error:', err);
-      }
-      return false;
-    };
-
-    // If player is already ready, seek immediately
-    if (player.duration > 0) {
-      seekAndPlay();
-    }
-    // Otherwise, the statusChange listener will handle it when ready
-  }, [currentStep, timestamps, videoError, player]);
-
-  // Auto-loop video within timestamp range (like web timeupdate)
-  useEffect(() => {
-    if (!player || !timestamps[currentStep] || videoError) return;
-
-    const startTime = timestamps[currentStep].start || 0;
-    const endTime = timestamps[currentStep].end;
-
-    // Poll every 80ms — tight enough for a seamless loop without visible stutter
-    const loopInterval = setInterval(() => {
-      try {
-        const currentTime = player.currentTime ?? 0;
-        // Seek 0.2s before end so the loop feels continuous
-        if (currentTime >= endTime - 0.2) {
-          player.currentTime = startTime;
-        }
-      } catch (err) {
-        // Ignore loop errors silently
-      }
-    }, 80);
-
-    return () => clearInterval(loopInterval);
-  }, [currentStep, timestamps, videoError, player]);
 
   // Interval timer based on timestamps: (end - start) + interval (like web)
   useEffect(() => {
@@ -303,20 +362,15 @@ export default function CookingModeScreen({ route, navigation }) {
     return () => clearInterval(timer);
   }, [currentStep, timestamps, addedTime]);
 
-  // Load offline sound path on mount (for offline cooking mode)
+  // Load offline video path on mount (secondary fallback if RecipeDetailScreen didn't pass it)
   useEffect(() => {
-    const loadOfflineSound = async () => {
-      try {
-        const soundPath = await getLocalSoundPath(recipe.id);
-        if (soundPath) {
-          setOfflineSoundPath(soundPath);
-          console.log('[CookingMode] Loaded offline sound path:', soundPath);
-        }
-      } catch (err) {
-        console.log('[CookingMode] No offline sound available:', err);
+    let cancelled = false;
+    getLocalVideoPath(recipe.id).then((videoPath) => {
+      if (!cancelled && videoPath) {
+        setOfflineVideoPath(videoPath);
       }
-    };
-    loadOfflineSound();
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [recipe.id]);
 
   // Play bell sound once when interval completes — same as web useEffect on showIntervalComplete
@@ -325,42 +379,31 @@ export default function CookingModeScreen({ route, navigation }) {
     playBellSound();
   }, [showIntervalComplete]);
 
-  // Play bell sound using expo-audio (SDK 55 compatible replacement for expo-av)
+  // Play bell sound using expo-audio — always use bundled asset (works online and offline).
+  // The bundled require() is resolved at build time and never needs network access.
   const playBellSound = useCallback(async () => {
     await stopBellSound();
     try {
       await setIsAudioActiveAsync(true);
-      
-      // Use offline sound path when available and device is offline
-      const isOffline = !isOnlineNow();
-      const soundSource = (isOffline && offlineSoundPath) 
-        ? { uri: offlineSoundPath }  // Use local file when offline
-        : require('../../sound/custom_sound.wav');  // Use bundled asset when online
-      
-      console.log(`[CookingMode] Playing bell sound (${isOffline ? 'offline' : 'online'}):`, 
-        isOffline && offlineSoundPath ? offlineSoundPath : 'bundled');
-      
+      const soundSource = require('../../sound/custom_sound.wav');
       const player = createAudioPlayer(soundSource);
       bellSoundRef.current = player;
       bellFinishedRef.current = false;
       player.play();
-      // Auto-stop after 5 seconds
-      setTimeout(() => {
-        stopBellSound();
-      }, 5000);
+      setTimeout(() => { stopBellSound(); }, 5000);
     } catch (err) {
       console.log('[CookingMode] Bell sound error:', err);
     }
-  }, [stopBellSound, offlineSoundPath]);
+  }, [stopBellSound]);
 
-  // Text-to-speech: read step instruction aloud on step change (like web)
+  // Text-to-speech — wrapped in try/catch; some Android TTS engines try network offline.
   const speak = useCallback((text) => {
-    Speech.stop();
-    Speech.speak(text, {
-      rate: 0.92,
-      pitch: 1.05,
-      language: 'en-US',
-    });
+    try {
+      Speech.stop();
+      Speech.speak(text, { rate: 0.92, pitch: 1.05, language: 'en-US' });
+    } catch (e) {
+      console.log('[CookingMode] Speech error (ignored):', e);
+    }
   }, []);
 
   useEffect(() => {
@@ -368,7 +411,7 @@ export default function CookingModeScreen({ route, navigation }) {
       speak(steps[currentStep].text);
     }
     return () => {
-      Speech.stop();
+      try { Speech.stop(); } catch (e) { /* ignore */ }
     };
   }, [currentStep, steps, speak]);
 
@@ -447,10 +490,12 @@ export default function CookingModeScreen({ route, navigation }) {
     if (celebRating < 1) return;
     setCelebSubmitting(true);
     try {
-      await reviewApi.submitReview(recipe.id, { rating: celebRating, comment: celebComment.trim() || undefined });
+      if (isOnlineNow()) {
+        await reviewApi.submitReview(recipe.id, { rating: celebRating, comment: celebComment.trim() || undefined });
+      }
       setCelebSubmitted(true);
     } catch {
-      // ignore — user can still review from recipe page
+      setCelebSubmitted(true); // still dismiss — user can review from recipe page later
     } finally {
       setCelebSubmitting(false);
     }
@@ -458,8 +503,10 @@ export default function CookingModeScreen({ route, navigation }) {
 
   const handleCompleteAndExit = useCallback(async () => {
     stopBellSound();
-    Speech.stop();
-    try { await reviewApi.markCooked(recipe.id); } catch { /* ignore */ }
+    try { Speech.stop(); } catch (e) { /* ignore */ }
+    if (isOnlineNow()) {
+      try { await reviewApi.markCooked(recipe.id); } catch { /* ignore */ }
+    }
     safeGoBack();
   }, [navigation, stopBellSound, recipe.id, safeGoBack]);
 
@@ -484,17 +531,6 @@ export default function CookingModeScreen({ route, navigation }) {
     })
   ).current;
 
-  // Video play/pause toggle
-  const togglePlayPause = useCallback(() => {
-    if (!player) return;
-    if (isPlaying) {
-      player.pause();
-    } else {
-      player.play();
-    }
-    setIsPlaying(!isPlaying);
-  }, [player, isPlaying]);
-
   const currentTimestamp = timestamps[currentStep];
   const canGoNext = intervalTimeLeft === 0 || showIntervalComplete || !currentTimestamp;
 
@@ -516,7 +552,7 @@ export default function CookingModeScreen({ route, navigation }) {
                   <Text style={st.exitBtnSecondaryText}>Keep Cooking</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => { stopBellSound(); Speech.stop(); safeGoBack(); }}
+                  onPress={() => { stopBellSound(); try { Speech.stop(); } catch(e){} safeGoBack(); }}
                   style={[st.exitBtn, st.exitBtnDanger]}
                 >
                   <Text style={st.exitBtnDangerText}>Exit</Text>
@@ -547,63 +583,26 @@ export default function CookingModeScreen({ route, navigation }) {
 
         {/* Main Content - Video top half + Step bottom half */}
         <View style={st.mainContent} {...panResponder.panHandlers}>
-          {/* Video Section - top half, edge-to-edge, no black bars */}
+          {/* Video Section - only mount CookingVideoSection when expo-video is available AND we have a url */}
           <View style={st.videoSection}>
-            {videoUrl && !videoError && VideoView && player ? (
-              <View style={st.videoContainer}>
-                {videoLoading && (
-                  <View style={st.videoLoading}>
-                    <ActivityIndicator size="large" color="#f97316" />
-                  </View>
-                )}
-                <VideoView
-                  player={player}
-                  style={st.video}
-                  nativeControls={false}
-                  contentFit="cover"
-                  allowsPictureInPicture={false}
-                  allowsFullscreen={true}
-                  renderMode="texture"
-                />
-                {/* Play/Pause Overlay */}
-                <TouchableOpacity
-                  style={st.videoOverlay}
-                  activeOpacity={1}
-                  onPress={togglePlayPause}
-                >
-                  {!isPlaying && !videoLoading && (
-                    <View style={st.playPauseBtn}>
-                      <Ionicons name="play" size={48} color="#fff" />
-                    </View>
-                  )}
-                  {isPlaying && !videoLoading && (
-                    <View style={[st.playPauseBtn, st.playPauseBtnHidden]}>
-                      <Ionicons name="pause" size={48} color="#fff" />
-                    </View>
-                  )}
-                </TouchableOpacity>
-                {/* Timer Circle - overlaid on top-right of video */}
-                {currentTimestamp && (
-                  <View style={st.timerCircleWrap}>
-                    <View style={[
-                      st.timerCircle,
-                      showIntervalComplete && st.timerCircleComplete
-                    ]}>
-                      <Text style={[st.timerCircleTime, showIntervalComplete && st.timerCircleTimeComplete]}>
-                        {Math.floor(intervalTimeLeft / 60)}:{String(intervalTimeLeft % 60).padStart(2, '0')}
-                      </Text>
-                      <Text style={[st.timerCircleLabel, showIntervalComplete && st.timerCircleLabelComplete]}>
-                        {showIntervalComplete ? 'Done!' : 'Interval'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </View>
+            {videoUrl && useVideoPlayer && VideoView ? (
+              <CookingVideoSection
+                videoUrl={videoUrl}
+                videoLoading={videoLoading}
+                videoError={videoError}
+                isPlaying={isPlaying}
+                setVideoLoading={setVideoLoading}
+                setVideoError={setVideoError}
+                setIsPlaying={setIsPlaying}
+                currentTimestamp={currentTimestamp}
+                intervalTimeLeft={intervalTimeLeft}
+                showIntervalComplete={showIntervalComplete}
+              />
             ) : (
               <View style={[st.videoContainer, st.noVideo]}>
                 <Ionicons name={videoError ? "alert-circle" : "videocam-off"} size={48} color="#57534e" />
                 <Text style={st.noVideoText}>
-                  {videoError ? 'Video failed to load' : 'No video available'}
+                  {videoError ? 'Video failed to load' : isOffline ? 'Video not available offline' : 'No video available'}
                 </Text>
               </View>
             )}
