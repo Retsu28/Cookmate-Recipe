@@ -28,7 +28,7 @@ export function useCamera() {
   const takePicture = async () => {
     if (!cameraRef.current) return null;
     try {
-      const photo = await cameraRef.current.takePicture({
+      const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: CAMERA_CAPTURE_QUALITY,
       });

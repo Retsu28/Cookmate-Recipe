@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 
 import {
 
@@ -14,7 +14,11 @@ import {
 
   KeyboardAvoidingView,
 
+  Keyboard,
+
   Platform,
+
+  Dimensions,
 
   ActivityIndicator,
 
@@ -97,6 +101,36 @@ export default function LoginScreen({ navigation }) {
       if (val === 'true') setPanelCollapsed(true);
 
     }).catch(() => {});
+
+  }, []);
+
+
+
+  const scrollRef = useRef(null);
+
+
+
+  useEffect(() => {
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const show = Keyboard.addListener(showEvent, () => setPanelCollapsed(true));
+
+    const hide = Keyboard.addListener(hideEvent, () => {});
+
+    return () => { show.remove(); hide.remove(); };
+
+  }, []);
+
+
+
+  const handleInputFocus = useCallback((event) => {
+
+    if (!scrollRef.current) return;
+
+    scrollRef.current.scrollToEnd({ animated: true });
 
   }, []);
 
@@ -206,17 +240,23 @@ export default function LoginScreen({ navigation }) {
 
           style={{ flex: 1 }}
 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
 
         >
 
           <ScrollView
+
+            ref={scrollRef}
 
             style={styles.scrollView}
 
             contentContainerStyle={styles.scroll}
 
             keyboardShouldPersistTaps="handled"
+
+            keyboardDismissMode="interactive"
 
             showsVerticalScrollIndicator={false}
 
@@ -284,6 +324,8 @@ export default function LoginScreen({ navigation }) {
 
                   editable={!loading && !isLocked}
 
+                  onFocus={handleInputFocus}
+
                   style={[styles.input, (loading || isLocked) && { opacity: 0.6 }]}
 
                 />
@@ -323,6 +365,8 @@ export default function LoginScreen({ navigation }) {
                     textContentType="password"
 
                     editable={!loading && !isLocked}
+
+                    onFocus={handleInputFocus}
 
                     style={[styles.input, { paddingRight: 44 }, (loading || isLocked) && { opacity: 0.6 }]}
 

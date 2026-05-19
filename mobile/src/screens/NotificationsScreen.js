@@ -59,18 +59,20 @@ export default function NotificationsScreen({ navigation }) {
 
         // Convert DB notifications
         dbNotifs.forEach((notif) => {
-          const isRecipe = notif.type?.toLowerCase() === 'recipe';
+          const typeKey = notif.type?.toLowerCase();
+          const isRecipe = typeKey === 'recipe';
+          const isShopping = typeKey === 'shopping';
           nextDbNotifications.push({
             id: notif.id + 100000, // Offset to avoid ID collision
             dbId: notif.id,
-            type: isRecipe ? 'Recipe' : 'System',
+            type: isRecipe ? 'Recipe' : isShopping ? 'Shopping' : 'System',
             title: notif.title,
             message: notif.message,
             time: new Date(notif.created_at).toLocaleDateString(),
             read: notif.is_read,
-            icon: isRecipe ? 'sparkles' : 'notifications',
+            icon: isRecipe ? 'sparkles' : isShopping ? 'cart' : 'notifications',
             iconColor: isRecipe ? '#22c55e' : (colors.primary || '#f97316'),
-            actionPath: isRecipe ? 'AllRecipes' : 'Home',
+            actionPath: isRecipe ? 'AllRecipes' : isShopping ? 'Planner' : 'Home',
             source: 'db',
           });
         });

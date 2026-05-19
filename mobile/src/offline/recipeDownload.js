@@ -81,12 +81,21 @@ function soundLocalPath(recipeId) {
 
 // Persist index in a JSON file alongside the recipe folder
 function getMetaPath() {
-  return `${documentDirectory}CookMate/offline_meta.json`;
+  const baseDir = documentDirectory || '';
+  if (!baseDir) {
+    console.warn('[getMetaPath] documentDirectory is null, using fallback path');
+  }
+  return `${baseDir}CookMate/offline_meta.json`;
 }
 
 async function readMeta() {
   try {
     const metaPath = getMetaPath();
+    // Guard against null documentDirectory
+    if (!documentDirectory) {
+      console.warn('[readMeta] documentDirectory is null, returning empty array');
+      return [];
+    }
     console.log('[readMeta] Reading from:', metaPath);
     const info = await getInfoAsync(metaPath);
     console.log('[readMeta] File exists:', info.exists);
@@ -106,6 +115,11 @@ async function readMeta() {
 
 async function writeMeta(list) {
   try {
+    // Guard against null documentDirectory
+    if (!documentDirectory) {
+      console.warn('[writeMeta] documentDirectory is null, cannot write meta');
+      return;
+    }
     await ensureDownloadsDir();
     await writeAsStringAsync(getMetaPath(), JSON.stringify(list));
   } catch (e) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   StyleSheet,
@@ -79,6 +80,21 @@ export default function SignupScreen({ navigation }) {
     }).catch(() => {});
   }, []);
 
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, () => setPanelCollapsed(true));
+    const hide = Keyboard.addListener(hideEvent, () => {});
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  const handleInputFocus = useCallback(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollToEnd({ animated: true });
+  }, []);
+
   const handleTogglePanel = () => {
     setPanelCollapsed((c) => {
       const next = !c;
@@ -135,12 +151,15 @@ export default function SignupScreen({ navigation }) {
         <AuthThemeToggle />
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
           <ScrollView
+            ref={scrollRef}
             style={styles.scrollView}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             showsVerticalScrollIndicator={false}
           >
             <AuthVisualPanel
@@ -170,6 +189,7 @@ export default function SignupScreen({ navigation }) {
                   autoCapitalize="words"
                   textContentType="name"
                   editable={!loading}
+                  onFocus={handleInputFocus}
                 />
               </AnimatedField>
 
@@ -185,6 +205,7 @@ export default function SignupScreen({ navigation }) {
                   keyboardType="email-address"
                   textContentType="emailAddress"
                   editable={!loading}
+                  onFocus={handleInputFocus}
                 />
               </AnimatedField>
 
@@ -201,6 +222,7 @@ export default function SignupScreen({ navigation }) {
                     autoCorrect={false}
                     textContentType="newPassword"
                     editable={!loading}
+                    onFocus={handleInputFocus}
                     style={[styles.input, { paddingRight: 44 }]}
                   />
                   <Pressable
@@ -277,6 +299,7 @@ export default function SignupScreen({ navigation }) {
                   autoCapitalize="none"
                   textContentType="newPassword"
                   editable={!loading}
+                  onFocus={handleInputFocus}
                 />
                 {confirm.length > 0 && password === confirm && (
                   <View style={styles.matchRow}>

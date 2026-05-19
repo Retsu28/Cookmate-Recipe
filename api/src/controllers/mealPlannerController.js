@@ -485,6 +485,22 @@ async function recordGroceryGeneration(userId, itemCount) {
   }
 }
 
+async function insertGroceryNotification(userId, itemCount) {
+  try {
+    await pool.query(
+      `INSERT INTO notifications (user_id, title, message, type, is_read)
+       VALUES ($1, $2, $3, 'Shopping', FALSE)`,
+      [
+        userId,
+        'Grocery list ready',
+        `${itemCount} ingredient${itemCount === 1 ? '' : 's'} grouped for your planned meals.`,
+      ]
+    );
+  } catch (err) {
+    logger.warn('[mealPlanner/groceryNotification] skipped:', err.message);
+  }
+}
+
 async function hasTable(tableName) {
   const result = await pool.query(`SELECT to_regclass($1) AS table_name`, [`public.${tableName}`]);
   return Boolean(result.rows[0]?.table_name);
@@ -1014,6 +1030,7 @@ exports.getGroceryList = async (req, res) => {
 
     const groceryList = buildGroceryList(result.rows);
     await recordGroceryGeneration(userId, groceryList.totalItems);
+    await insertGroceryNotification(userId, groceryList.totalItems);
 
     res.json({
       groceryList,

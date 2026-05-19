@@ -51,7 +51,9 @@ async function loadNativeGoogleSignIn() {
 }
 
 function isRunningInExpoGo() {
-  return Constants.appOwnership === 'expo' || Boolean(Constants.expoGoConfig);
+  // Only true Expo Go sets appOwnership === 'expo'.
+  // Production APKs have 'standalone' or null — never use proxy for them.
+  return Constants.appOwnership === 'expo';
 }
 
 function canUseNativeGoogleSignIn() {
@@ -153,6 +155,7 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
 
     GoogleSignin.configure({
       webClientId,
+      androidClientId: androidClientId || undefined,
       iosClientId: iosClientId || undefined,
       offlineAccess: false,
     });
@@ -241,10 +244,8 @@ export default function GoogleSignInButton({ label = 'Continue with Google', onE
     try {
       if (isExpoGo) {
         await handleExpoGoProxySignIn();
-      } else if (canUseNativeGoogleSignIn()) {
-        await handleNativeSignIn();
       } else {
-        await handleExpoGoProxySignIn();
+        await handleNativeSignIn();
       }
     } catch (err) {
       if (err instanceof MfaRequiredError) {

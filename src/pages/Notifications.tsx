@@ -30,12 +30,12 @@ type PlannerNotification = {
 
 type DbNotificationDisplay = {
   id: number;
-  type: 'Recipe' | 'System';
+  type: 'Recipe' | 'System' | 'Shopping';
   title: string;
   message: string;
   time: string;
   read: boolean;
-  icon: typeof Sparkles | typeof Bell;
+  icon: typeof Sparkles | typeof Bell | typeof ShoppingBag;
   color: string;
   actionPath: string;
   source: 'db';
@@ -89,20 +89,24 @@ export default function NotificationsPage() {
 
         // Convert DB notifications
         dbNotifs.forEach((notif: Notification) => {
-          const isRecipe = notif.type?.toLowerCase() === 'recipe';
+          const typeKey = notif.type?.toLowerCase();
+          const isRecipe = typeKey === 'recipe';
+          const isShopping = typeKey === 'shopping';
           nextDbNotifications.push({
             id: notif.id + 100000, // Offset to avoid ID collision with planner notifications
             dbId: notif.id,
-            type: isRecipe ? 'Recipe' : 'System',
+            type: isRecipe ? 'Recipe' : isShopping ? 'Shopping' : 'System',
             title: notif.title,
             message: notif.message,
             time: new Date(notif.created_at).toLocaleDateString(),
             read: notif.is_read,
-            icon: isRecipe ? Sparkles : Bell,
+            icon: isRecipe ? Sparkles : isShopping ? ShoppingBag : Bell,
             color: isRecipe
               ? 'text-green-600 bg-green-100/60 dark:text-green-400 dark:bg-green-500/20'
+              : isShopping
+              ? 'text-orange-500 bg-orange-100/50 dark:text-orange-400 dark:bg-orange-500/20'
               : 'text-blue-500 bg-blue-100/60 dark:text-blue-400 dark:bg-blue-500/20',
-            actionPath: isRecipe ? '/recipes' : '/',
+            actionPath: isRecipe ? '/recipes' : isShopping ? '/planner' : '/',
             source: 'db',
           });
         });

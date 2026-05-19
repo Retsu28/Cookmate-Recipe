@@ -80,7 +80,7 @@ async function evictIfNeeded(requiredBytes) {
     if (freed >= bytesToFree) break;
 
     try {
-      await FileSystem.deleteAsync(row.local_path, { idempotent: true });
+      await deleteAsync(row.local_path, { idempotent: true });
       await db.runAsync('DELETE FROM image_cache_metadata WHERE url = ?', [row.url]);
       freed += Number(row.size_bytes);
     } catch {

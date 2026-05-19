@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { format } from 'date-fns';
+import * as Notifications from 'expo-notifications';
 import { plannerApi } from '../api/api';
 import { getGroceryListCached, offlineCache } from '../offline/cacheService';
 import { OFFLINE_MESSAGE } from '../offline/network';
@@ -37,9 +38,21 @@ export default function useGroceryList({ isOnline, selectedSlots, plansByDateAnd
     setLoadingGrocery(true);
     try {
       const response = await getGroceryListCached(() => plannerApi.getGroceryList());
-      setGroceryList(response?.data?.groceryList || null);
+      const list = response?.data?.groceryList || null;
+      setGroceryList(list);
       setSavedListState((s) => ({ ...s, currentId: null }));
       setCheckedItems({});
+      if (list && list.totalItems > 0) {
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Grocery list ready',
+            body: `${list.totalItems} ingredient${list.totalItems === 1 ? '' : 's'} grouped for your planned meals.`,
+            data: { route: 'Planner' },
+            sound: true,
+          },
+          trigger: null,
+        }).catch(() => {});
+      }
     } catch (err) {
       Alert.alert('Grocery list failed', err?.message || 'Please try again.');
     } finally {

@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "878930590445-tv867qhlv4p3p5cj3on7dqkcvhf2ddek.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cookmate.app",
+            "certificate_hash": "ebf6ff4331ab023dd95ae47bf653f1fe580895ec"
+          }
+        },
+        {
           "client_id": "878930590445-g9bvfkmm68rhc9n1usl1ht8i6ck46ktr.apps.googleusercontent.com",
           "client_type": 3
         }
