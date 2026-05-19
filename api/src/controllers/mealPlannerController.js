@@ -488,6 +488,10 @@ async function recordGroceryGeneration(userId, itemCount) {
 async function insertGroceryNotification(userId, itemCount) {
   try {
     await pool.query(
+      `DELETE FROM notifications WHERE user_id = $1 AND type = 'Shopping' AND is_read = FALSE`,
+      [userId]
+    );
+    await pool.query(
       `INSERT INTO notifications (user_id, title, message, type, is_read)
        VALUES ($1, $2, $3, 'Shopping', FALSE)`,
       [
